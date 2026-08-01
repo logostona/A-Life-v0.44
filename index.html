@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>A Life</title>
+  <meta name="description" content="A life simulation game." />
+
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/favicon-64.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <meta name="theme-color" content="#0a0c14" />
+
+  <!-- iOS "Add to Home Screen" standalone support -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="A Life" />
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #f6f5f1; overscroll-behavior: none; }
+    #root { min-height: 100dvh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="./storage-polyfill.js"></script>
+  <script src="./life-sim.bundle.js"></script>
+
+  <script>
+    // Register as early as possible (not on window "load") so Chrome's
+    // installability check — which requires an active service worker with
+    // a fetch handler — is satisfied on the very first visit, rather than
+    // only on a second visit after the SW has had time to activate.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    }
+  </script>
+</body>
+</html>
