@@ -20,3 +20,4 @@ life-sim.jsx.bak*
 # npm install for test-render.js (react/react-dom/jsdom) — not part of the app
 node_modules/
 package-lock.json
+hre-s11.js

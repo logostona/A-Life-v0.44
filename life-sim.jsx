@@ -3625,6 +3625,9 @@ function hreInit(seed, country, cityName, cls, year) {
     mtg: null,
     everOwned: false,
     ownedOutright: false,
+    /* Sale (S11). A life fact, like everRented/everOwned: "has sold a home"
+       cannot be derived once the dwelling is gone. */
+    everSold: false,
     /* Upkeep tracker (S10). null until something is actually being lived in and
        ticked; hreUpkeepInit derives it FROM s.hre.home.condition and never
        writes a condition number of its own — that is R5's whole mitigation. */
@@ -3652,7 +3655,8 @@ function hreMigrate(s) {
       (p.country || "") + ":" + (p.city || "") + ":" + (p.birthYear || 0));
     s.hre = { v: HRE_STATE_V, seed: seed, tenure: hreLegacyTenure(s),
       since: s.ageDays || 0, home: null, recon: true, mem: { ch: null, filt: "all" }, eng: [], owned: false,
-      ten: null, lastEnd: null, everRented: false, mtg: null, everOwned: false, ownedOutright: false, upk: null };
+      ten: null, lastEnd: null, everRented: false, mtg: null, everOwned: false, ownedOutright: false, upk: null,
+      everSold: false };
     return s.hre;
   }
   const h = s.hre;
@@ -3682,6 +3686,7 @@ function hreMigrate(s) {
   if (h.mtg === undefined) h.mtg = null;
   if (typeof h.everOwned !== "boolean") h.everOwned = false;
   if (typeof h.ownedOutright !== "boolean") h.ownedOutright = false;
+  if (typeof h.everSold !== "boolean") h.everSold = false;
   /* Tenancy (S08a). Absent on every pre-Phase-7 save; null is the correct
      backfill — no tenancy, so hreOnTick is a no-op until one is formed. */
   if (h.ten === undefined) h.ten = null;
@@ -6244,6 +6249,245 @@ function hreDecayCoverage(country, year) {
   return rows;
 }
 
+/* ═══════════════ HRE · S11 · SALE & MOVING ON ═══════════════ */
+/* The last clause of HRE v1's own sentence: "...maintain, neglect, lose, and
+ * MOVE." Everything else in that list shipped in Phases 7-9. Until now an owner
+ * could only stop owning involuntarily — repossession (S08c) or condemnation
+ * (S10) — which made ownership a one-way door and left a whole realistic life
+ * shape unreachable: buy somewhere, outgrow it, sell it, move on.
+ *
+ * WHY IT BELONGS HERE RATHER THAN IN S08c
+ * Sale is where three subsystems finally meet, and none of them owns it:
+ *   S05 says what the market thinks the property is worth,
+ *   S10 says what condition has done to that number since it was bought,
+ *   S08c says how much of it the bank takes back first.
+ * Putting it in any one of those would have made that one an authority over the
+ * other two.
+ *
+ * WHAT THIS MAKES REAL, retroactively
+ * Phase 9's decay was measurable but not yet CONSEQUENTIAL: a neglected house
+ * lost value on a screen. Selling is where the loss is finally charged — the
+ * offer is derived from hreHomeValueNow(), which already carries S10's
+ * condition ratio, so twenty years of deferred maintenance turns into a smaller
+ * number at the exact moment the player cares most. That is the difference
+ * between a simulation the player watches and one they can be hurt by.
+ *
+ * DETERMINISM, per the HRE invariant that holds across S01-S10:
+ * no Math.random, no rnd(), no pick(), no Date.now() anywhere in this section.
+ * Every draw comes from a NAMESPACED hreRng sub-stream keyed on the property,
+ * the period and the attempt, so reloading a save re-runs the same buyers
+ * rather than letting the player re-roll a disappointing offer.
+ */
+
+const HRE_S11_V = 1;
+
+/* An offer is a fraction of the asking price. Buyers are not a market
+   simulation — they are three plausible positions on one number, and which
+   positions exist depends on how much the property has going for it. */
+const HRE_OFFER_BANDS = [
+  { id: "lowball", lo: 0.78, hi: 0.88, patience: 0,
+    label: "A quick sale, at their price",
+    line: "They can complete inside a month and they know exactly what that is worth to someone in a hurry." },
+  { id: "fair", lo: 0.93, hi: 1.01, patience: 2,
+    label: "A serious buyer, near the asking price",
+    line: "They looked at everything twice, asked one uncomfortable question about the roof, and made a sensible offer." },
+  { id: "over", lo: 1.02, hi: 1.12, patience: 4,
+    label: "Someone who wants it more than it is worth",
+    line: "They want it in a way that has nothing to do with the survey. Somebody else wanted it too, which helped." },
+];
+
+/* How much of the asking price a defect argues off it. A survey is what turns
+   S02's disclosure ladder into money: the `technical` and `latent` tiers a
+   buyer's surveyor finds are exactly the ones the seller never had to
+   advertise, and they come off the price at the last possible moment. */
+const HRE_SURVEY_BITE = 0.55;
+
+function hreSaleCosts(s, price) {
+  const law = hreLaw(s.profile.country, yearOf(s));
+  const t = (law && law.transaction) || { sellerFeePct: 0.03 };
+  /* sellerFeePct has been sitting in the S04 law table since Phase 3 with no
+     reader — this is the first thing that has ever needed it. */
+  const fee = Math.ceil(price * (t.sellerFeePct || 0));
+  return { fee: fee, total: fee };
+}
+
+/* What the character would actually walk away with. Separated from the offer
+   itself so the menu can show the arithmetic honestly BEFORE the player
+   commits — "sold for X" and "received Y" are very different numbers and the
+   gap between them is the part people are surprised by in real life. */
+function hreSaleNet(s, price) {
+  const costs = hreSaleCosts(s, price);
+  const mtg = s.hre && s.hre.mtg;
+  const balance = mtg ? Math.max(0, Math.ceil(mtg.balance)) : 0;
+  const gross = Math.max(0, price - costs.total);
+  return {
+    price: price,
+    costs: costs,
+    balance: balance,
+    /* what lands in the account after the bank and the agent */
+    net: gross - balance,
+    /* negative equity: the loan outruns the sale, and the difference does not
+       evaporate just because the building changed hands */
+    shortfall: Math.max(0, balance - gross),
+  };
+}
+
+/* Asking price: the market's number, already carrying S10's condition ratio. */
+function hreAskingPrice(s) {
+  const v = hreHomeValueNow(s);
+  if (!v || !Number.isFinite(v.money)) return null;
+  return Math.max(1, Math.round(v.money));
+}
+
+/* The offers on the table this period. Deterministic in the period, so the
+   player cannot reload for a better buyer, but it MOVES between periods, so
+   waiting is a real strategy rather than a wasted turn. */
+function hreSaleOffers(s) {
+  const home = hreHome(s);
+  const seed = hreWorldSeedOf(s);
+  if (!home || seed === null) return [];
+  const asking = hreAskingPrice(s);
+  if (asking === null) return [];
+  const period = hrePeriodIndex(s.ageDays || 0);
+  const year = yearOf(s);
+  const p = hreIdParse(home.id || "") || {};
+  const country = p.country || s.profile.country;
+
+  /* A weak market produces fewer and worse buyers. hreNationalIndex is the same
+     curve the purchase side prices against, so a downturn hurts a seller and
+     helps a buyer, which is the whole point of having an index at all. */
+  const idxNow = hreNationalIndex(country, year);
+  const idxThen = hreNationalIndex(country, Math.max(year - 5, 1900));
+  const momentum = idxThen > 0 ? idxNow / idxThen : 1;
+
+  /* Condition is visible at a viewing; defects a surveyor finds are not, and
+     they come off later (hreSaleSurveyAdjust). */
+  const condScore = home.condition ? hreConditionScore(home.condition) : 60;
+
+  const out = [];
+  for (let i = 0; i < HRE_OFFER_BANDS.length; i++) {
+    const band = HRE_OFFER_BANDS[i];
+    const r = hreRng(seed, (home.id || "x") + ":" + period, "s11:offer:" + band.id);
+    /* whether this kind of buyer exists at all this period */
+    let chance = 0.55 + (momentum - 1) * 0.9 + (condScore - 55) / 240;
+    if (band.id === "over") chance -= 0.34;          /* rare by construction */
+    if (band.id === "lowball") chance += 0.3;        /* someone is always circling */
+    if (!r.chance(Math.max(0.05, Math.min(0.95, chance)))) continue;
+    const frac = r.range(band.lo, band.hi);
+    const price = Math.max(1, Math.round(asking * frac));
+    out.push({
+      band: band.id, label: band.label, line: band.line,
+      price: price, asking: asking,
+      settle: hreSaleNet(s, price),
+    });
+  }
+  return out;
+}
+
+/* What the buyer's surveyor knocks off after the offer is accepted. This is
+   where the information asymmetry finally runs in the other direction: for the
+   whole of S06 and S07 the PLAYER was the one who could not see the technical
+   and latent defects. Now they are the seller, and the person across the table
+   has a surveyor. */
+function hreSaleSurveyAdjust(s, offer) {
+  const home = hreHome(s);
+  const seed = hreWorldSeedOf(s);
+  if (!home || seed === null) return { cut: 0, found: [] };
+  const defects = home.defects || [];
+  const hidden = defects.filter(function (d) {
+    return d.disclosure === "technical" || d.disclosure === "latent";
+  });
+  if (!hidden.length) return { cut: 0, found: [] };
+  const period = hrePeriodIndex(s.ageDays || 0);
+  const found = [];
+  let severity = 0;
+  for (let i = 0; i < hidden.length; i++) {
+    const d = hidden[i];
+    const r = hreRng(seed, (home.id || "x") + ":" + period, "s11:survey:" + d.id);
+    /* a technical defect is what a survey is FOR; a latent one is luck */
+    if (!r.chance(d.disclosure === "technical" ? 0.82 : 0.3)) continue;
+    found.push(d);
+    severity += d.severity || 0.1;
+  }
+  if (!found.length) return { cut: 0, found: [] };
+  const cut = Math.round(offer.price * Math.min(0.25, severity * HRE_SURVEY_BITE));
+  return { cut: cut, found: found };
+}
+
+const HRE_SALE_LINE = {
+  sold: "🔑 Contracts exchanged. The keys went into an envelope with someone else's name on it, and the rooms echoed on the way out.",
+  shortfall: "🔑 It sold, and it still was not enough. The bank took what it was owed and sent a letter about the rest, which is now simply money you owe with no house attached to it.",
+  outright: "🔑 Sold, in full, with nothing owed to anybody. The whole number is yours, and it is the largest one you have ever seen in that account.",
+  survey: "📋 Their surveyor found what surveyors find. The price came down at the last moment and there was no real way to say no.",
+};
+
+/* THE SALE. Everything that ends ownership voluntarily goes through here, for
+   the same reason hreCloseTenancy is the single exit from a tenancy: so tenure,
+   the mortgage and the dwelling can never end up disagreeing.
+   `next` is where the character lands. A sale with nowhere to go IS
+   homelessness, and the caller has to have decided that beforehand. */
+function hreSellHome(s, offer, next) {
+  hreMigrate(s);
+  const home = hreHome(s);
+  if (!home) return null;
+  if (hreTenure(s) !== "owning") return null;
+  if (!offer || !Number.isFinite(offer.price)) return null;
+
+  const survey = hreSaleSurveyAdjust(s, offer);
+  const finalPrice = Math.max(1, offer.price - (survey.cut || 0));
+  const settle = hreSaleNet(s, finalPrice);
+
+  /* The bank is paid first, always, and out of the sale rather than out of the
+     character's pocket. A shortfall is not silently forgiven — it becomes debt
+     the same way tuition does, which is the one existing mechanism in this game
+     for "money you owe with nothing to show for it". */
+  if (settle.shortfall > 0) {
+    s.education.debt = (s.education.debt || 0) + settle.shortfall;
+  } else {
+    s.money = Math.max(0, (s.money || 0) + settle.net);
+  }
+
+  s.hre.mtg = null;
+  s.hre.upk = null;                    /* the tracker belongs to the dwelling */
+  s.hre.lastEnd = "sold";
+  s.hre.everSold = true;
+
+  const dest = next && HRE_TENURE_STATES.indexOf(next) >= 0 ? next : "homeless";
+  hreSetTenure(s, dest, dest === "homeless" || dest === "withParents" ? null : s.hre.home);
+  /* Kept in step with the legacy flag for the same reason hreCloseTenancy does
+     it — STREET_GROUP and the street POOL still read it raw. */
+  if (dest === "homeless") s.flags.homeless = s.ageDays || 0;
+  else if (s.flags.homeless) s.flags.homeless = null;
+
+  return {
+    price: finalPrice, asking: offer.asking, survey: survey, settle: settle,
+    tenure: dest,
+    line: settle.shortfall > 0 ? HRE_SALE_LINE.shortfall
+      : settle.balance === 0 ? HRE_SALE_LINE.outright : HRE_SALE_LINE.sold,
+  };
+}
+
+/* Can the character sell at all? Separated so the menu can hide the option
+   rather than offering a no-op — the same rule S07b/S10's menus follow. */
+function hreCanSell(s) {
+  return !!(s && s.hre && hreTenure(s) === "owning" && hreHome(s) && !s.hre.recon);
+}
+
+/* Diagnostic, mirroring hreMarketCoverage/hreLawCoverage: does a sale actually
+   clear a typical mortgage across countries and eras, or is negative equity so
+   common that selling is decorative? */
+function hreSaleCoverage(countries, year) {
+  const rows = [];
+  const list = countries || Object.keys(COUNTRIES).slice(0, 8);
+  for (let i = 0; i < list.length; i++) {
+    const law = hreLaw(list[i], year || 2000);
+    const t = (law && law.transaction) || {};
+    rows.push({ country: list[i], sellerFeePct: t.sellerFeePct == null ? null : t.sellerFeePct,
+      provisional: !!(law && law.provisional) });
+  }
+  return rows;
+}
+
 /* ═══════════════ ENGINE ═══════════════ */
 
 function advance(state, totalDays) {
@@ -6458,6 +6702,7 @@ function doActivity(state, act) {
   if (act.special === "stxBoard") { s.pending = stxBoardMenu(s); return s; }
   if (act.special === "hreHome") { s.pending = hreHomeMenu(s); return s; }
   if (act.special === "hreUpkeep") { s.pending = hreUpkeepMenu(s); return s; }
+  if (act.special === "hreSell") { s.pending = hreSaleMenu(s); return s; }
   if (act.special === "hreMarket") {
     /* Market memory is written HERE, on the draft the engine keeps — never
        inside the menu builder, whose clone would be discarded (Gotcha #2). */
@@ -9800,6 +10045,92 @@ function hreInsuranceMenu(s) {
       HRE_INSURANCE_TIERS[0].blurb + " " + HRE_INSURANCE_TIERS[1].blurb };
 }
 
+/* ── S11 · selling, as the player meets it ──
+   Two steps on purpose. Step one shows the offers and the arithmetic; step two
+   asks the question the first screen deliberately does not answer — where do
+   you actually go? A sale that silently dumped the character somewhere would be
+   the same "decorative state" mistake the failure ladder was built to avoid. */
+function hreSaleMenu(s) {
+  if (!hreCanSell(s)) {
+    return { emoji: "🏷", title: "Selling up", text: "There is nothing here that is yours to sell.",
+      options: [{ label: "Close", fx: {} }] };
+  }
+  const asking = hreAskingPrice(s);
+  const offers = hreSaleOffers(s);
+  const mtg = s.hre.mtg;
+  const owed = mtg ? Math.max(0, Math.ceil(mtg.balance)) : 0;
+  const u = hreUpkeep(s);
+  const home = hreHome(s);
+  const cond = home && home.condition ? hreConditionScore(home.condition) : null;
+  /* The honest headline: what the market says, what the bank wants back, and —
+     if they have let the place go — how much of the gap is their own doing. */
+  const bits = ["Valued at about " + hreMoney(s, asking) + "."];
+  if (owed > 0) bits.push("You still owe " + hreMoney(s, owed) + " on it.");
+  if (cond !== null) bits.push("A surveyor would call it " + hreConditionBand(cond) + ".");
+  if (u && typeof u.base === "number" && cond !== null && cond < u.base - 6) {
+    bits.push("It was in better shape when you took it on, and that difference has a price on it now.");
+  }
+  if (!offers.length) {
+    bits.push("Nobody is interested this month. That happens, and it is not personal.");
+  }
+
+  const opts = offers.map(function (o) {
+    const st = o.settle;
+    const tail = st.shortfall > 0
+      ? " — leaves you " + hreMoney(s, st.shortfall) + " short"
+      : " — you keep " + hreMoney(s, st.net);
+    return {
+      label: o.label + ": " + hreMoney(s, o.price) + tail,
+      fx: { run: (function (offer, line) { return function (stt) {
+        stt.pending = hreSaleDestinationMenu(stt, offer, line);
+      }; })(o, o.line) },
+    };
+  });
+  opts.push({ label: "Not yet — take it off the market", fx: {} });
+
+  return { emoji: "🏷", title: "Selling up", text: bits.join(" "), options: opts };
+}
+
+/* Where the character lands. Every option here is a real, reachable tenure —
+   this is the screen that stops a sale from creating a homeless character by
+   accident. */
+function hreSaleDestinationMenu(s, offer, line) {
+  const opts = [];
+  const canGoHome = !!(s.family && ((s.family.mom && !s.family.mom.deceased) ||
+    (s.family.dad && !s.family.dad.deceased))) && ageYears(s) < 60;
+
+  const finish = function (dest) {
+    return function (stt) {
+      const res = hreSellHome(stt, offer, dest);
+      if (!res) return;
+      push(stt, line);
+      if (res.survey && res.survey.cut > 0) push(stt, HRE_SALE_LINE.survey);
+      push(stt, res.line);
+      if (res.settle.shortfall > 0) {
+        stt.stats.happiness = clamp(stt.stats.happiness - 12);
+      } else if (res.settle.net > 0) {
+        stt.stats.happiness = clamp(stt.stats.happiness + 4);
+      }
+    };
+  };
+
+  opts.push({ label: "Rent somewhere while you decide", fx: { run: finish("renting") } });
+  if (canGoHome) {
+    opts.push({ label: "Move back in with your parents", fx: { run: finish("withParents") } });
+  }
+  if (activePartners(s).length > 0) {
+    opts.push({ label: "Move in with your partner", fx: { run: finish("withPartner") } });
+  }
+  opts.push({ label: "Nowhere yet — sell anyway", fx: { run: finish("homeless") } });
+  opts.push({ label: "Back", fx: { run: function (stt) { stt.pending = hreSaleMenu(stt); } } });
+
+  return {
+    emoji: "📦", title: "And then where?",
+    text: "The sale is agreed. The part nobody tells you about is that it does not include anywhere to go.",
+    options: opts,
+  };
+}
+
 function hreUpkeepMenu(s) {
   const role = hreUpkeepRole(s);
   const home = hreHome(s);
@@ -9870,6 +10201,10 @@ const HRE_GROUP = { id: "housing", emoji: "🏘", name: "Property", cond: (s) =>
      item in this file (35 of 38 charge no time; module 24's queue), so the
      spend is money and the brake on repeating it is hreMaintenanceReady's
      cooldown, not the clock. */
+  /* S11. Only an owner with something to sell. Same cost: 0 convention as the
+     other menu-openers in this file. */
+  { id: "hreSell", minAge: 18, emoji: "🏷", label: "Sell up and move on", cost: 0, special: "hreSell",
+    cond: (s) => hreCanSell(s) },
   { id: "hreUpkeep", minAge: 16, emoji: "🧰", label: "Look after the place", cost: 0, special: "hreUpkeep",
     cond: (s) => hreUpkeepRole(s) !== "none" && !!hreHome(s) },
 ] };

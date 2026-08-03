@@ -409,7 +409,17 @@ sec("6 · failure emission");
 
   /* (d) the source is grepped, not assumed: no authored failure event list */
   const src = fs.readFileSync(path.join(__dirname, "life-sim.jsx"), "utf8");
-  const s10 = src.slice(src.indexOf("HRE · S10 · UPKEEP"), src.indexOf("/* ═══════════════ ENGINE"));
+  /* End at the NEXT HRE section, not at ENGINE. S10 was the last section before
+     the engine when this was written; S11 (sale) was later spliced between the
+     two, and an ENGINE-anchored slice silently swallowed it — so S11's header,
+     which documents this very invariant in prose, read as S10 breaching it.
+     Comments are stripped for the same reason: a rule and a breach of the rule
+     look identical to a substring scan. */
+  const s10Start = src.indexOf("HRE · S10 · UPKEEP");
+  const nextBanner = src.indexOf("/* ═══════════════ HRE · S11", s10Start);
+  const s10 = src.slice(s10Start, nextBanner > -1 ? nextBanner : src.indexOf("/* ═══════════════ ENGINE"))
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
   ok("the S10 section exists and was spliced exactly once",
     (src.match(/HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE/g) || []).length === 1);
   ok("S10 registers no POOL events — failures are not authored world events",

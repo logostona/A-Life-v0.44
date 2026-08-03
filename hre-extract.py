@@ -33,6 +33,7 @@ SECTIONS = [
     # NOTE: hre-s06.js also carries S07/S07b/S08a/S08b/S08c — those sections were
     # spliced between S06 and this one and have never had their own entries here.
     ("hre-s10.js",      "HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE"),
+    ("hre-s11.js",      "HRE · S11 · SALE & MOVING ON"),
 ]
 END_BANNER = "/* ═══════════════ ENGINE ═══════════════ */"
 
