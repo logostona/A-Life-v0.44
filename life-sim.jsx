@@ -108,7 +108,76 @@ const DECADE_ACCENT = {
   2000: "#3A6EA5", 2010: "#7A5AA6", 2020: "#D65A7A",
   2030: "#4E9E6B", 2040: "#4E9E6B", 2050: "#4E9E6B", 2060: "#4E9E6B", 2070: "#4E9E6B",
 };
-const INK = "#22252A", PAPER = "#F6F5F1", CARD = "#FFFFFF";
+
+/* ═══════════════ THEME TOKENS (module 16) ═══════════════ */
+/* The redesign's single source of colour. Everything the UI renders reads from
+   TH or from a constant derived from it — no component invents a hex.
+   Rationale for each value is in UI_REDESIGN_PLAN.md §4; the short version is
+   that the palette is taken from the game's own logo (a compass badge in the
+   trans flag's blue/pink/white) rather than invented, so the chrome and the
+   brand agree.
+
+   WHY INK/PAPER/CARD STILL EXIST AND ARE NOT RENAMED
+   Those three names are referenced ~52 times across the UI. Redefining them in
+   place re-themes every one of those call sites atomically, with no chance of a
+   half-converted screen — which renaming them to TH.text/TH.bg/TH.surface would
+   have risked for zero behavioural gain. They are now aliases INTO the token
+   set, and new code should prefer TH.* directly. */
+const TH = {
+  bg:       "#12131A",   /* Dusk Ink — near-black navy; pairs with the logo's blue better than true black */
+  surface:  "#1E2029",   /* Card Slate — panels, one step up from bg */
+  surface2: "#252834",   /* raised surface — open/active rows, inputs */
+  line:     "#2E3140",   /* hairline borders */
+  lineSoft: "#23262F",   /* barely-there dividers */
+  text:     "#F5F5F2",   /* Paper White — warmed off-white, not pure white */
+  muted:    "#9BA0B0",   /* secondary text — 7.1:1 on bg, safe at small sizes */
+  faint:    "#6C7285",   /* tertiary — timestamps, disabled */
+  blue:     "#5BCEFA",   /* Compass Blue — primary interactive accent */
+  pink:     "#F5A9B8",   /* Horizon Pink — relationships, warmth */
+  coral:    "#FF6B6B",   /* Alert Coral — SEMANTIC ONLY. Danger/death/arrest. Never decorative. */
+  gold:     "#E8C468",   /* money/ledger positive */
+  slate:    "#7C8496",   /* the deliberately-joyless colour for crime/prison/street */
+  green:    "#6FCB93",   /* health-good, success */
+  amber:    "#E8B44F",   /* caution — a middling stat, a risky-but-not-fatal action */
+};
+
+/* Translucent washes. Written as helpers rather than literals because the same
+   accent has to work as a 6%-opacity panel tint and a 40%-opacity border, and
+   hand-written 8-digit hexes for each were the single largest source of
+   near-duplicate colour values in the pre-redesign file. */
+function tint(hex, aa) { return hex + aa; }
+const A06 = "0F", A12 = "1F", A25 = "40", A40 = "66";   /* hex alpha suffixes */
+
+/* Era accent, re-tuned for a dark base. The original DECADE_ACCENT above is
+   kept untouched (UI_REDESIGN_PLAN.md §7 asks for that, and it is still the
+   authority on which HUE an era owns) but its values were chosen against the
+   old #F6F5F1 background and are too dark to sit on #12131A: the 2000s blue
+   #3A6EA5 measures 3.45:1 there, under the 4.5:1 floor for text. Each entry
+   below keeps its era's hue and raises lightness until it clears 6:1. Measured,
+   not guessed — the lowest here is 6.4:1 (2010s) and the highest 9.5:1. */
+const DECADE_ACCENT_DARK = {
+  1970: "#E8A85C", 1980: "#E87BA8", 1990: "#4FC7C4",
+  2000: "#6BA6DE", 2010: "#A98BD4", 2020: "#F2879F",
+  2030: "#6FCB93", 2040: "#6FCB93", 2050: "#6FCB93", 2060: "#6FCB93", 2070: "#6FCB93",
+};
+function accentFor(year) {
+  return DECADE_ACCENT_DARK[Math.floor(year / 10) * 10] || TH.blue;
+}
+
+/* Type: three roles, per UI_REDESIGN_PLAN.md §4, on SYSTEM-SAFE stacks.
+   Open question 1 in that doc asked whether web fonts could be loaded. They
+   cannot, and this is a hard constraint rather than a preference: README.md
+   promises the PWA "works fully offline" with "nothing fetched from a CDN",
+   and sw.js caches the app shell on that basis. A CDN @font-face would break
+   the offline guarantee on first run in exactly the situation the PWA exists
+   for. The three roles are preserved with stacks that need no network —
+   and the serif role was already established in this file (popup titles have
+   always rendered in Georgia), so it is not a new dependency at all. */
+const FONT_UI = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const FONT_STORY = "Georgia, 'Iowan Old Style', 'Times New Roman', serif";
+const FONT_LEDGER = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
+
+const INK = TH.text, PAPER = TH.bg, CARD = TH.surface;
 
 const WORLD_EVENTS = {
   1973: ["The APA removes homosexuality from its list of mental disorders."],
@@ -12540,14 +12609,169 @@ async function wipeGame() { try { await window.storage.delete(SAVE_KEY); } catch
 
 /* ═══════════════ UI ═══════════════ */
 
-function StatBar({ label, emoji, value, accent }) {
+/* Per-stat colour, so the four bars read as four different things at a glance
+   rather than one accent repeated (UI_REDESIGN_PLAN.md §2's lesson from the
+   reference). Health is the only one that changes colour with its value —
+   Alert Coral is semantic-only, so it appears exactly when health IS the
+   problem, and never as decoration. */
+const STAT_COLOR = {
+  Health:    (v) => (v < 25 ? TH.coral : v < 50 ? TH.amber : TH.green),
+  Happiness: () => TH.gold,
+  Smarts:    () => TH.blue,
+  Looks:     () => TH.pink,
+};
+
+function StatBar({ label, emoji, value, accent, compact }) {
+  const col = (STAT_COLOR[label] ? STAT_COLOR[label](value) : accent) || accent;
   return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-        <span>{emoji} {label}</span><span style={{ fontVariantNumeric: "tabular-nums" }}>{value}</span>
+    <div style={{ marginBottom: compact ? 5 : 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 10.5 : 12, marginBottom: 2, color: TH.muted }}>
+        <span>{emoji} {label}</span>
+        <span style={{ fontFamily: FONT_LEDGER, fontVariantNumeric: "tabular-nums", color: col, fontWeight: 600 }}>{value}</span>
       </div>
-      <div style={{ height: 6, background: "#E4E4DF", borderRadius: 3 }}>
-        <div style={{ width: `${value}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .5s ease" }} />
+      <div style={{ height: compact ? 4 : 6, background: TH.lineSoft, borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ width: `${value}%`, height: "100%", background: col, borderRadius: 3, transition: "width .5s ease, background .4s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+/* The always-visible stat block (UI_REDESIGN_PLAN.md §6A — replaces the old
+   "stats ▾" disclosure). Emergent traits stay behind the profile disclosure:
+   they are unbounded in number, and a header that grows with them would push
+   the feed off screen. */
+function StatRail({ stats, accent }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 14, rowGap: 0, padding: "8px 0 2px" }}>
+      <StatBar compact label="Health" emoji="🩺" value={stats.health} accent={accent} />
+      <StatBar compact label="Happiness" emoji="😊" value={stats.happiness} accent={accent} />
+      <StatBar compact label="Smarts" emoji="🧠" value={stats.smarts} accent={accent} />
+      <StatBar compact label="Looks" emoji="✨" value={stats.looks} accent={accent} />
+    </div>
+  );
+}
+
+/* Persistent identity block (UI_REDESIGN_PLAN.md §6A). No portrait art exists
+   in this project and inventing one would mean asserting what a character looks
+   like — which this game is careful never to do, since appearance and
+   presentation are player-owned and change over a life. Initials on a ring in
+   the era's accent give the header its anchor without making that claim. */
+/* Category colour (UI_REDESIGN_PLAN.md §8). Keyed on the real ACT_GROUPS ids
+   rather than invented categories, so adding a group is a one-line addition
+   here and anything unmapped falls back to the era accent instead of breaking.
+   crime/prison/street are deliberately the joyless slate — those are bad-place
+   states and should not look celebratory. */
+const GROUP_COLOR = {
+  body: TH.green, health: TH.green,
+  mind: TH.blue, school: TH.blue,
+  money: TH.gold, career: TH.gold,
+  social: TH.pink, love: TH.pink, social_media: TH.pink, people: TH.pink,
+  fun: TH.amber,
+  crime: TH.slate, prison: TH.slate, street: TH.slate,
+  housing: TH.blue, home: TH.blue,
+  journey: TH.pink, self: TH.text,
+  ai: TH.muted,
+  /* `life` is intentionally absent: the Life tab is the era's own tab, so it
+     falls through to the decade accent and shifts as the character ages. */
+};
+function groupColor(id, accent) { return GROUP_COLOR[id] || accent; }
+
+function Avatar({ state, accent, size }) {
+  const s = size || 40;
+  const first = (usedName(state) || "?").charAt(0).toUpperCase();
+  const last = (state.profile.last || "").charAt(0).toUpperCase();
+  return (
+    <div style={{ width: s, height: s, borderRadius: "50%", flexShrink: 0, position: "relative",
+      background: `linear-gradient(145deg, ${accent}2E, ${TH.surface2})`,
+      border: `1.5px solid ${accent}80`, display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: s * 0.36, fontWeight: 700, letterSpacing: .5, color: accent, fontFamily: FONT_UI }}>
+      {first}{last}
+    </div>
+  );
+}
+
+/* ── The Compass Advance (UI_REDESIGN_PLAN.md §4 "Signature", §6B) ──
+   The one place this redesign spends its boldness. It collapses two controls —
+   the 1d/3d/1w/2w/1m/3m pill row and the "Live on" button — into a single dial
+   whose rim ticks ARE the step selector and whose centre is the advance action.
+   The needle sweeps to the selected step, so the AMOUNT of time about to pass
+   has a consistent visible gesture instead of only a changing number.
+
+   DELIBERATE DEVIATION FROM THE PLAN: §6B specifies "drag the needle to a tick"
+   to re-select. This ships as TAP-A-TICK instead. Drag targets on a 44px-radius
+   rim are a poor motor-accessibility trade, they fight the feed's scroll
+   gesture on touch, and they are close to untestable in jsdom. Tapping a tick
+   is the same two-controls-in-one idea with a real hit target per option, and
+   every tick is a <button>, so it is keyboard- and screen-reader-navigable —
+   which a drag affordance would not have been.
+
+   No engine change: this calls the same advance(s, s.timeStep) as the old
+   button, through the same doAdvance/setStep handlers. */
+function CompassAdvance({ steps, value, accent, onPick, onAdvance, label, busy }) {
+  const R = 52, C = 60, RING = 2 * Math.PI * R;
+  const idx = Math.max(0, steps.findIndex((t) => t.d === value));
+  const n = steps.length;
+  /* ticks span a 260° arc with the gap at the bottom, so the sweep reads
+     left-to-right like a clock face rather than wrapping through the label */
+  const ARC = 260, START = -220;
+  const angleAt = (i) => START + (ARC * i) / (n - 1);
+  const frac = n > 1 ? idx / (n - 1) : 0;
+  const pt = (deg, r) => {
+    const rad = (deg * Math.PI) / 180;
+    return [C + r * Math.cos(rad), C + r * Math.sin(rad)];
+  };
+  const [nx, ny] = pt(angleAt(idx), R - 13);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ position: "relative", width: 120, height: 120, flexShrink: 0 }}>
+        <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+          <circle cx={C} cy={C} r={R} fill="none" stroke={TH.lineSoft} strokeWidth="6" />
+          {/* progress arc: how far into the range the chosen step sits */}
+          <circle className="ring" cx={C} cy={C} r={R} fill="none" stroke={accent} strokeWidth="6"
+            strokeLinecap="round" strokeDasharray={RING}
+            strokeDashoffset={RING - (RING * (ARC / 360)) * frac}
+            transform={`rotate(${START} ${C} ${C})`} opacity="0.9" />
+          {steps.map((t, i) => {
+            const [x, y] = pt(angleAt(i), R);
+            return <circle key={t.d} cx={x} cy={y} r={i === idx ? 3.6 : 2.2}
+              fill={i === idx ? accent : TH.faint} />;
+          })}
+          {/* the needle — the logo's compass mark, rotated to the step */}
+          <line className="needle" x1={C} y1={C} x2={nx} y2={ny}
+            stroke={accent} strokeWidth="2.5" strokeLinecap="round"
+            style={{ transformOrigin: `${C}px ${C}px` }} />
+          <circle cx={C} cy={C} r="3" fill={TH.text} />
+        </svg>
+        {/* centre = advance */}
+        <button className="btn" onClick={onAdvance} aria-label={`Live on ${label}`}
+          style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+            width: 62, height: 62, borderRadius: "50%", border: `1.5px solid ${accent}66`,
+            background: `radial-gradient(circle at 50% 35%, ${TH.surface2}, ${TH.surface})`,
+            color: TH.text, cursor: "pointer", display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 1,
+            boxShadow: `0 0 0 1px ${TH.bg}, 0 6px 18px ${accent}33` }}>
+          <span style={{ fontSize: 15 }}>⏳</span>
+          <span style={{ fontFamily: FONT_LEDGER, fontSize: 12, fontWeight: 700, color: accent, letterSpacing: .2 }}>{label}</span>
+        </button>
+        {busy && <span className="pulse" style={{ position: "absolute", left: "50%", top: "50%", marginLeft: -31, marginTop: -31, width: 62, height: 62, borderRadius: "50%", border: `2px solid ${accent}`, pointerEvents: "none" }} />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10.5, letterSpacing: ".09em", textTransform: "uppercase", color: TH.faint, marginBottom: 6 }}>How far to go</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {steps.map((t) => {
+            const on = t.d === value;
+            return (
+              <button key={t.d} className="btn" onClick={() => onPick(t.d)} aria-pressed={on}
+                style={{ padding: "6px 11px", borderRadius: 999, cursor: "pointer",
+                  border: `1.5px solid ${on ? accent : TH.line}`,
+                  background: on ? accent : "transparent",
+                  color: on ? TH.bg : TH.muted,
+                  fontFamily: FONT_LEDGER, fontSize: 12, fontWeight: on ? 700 : 500 }}>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -12555,8 +12779,8 @@ function StatBar({ label, emoji, value, accent }) {
 
 function Modal({ children, accent }) {
   return (
-    <div className="fadeBg" style={{ position: "fixed", inset: 0, background: "rgba(22,23,26,.5)", backdropFilter: "blur(3px)", zIndex: 50, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "9dvh 16px 16px" }}>
-      <div className="rise" style={{ background: CARD, borderRadius: 18, padding: 18, borderTop: `4px solid ${accent}`, width: "100%", maxWidth: 420, maxHeight: "80dvh", overflowY: "auto", boxShadow: "0 18px 50px rgba(0,0,0,.22)" }}>
+    <div className="fadeBg" style={{ position: "fixed", inset: 0, background: "rgba(4,5,9,.66)", backdropFilter: "blur(3px)", zIndex: 50, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "9dvh 16px 16px" }}>
+      <div className="rise" style={{ background: CARD, borderRadius: 18, padding: 18, borderTop: `4px solid ${accent}`, width: "100%", maxWidth: 420, maxHeight: "80dvh", overflowY: "auto", boxShadow: "0 18px 50px rgba(0,0,0,.55)" }}>
         {children}
       </div>
     </div>
@@ -12566,13 +12790,13 @@ function Modal({ children, accent }) {
 function ConfirmBox({ ask, accent, onYes, onNo }) {
   if (!ask) return null;
   return (
-    <div className="fadeBg" style={{ position: "fixed", inset: 0, background: "rgba(22,23,26,.55)", backdropFilter: "blur(3px)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="rise" style={{ background: CARD, borderRadius: 18, padding: 20, width: "100%", maxWidth: 360, borderTop: `4px solid ${ask.danger ? "#B4443C" : accent}`, boxShadow: "0 18px 50px rgba(0,0,0,.25)" }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>{ask.title}</div>
+    <div className="fadeBg" style={{ position: "fixed", inset: 0, background: "rgba(4,5,9,.7)", backdropFilter: "blur(3px)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="rise" style={{ background: CARD, borderRadius: 18, padding: 20, width: "100%", maxWidth: 360, borderTop: `4px solid ${ask.danger ? TH.coral : accent}`, boxShadow: "0 18px 50px rgba(0,0,0,.6)" }}>
+        <div style={{ fontFamily: FONT_STORY, fontSize: 17, marginBottom: 8 }}>{ask.title}</div>
         <div style={{ fontSize: 14, lineHeight: 1.55, opacity: 0.8, marginBottom: 18 }}>{ask.body}</div>
         <div style={{ display: "flex", gap: 9 }}>
-          <button className="btn" onClick={onNo} style={{ flex: 1, padding: 12, borderRadius: 11, border: "1px solid #DCDCD6", background: PAPER, color: INK, fontSize: 14, cursor: "pointer" }}>Cancel</button>
-          <button className="btn" onClick={onYes} style={{ flex: 1, padding: 12, borderRadius: 11, border: "none", background: ask.danger ? "#B4443C" : accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{ask.yes || "Yes, do it"}</button>
+          <button className="btn" onClick={onNo} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${TH.line}`, background: PAPER, color: INK, fontSize: 14, cursor: "pointer" }}>Cancel</button>
+          <button className="btn" onClick={onYes} style={{ flex: 1, padding: 12, borderRadius: 11, border: "none", background: ask.danger ? TH.coral : accent, color: TH.bg, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{ask.yes || "Yes, do it"}</button>
         </div>
       </div>
     </div>
@@ -12581,24 +12805,24 @@ function ConfirmBox({ ask, accent, onYes, onNo }) {
 
 function Sheet({ children, accent, onClose }) {
   return (
-    <div className="fadeBg" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(22,23,26,.45)", backdropFilter: "blur(2px)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div className="slideUp" onClick={(e) => e.stopPropagation()} style={{ background: CARD, width: "100%", maxWidth: 480, maxHeight: "82dvh", overflowY: "auto", borderRadius: "20px 20px 0 0", borderTop: `4px solid ${accent}`, padding: "10px 16px 28px", boxShadow: "0 -8px 40px rgba(0,0,0,.2)" }}>
-        <div style={{ width: 38, height: 4, borderRadius: 3, background: "#D6D6D0", margin: "0 auto 14px" }} />
+    <div className="fadeBg" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(4,5,9,.6)", backdropFilter: "blur(2px)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div className="slideUp" onClick={(e) => e.stopPropagation()} style={{ background: CARD, width: "100%", maxWidth: 480, maxHeight: "82dvh", overflowY: "auto", borderRadius: "20px 20px 0 0", borderTop: `4px solid ${accent}`, padding: "10px 16px 28px", boxShadow: "0 -8px 40px rgba(0,0,0,.55)" }}>
+        <div style={{ width: 38, height: 4, borderRadius: 3, background: TH.line, margin: "0 auto 14px" }} />
         {children}
       </div>
     </div>
   );
 }
 
-const smallBtn = (ready) => ({ flex: 1, padding: "9px 6px", borderRadius: 10, border: "1px solid #D8D8D2", background: ready ? PAPER : "#EBEBE6", fontSize: 12.5, cursor: ready ? "pointer" : "default", opacity: ready ? 1 : 0.5, color: INK });
+const smallBtn = (ready) => ({ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1px solid ${TH.line}`, background: ready ? PAPER : TH.surface2, fontSize: 12.5, cursor: ready ? "pointer" : "default", opacity: ready ? 1 : 0.5, color: INK });
 
 function RelCard({ p, group, pkey, accent, state, apply, openKey, onToggle, confirm }) {
   const age = ageYears(state);
   const knows = (t) => (p.known || []).includes(t);
   if (p.deceased) {
     return (
-      <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: "1px solid #E7E7E2", padding: "14px 16px", opacity: 0.75 }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 17 }}>🕯 {p.name}</div>
+      <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: `1px solid ${TH.line}`, padding: "14px 16px", opacity: 0.75 }}>
+        <div style={{ fontFamily: FONT_STORY, fontSize: 17 }}>🕯 {p.name}</div>
         <div style={{ fontSize: 12, opacity: 0.55, marginTop: 3 }}>{p.role} · in loving memory</div>
       </div>
     );
@@ -12621,18 +12845,18 @@ function RelCard({ p, group, pkey, accent, state, apply, openKey, onToggle, conf
   const open = openKey === pkey;
   const anyReady = p.status !== "ex" && (timeReady || talkReady || giftReady || canOut);
   return (
-    <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: `1px solid ${open ? accent + "55" : "#E7E7E2"}`, boxShadow: open ? `0 4px 18px ${accent}1F` : "0 1px 5px rgba(35,35,30,.06)", opacity: p.status === "ex" ? 0.62 : 1, overflow: "hidden", transition: "border-color .18s, box-shadow .18s" }}>
+    <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: `1px solid ${open ? accent + "55" : TH.line}`, boxShadow: open ? `0 4px 18px ${accent}1F` : "none", opacity: p.status === "ex" ? 0.62 : 1, overflow: "hidden", transition: "border-color .18s, box-shadow .18s" }}>
       <div onClick={() => onToggle(pkey)} style={{ padding: "13px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <div style={{ fontFamily: "Georgia, serif", fontSize: 17, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+            <div style={{ fontFamily: FONT_STORY, fontSize: 17, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
             {anyReady && !open && <span style={{ width: 7, height: 7, borderRadius: 4, background: accent, flexShrink: 0 }} />}
           </div>
           <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 2 }}>{p.role}{isRom && p.openOk ? " · open" : ""}{p.status === "ex" ? " · ex" : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 52 }}>
-            <div style={{ height: 5, background: "#EDEDE8", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ height: 5, background: TH.surface2, borderRadius: 3, overflow: "hidden" }}>
               <div style={{ width: `${p.rel}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .4s" }} />
             </div>
           </div>
@@ -12652,7 +12876,7 @@ function RelCard({ p, group, pkey, accent, state, apply, openKey, onToggle, conf
             <button className="btn" onClick={() => apply((st) => exMenu(st, pkey))} style={{ ...smallBtn(true), width: "100%", borderColor: accent, color: accent }}>🕸 Where things stand</button>
           )}
           {(knows("orientation") || knows("acceptance") || p.distant) && (
-            <div style={{ margin: "0 0 10px", padding: "9px 11px", borderRadius: 10, background: "#FAF8F3", border: "1px solid #EEEDE6", fontSize: 12, lineHeight: 1.6 }}>
+            <div style={{ margin: "0 0 10px", padding: "9px 11px", borderRadius: 10, background: TH.surface2, border: `1px solid ${TH.line}`, fontSize: 12, lineHeight: 1.6 }}>
               <div style={{ opacity: 0.5, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>What you know</div>
               {knows("orientation") && <div>Orientation: <b>{p.orientation || "—"}</b></div>}
               {knows("acceptance") && <div>On people like you: {p.acceptance > 70 ? "warm, genuinely" : p.acceptance > 45 ? "trying, imperfectly" : p.acceptance > 25 ? "uneasy" : "hostile"}</div>}
@@ -12679,16 +12903,16 @@ function RelCard({ p, group, pkey, accent, state, apply, openKey, onToggle, conf
                 {!p.pet && <button className="btn" onClick={() => apply((st) => concertMenu(st, group, pkey))} style={chip(true)}>🎤 Concert</button>}
                 {!p.pet && <button className="btn" onClick={() => apply((st) => moneyMenu(st, group, pkey))} style={chip(true)}>💵 Money</button>}
                 {!p.pet && rift && <button className="btn" onClick={() => apply((st) => apologizeAction(st, group, pkey))} style={{ ...chip(true), borderColor: accent, color: accent }}>🕊 Apologize</button>}
-                {!p.pet && <button className="btn" onClick={() => confirm({ title: `Insult ${p.name}?`, body: "Words like these don't come back. The bond takes real damage.", yes: "Say it", danger: true }, () => apply((st) => insultMenu(st, group, pkey)))} style={{ ...chip(true), color: "#B4443C" }}>😠 Insult</button>}
-                {!p.pet && <button className="btn" disabled={!spyReady} onClick={() => confirm({ title: `Spy on ${p.name}?`, body: "Going through their private things. If they catch you, trust breaks — and you'll carry it either way.", yes: "Snoop", danger: true }, () => apply((st) => spyAction(st, group, pkey)))} style={{ ...chip(spyReady), color: spyReady ? "#8A6D3B" : undefined }}>🕵 Spy</button>}
+                {!p.pet && <button className="btn" onClick={() => confirm({ title: `Insult ${p.name}?`, body: "Words like these don't come back. The bond takes real damage.", yes: "Say it", danger: true }, () => apply((st) => insultMenu(st, group, pkey)))} style={{ ...chip(true), color: TH.coral }}>😠 Insult</button>}
+                {!p.pet && <button className="btn" disabled={!spyReady} onClick={() => confirm({ title: `Spy on ${p.name}?`, body: "Going through their private things. If they catch you, trust breaks — and you'll carry it either way.", yes: "Snoop", danger: true }, () => apply((st) => spyAction(st, group, pkey)))} style={{ ...chip(spyReady), color: spyReady ? TH.amber : undefined }}>🕵 Spy</button>}
                 {canOut && <button className="btn" onClick={() => apply((st) => comeOutStart(st, group, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>🏳️‍🌈 Tell them who you are</button>}
                 {alreadyOut && <button className="btn" onClick={() => apply((st) => { const n = pClone(st); n.pending = stxAlreadyOutMenu(n, group, pkey, stxCurrentAxis(n)); return n; })} style={{ ...smallBtn(true), flexBasis: "100%", opacity: 0.9 }}>💬 They already know</button>}
                 {isRom && isActive && age >= ageOfConsent(state) && state.ageDays - (p.lastLove || 0) >= 20 && <button className="btn" onClick={() => apply((st) => makeLoveMenu(st, pkey))} style={chip(true)}>💞 Make love</button>}
                 {isRom && (p.status === "serious" || p.status === "dating") && <button className="btn" onClick={() => apply((st) => proposeMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>💍 Propose{p.status === "dating" ? " — early days" : ""}</button>}
                 {isRom && p.status === "engaged" && !state.spouse && <button className="btn" onClick={() => apply((st) => weddingMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>👰 Plan the wedding</button>}
-                {isActive && <button className="btn" onClick={() => confirm({ title: `Break up with ${p.name}?`, body: "This ends the relationship. It will hurt, and it can't be undone.", yes: "End it", danger: true }, () => apply((st) => { const n = pClone(st); const nm = n.romance[pkey]?.name; doBreakup(n, pkey, false); if (nm) push(n, `💔 You ended things with ${nm}. ${pick(["Said out loud, it sounded smaller and worse than it had in your head.", "There were tears, and a box of things to return, and a walk home that took a very long time.", "It was the right call and it still felt like standing in a doorway you couldn't go back through."])}`); return n; }))} style={{ ...smallBtn(true), color: "#B4443C", flexBasis: "100%" }}>💔 Break up</button>}
+                {isActive && <button className="btn" onClick={() => confirm({ title: `Break up with ${p.name}?`, body: "This ends the relationship. It will hurt, and it can't be undone.", yes: "End it", danger: true }, () => apply((st) => { const n = pClone(st); const nm = n.romance[pkey]?.name; doBreakup(n, pkey, false); if (nm) push(n, `💔 You ended things with ${nm}. ${pick(["Said out loud, it sounded smaller and worse than it had in your head.", "There were tears, and a box of things to return, and a walk home that took a very long time.", "It was the right call and it still felt like standing in a doorway you couldn't go back through."])}`); return n; }))} style={{ ...smallBtn(true), color: TH.coral, flexBasis: "100%" }}>💔 Break up</button>}
                 {group === "friends" && !p.pet && age >= 13 && p.rel > 45 && <button className="btn" onClick={() => apply((st) => askOutMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>💗 Ask them out</button>}
-                {group === "friends" && !p.pet && pkey !== "pet" && <button className="btn" onClick={() => confirm({ title: `Cut off ${p.name}?`, body: "They'll be gone from your life for good.", yes: "Let them go", danger: true }, () => apply((st) => unfriendAction(st, pkey)))} style={{ ...smallBtn(true), color: "#B4443C", flexBasis: "100%" }}>👋 Unfriend</button>}
+                {group === "friends" && !p.pet && pkey !== "pet" && <button className="btn" onClick={() => confirm({ title: `Cut off ${p.name}?`, body: "They'll be gone from your life for good.", yes: "Let them go", danger: true }, () => apply((st) => unfriendAction(st, pkey)))} style={{ ...smallBtn(true), color: TH.coral, flexBasis: "100%" }}>👋 Unfriend</button>}
               </div>
             );
           })()}
@@ -12706,9 +12930,9 @@ function Obituary({ state, onReset, accent }) {
   return (
     <div className="rise" style={{ maxWidth: 480, margin: "0 auto", padding: "10dvh 20px 40px", textAlign: "center" }}>
       <div style={{ fontSize: 40, marginBottom: 10 }}>🕊</div>
-      <div style={{ fontFamily: "Georgia, serif", fontSize: 26 }}>{usedName(state)} {state.profile.last}</div>
+      <div style={{ fontFamily: FONT_STORY, fontSize: 26 }}>{usedName(state)} {state.profile.last}</div>
       <div style={{ fontSize: 14, opacity: 0.65, margin: "6px 0 20px" }}>{state.birth.y} — {state.death.year} · {state.death.ageY} years</div>
-      <div style={{ background: CARD, border: "1px solid #E7E7E2", borderRadius: 16, padding: 18, boxShadow: "0 2px 10px rgba(35,35,30,.05)", textAlign: "left", fontSize: 14, lineHeight: 1.8 }}>
+      <div style={{ background: CARD, border: `1px solid ${TH.line}`, borderRadius: 16, padding: 18,  textAlign: "left", fontSize: 14, lineHeight: 1.8 }}>
         <div>Died of {state.death.cause}, in {state.profile.city}.</div>
         {spouse && <div>{spouse.role === "Spouse" ? `Beloved spouse of ${spouse.name}.` : `Life partner of ${spouse.name}.`}</div>}
         {state.education.degree && <div>Graduate — {state.education.degree}.</div>}
@@ -12719,7 +12943,7 @@ function Obituary({ state, onReset, accent }) {
         {topTrait && <div>Remembered above all for their {topTrait[0]}.</div>}
         <div style={{ opacity: 0.6, marginTop: 8 }}>{state.feed.length} moments lived.</div>
       </div>
-      <button className="btn" onClick={onReset} style={{ marginTop: 24, width: "100%", padding: 14, borderRadius: 12, border: "none", background: accent, color: "#fff", fontSize: 16, fontWeight: 600, cursor: "pointer" }}>
+      <button className="btn" onClick={onReset} style={{ marginTop: 24, width: "100%", padding: 14, borderRadius: 12, border: "none", background: accent, color: TH.bg, fontSize: 16, fontWeight: 600, cursor: "pointer" }}>
         ✦ Begin a new life
       </button>
     </div>
@@ -12745,13 +12969,13 @@ function Creation({ onStart }) {
     }
     return n;
   });
-  const accent = DECADE_ACCENT[Math.floor(form.birthYear / 10) * 10] || "#888";
-  const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #D8D8D2", background: CARD, fontSize: 15, color: INK, boxSizing: "border-box" };
+  const accent = accentFor(form.birthYear);
+  const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${TH.line}`, background: CARD, fontSize: 15, color: INK, boxSizing: "border-box" };
   const labelStyle = { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.6, margin: "14px 0 6px", display: "block" };
-  const chip = (active) => ({ padding: "8px 14px", borderRadius: 999, border: `1.5px solid ${active ? accent : "#D8D8D2"}`, background: active ? accent : CARD, color: active ? "#fff" : INK, fontSize: 14, cursor: "pointer", transition: "background .25s, border-color .25s, color .25s" });
+  const chip = (active) => ({ padding: "8px 14px", borderRadius: 999, border: `1.5px solid ${active ? accent : TH.line}`, background: active ? accent : CARD, color: active ? TH.bg : INK, fontSize: 14, cursor: "pointer", transition: "background .25s, border-color .25s, color .25s" });
   return (
     <div className="rise" style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px 48px" }}>
-      <div style={{ fontFamily: "Georgia, serif", fontSize: 28, marginBottom: 2 }}>A Life</div>
+      <div style={{ fontFamily: FONT_STORY, fontSize: 28, marginBottom: 2 }}>A Life</div>
       <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 20 }}>Every era writes on you differently. Choose where yours begins.</div>
       <label style={labelStyle}>Name</label>
       <div style={{ display: "flex", gap: 8 }}>
@@ -12785,7 +13009,7 @@ function Creation({ onStart }) {
         <option value="random">🎲 Let life decide</option>
         {genderOptionsFor(form.sex).map((x) => <option key={x} value={x}>{x}</option>)}
       </select>
-      <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: CARD, border: "1px solid #E7E7E2", fontSize: 12.5, lineHeight: 1.5, opacity: 0.75 }}>
+      <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: CARD, border: `1px solid ${TH.line}`, fontSize: 12.5, lineHeight: 1.5, opacity: 0.75 }}>
         🔒 Whatever you choose stays hidden — your character still discovers who they are through living, the way everyone does. "Let life decide" rolls it secretly.
       </div>
       <button className="btn" onClick={() => setAdv(!adv)} style={{ marginTop: 20, width: "100%", padding: 11, borderRadius: 11, border: `1px dashed ${accent}77`, background: "transparent", color: accent, fontSize: 13.5, cursor: "pointer" }}>
@@ -12793,7 +13017,7 @@ function Creation({ onStart }) {
       </button>
 
       {adv && (
-        <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: CARD, border: "1px solid #E7E7E2" }}>
+        <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: CARD, border: `1px solid ${TH.line}` }}>
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.6, marginBottom: 4 }}>Starting stats</div>
           <div style={{ fontSize: 11.5, opacity: 0.55, lineHeight: 1.5, marginBottom: 12 }}>Leave on Random to let birth, class and luck decide.</div>
           {[["stHealth", "Health", "❤️"], ["stHappiness", "Happiness", "🙂"], ["stSmarts", "Smarts", "🧠"], ["stLooks", "Looks", "✨"]].map(([k, label, em]) => (
@@ -12806,7 +13030,7 @@ function Creation({ onStart }) {
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input type="range" min="5" max="95" value={form[k] == null ? 50 : form[k]} onChange={(e) => set(k, +e.target.value)} style={{ flex: 1, accentColor: accent }} />
-                <button className="btn" onClick={() => set(k, form[k] == null ? 50 : null)} style={{ padding: "5px 9px", borderRadius: 8, border: "1px solid #DCDCD6", background: form[k] == null ? accent : PAPER, color: form[k] == null ? "#fff" : INK, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>🎲</button>
+                <button className="btn" onClick={() => set(k, form[k] == null ? 50 : null)} style={{ padding: "5px 9px", borderRadius: 8, border: `1px solid ${TH.line}`, background: form[k] == null ? accent : PAPER, color: form[k] == null ? TH.bg : INK, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>🎲</button>
               </div>
             </div>
           ))}
@@ -12828,7 +13052,7 @@ function Creation({ onStart }) {
       )}
 
       <button className="btn" onClick={() => onStart(newCharacter({ ...form, curSym: COUNTRIES[form.country].cur }))}
-        style={{ marginTop: 24, width: "100%", padding: 14, borderRadius: 12, border: "none", background: accent, color: "#fff", fontSize: 17, fontWeight: 600, cursor: "pointer" }}>Begin life ✦</button>
+        style={{ marginTop: 24, width: "100%", padding: 14, borderRadius: 12, border: "none", background: accent, color: TH.bg, fontSize: 17, fontWeight: 600, cursor: "pointer" }}>Begin life ✦</button>
     </div>
   );
 }
@@ -12886,7 +13110,7 @@ function MiniBar({ label, value, accent, note }) {
         <span style={{ opacity: 0.75 }}>{label}</span>
         <span style={{ opacity: 0.55 }}>{note !== undefined ? note : Math.round(value)}</span>
       </div>
-      <div style={{ height: 6, background: "#EDEDE8", borderRadius: 3, overflow: "hidden" }}>
+      <div style={{ height: 6, background: TH.surface2, borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: `${clamp(value)}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .5s" }} />
       </div>
     </div>
@@ -12894,7 +13118,7 @@ function MiniBar({ label, value, accent, note }) {
 }
 
 function panelCard(accent) {
-  return { background: CARD, borderRadius: 14, padding: 15, marginBottom: 12, border: "1px solid #E7E7E2", boxShadow: "0 1px 5px rgba(35,35,30,.06)" };
+  return { background: CARD, borderRadius: 14, padding: 15, marginBottom: 12, border: `1px solid ${TH.line}` };
 }
 
 function CareerPanel({ state, apply, accent, confirm }) {
@@ -12905,8 +13129,8 @@ function CareerPanel({ state, apply, accent, confirm }) {
   const job = s.career.job;
   const hustle = s.career.sideHustle;
   const age = ageYears(s);
-  const hdr = { fontFamily: "Georgia, serif", fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
-  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: "1px dashed #EAEAE4" };
+  const hdr = { fontFamily: FONT_STORY, fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
   const act = { flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 12.5, cursor: "pointer" };
   const raiseReady = job && (!s.flags.raiseDay || s.ageDays - s.flags.raiseDay > 300);
 
@@ -12932,7 +13156,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
             {s.education.debt > 0 && <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 10 }}>Student debt: {cur}{Math.round(s.education.debt).toLocaleString()} — repaid automatically at 15% of salary once you're working.</div>}
             <div style={{ display: "flex", gap: 7 }}>
               <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study</button>
-              <button className="btn" style={{ ...act, borderColor: "#D9BFBF", color: "#B4443C" }} onClick={() => confirm({ title: "Drop out of college?", body: "Your debt stays; the degree doesn't. This can't be undone.", yes: "Drop out", danger: true }, () => apply(dropOutNow))}>Drop out</button>
+              <button className="btn" style={{ ...act, borderColor: TH.coral + A25, color: TH.coral }} onClick={() => confirm({ title: "Drop out of college?", body: "Your debt stays; the degree doesn't. This can't be undone.", yes: "Drop out", danger: true }, () => apply(dropOutNow))}>Drop out</button>
             </div>
           </>
         ) : ed.stage === "done" ? (
@@ -12963,7 +13187,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
             <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Career ladder</div>
             <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>
               {[1, 2, 3, 4].map((t) => (
-                <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= job.tier ? accent : "#EDEDE8" }} />
+                <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= job.tier ? accent : TH.surface2 }} />
               ))}
             </div>
             <div style={{ fontSize: 11.5, opacity: 0.6, marginBottom: 12 }}>
@@ -12973,7 +13197,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
               <button className="btn" style={act} onClick={() => apply(workHarder)}>🔥 Extra hours</button>
               <button className="btn" disabled={!raiseReady} style={{ ...act, opacity: raiseReady ? 1 : 0.45, cursor: raiseReady ? "pointer" : "default" }} onClick={() => raiseReady && apply(askRaise)}>💰 Ask for a raise</button>
-              <button className="btn" style={{ ...act, flexBasis: "100%", borderColor: "#D9BFBF", color: "#B4443C" }} onClick={() => confirm({ title: `Quit your job?`, body: `Walking away from ${job.title}. No income until you find something new.`, yes: "Quit", danger: true }, () => apply(quitJob))}>🚪 Quit</button>
+              <button className="btn" style={{ ...act, flexBasis: "100%", borderColor: TH.coral + A25, color: TH.coral }} onClick={() => confirm({ title: `Quit your job?`, body: `Walking away from ${job.title}. No income until you find something new.`, yes: "Quit", danger: true }, () => apply(quitJob))}>🚪 Quit</button>
             </div>
           </>
         ) : (
@@ -13014,7 +13238,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
             <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Manager</span><span>{j.boss}</span></div>
             <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Time in role</span><span>{yrs} yrs</span></div>
             <div style={{ marginTop: 10 }}>
-              <MiniBar label="Performance" value={perf} accent={perf > 70 ? accent : perf > 40 ? "#C08A3E" : "#B4443C"}
+              <MiniBar label="Performance" value={perf} accent={perf > 70 ? accent : perf > 40 ? TH.amber : TH.coral}
                 note={perf > 80 ? "they'd fight to keep you" : perf > 55 ? "solid" : perf > 30 ? "on the radar" : "at risk"} />
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
@@ -13033,7 +13257,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
           <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Roughly earning</span><span>{cur}{(hustle.level * 220).toLocaleString()}/mo</span></div>
           <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Scale</div>
           <div style={{ display: "flex", gap: 5 }}>
-            {[1, 2, 3, 4].map((t) => <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= hustle.level ? accent : "#EDEDE8" }} />)}
+            {[1, 2, 3, 4].map((t) => <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= hustle.level ? accent : TH.surface2 }} />)}
           </div>
         </div>
       )}
@@ -13051,7 +13275,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
             {fee > 0 && <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Fees</span><span>{cur}{fee}/term</span></div>}
             <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Classmates you know</span><span>{cms}</span></div>
             <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Standing</span>
-              <span style={{ color: (s.school.trouble || 0) >= 2 ? "#B4443C" : INK }}>
+              <span style={{ color: (s.school.trouble || 0) >= 2 ? TH.coral : INK }}>
                 {(s.school.trouble || 0) >= 2 ? "in trouble" : (s.school.skips || 0) > 2 ? "spotty attendance" : "no concerns"}
               </span>
             </div>
@@ -13084,7 +13308,7 @@ function CareerPanel({ state, apply, accent, confirm }) {
             {s.flags.hrt && <MiniBar label="Time on HRT" value={Math.min(100, (months / 36) * 100)} accent={accent} note={months < 24 ? `${months} months` : `${(months / 12).toFixed(1)} years`} />}
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
               {steps.map((x) => (
-                <span key={x.k} style={{ fontSize: 11.5, padding: "3px 9px", borderRadius: 20, border: `1px solid ${x.done ? accent + "66" : "#E7E7E2"}`, background: x.done ? accent + "14" : "transparent", color: x.done ? accent : INK, opacity: x.done ? 1 : 0.45 }}>
+                <span key={x.k} style={{ fontSize: 11.5, padding: "3px 9px", borderRadius: 20, border: `1px solid ${x.done ? accent + "66" : TH.line}`, background: x.done ? accent + "14" : "transparent", color: x.done ? accent : INK, opacity: x.done ? 1 : 0.45 }}>
                   {x.done ? "✓ " : ""}{x.label}
                 </span>
               ))}
@@ -13105,13 +13329,13 @@ function CareerPanel({ state, apply, accent, confirm }) {
 }
 
 function HomePanel({ state, apply, accent }) {
-  const rowS = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: "1px dashed #EAEAE4" };
+  const rowS = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
   const s = state;
   const age = ageYears(s);
   const trans = s.discovered.gender && isQueerG(s);
   const dys = dysphoriaLevel(s);
   const pres = presently(s);
-  const hdr = { fontFamily: "Georgia, serif", fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+  const hdr = { fontFamily: FONT_STORY, fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
   const act = { flex: 1, padding: "11px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 13, cursor: "pointer" };
   const b = s.flags.book;
 
@@ -13165,7 +13389,7 @@ function HomePanel({ state, apply, accent }) {
               <span style={{ opacity: 0.6 }}>People read you as</span><b>{styleLabel(s)}</b>
             </div>
             {nonconformity(s) > 15 && (
-              <div style={{ fontSize: 11.5, opacity: 0.7, marginTop: 8, lineHeight: 1.5, color: nonconformity(s) > 45 ? "#B4443C" : INK }}>
+              <div style={{ fontSize: 11.5, opacity: 0.7, marginTop: 8, lineHeight: 1.5, color: nonconformity(s) > 45 ? TH.coral : INK }}>
                 {nonconformity(s) > 45 ? "You read as visibly gender-nonconforming. In this time and place, people will have opinions." : "You're presenting a little against expectation. Some people will notice."}
                 {Object.keys(hiddenFrom(s)).length > 0 && ` Hiding it from ${Object.keys(hiddenFrom(s)).length} ${Object.keys(hiddenFrom(s)).length === 1 ? "person" : "people"}.`}
               </div>
@@ -13185,8 +13409,8 @@ function HomePanel({ state, apply, accent }) {
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 5 }}>
               <span style={{ opacity: 0.6 }}>Presentation</span><span>{presLabel(s)}</span>
             </div>
-            <div style={{ height: 9, borderRadius: 6, background: "linear-gradient(90deg,#6C8EBF 0%,#EAEAE4 50%,#C77DA6 100%)", position: "relative" }}>
-              <div style={{ position: "absolute", left: `calc(${pres}% - 6px)`, top: -3, width: 12, height: 15, borderRadius: 4, background: accent, border: "2px solid #fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)" }} />
+            <div style={{ height: 9, borderRadius: 6, background: "linear-gradient(90deg,${TH.blue} 0%, ${TH.line} 50%, ${TH.pink} 100%)", position: "relative" }}>
+              <div style={{ position: "absolute", left: `calc(${pres}% - 6px)`, top: -3, width: 12, height: 15, borderRadius: 4, background: accent, border: `2px solid ${TH.bg}`, boxShadow: "0 1px 4px rgba(0,0,0,.25)" }} />
               <div style={{ position: "absolute", left: `calc(${presTarget(s)}% - 1px)`, top: -5, width: 2, height: 19, background: INK, opacity: 0.35 }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.45, marginTop: 4 }}>
@@ -13197,7 +13421,7 @@ function HomePanel({ state, apply, accent }) {
             </div>
           </div>
           <div style={{ marginTop: 16 }}>
-            <MiniBar label="Dysphoria" value={dys} accent={dys > 60 ? "#B4443C" : dys > 30 ? "#C08A3E" : accent}
+            <MiniBar label="Dysphoria" value={dys} accent={dys > 60 ? TH.coral : dys > 30 ? TH.amber : accent}
               note={dys > 65 ? "heavy" : dys > 40 ? "present most days" : dys > 15 ? "manageable" : "quiet lately"} />
             <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 6, lineHeight: 1.5 }}>
               Eases with presentation, hormones, surgery, your name in people's mouths — and being known by the people who matter.
@@ -13224,8 +13448,8 @@ function HealthPanel({ state, apply, accent }) {
   const age = ageYears(s);
   const conds = activeConds(s);
   const sick = untreated(s);
-  const hdr = { fontFamily: "Georgia, serif", fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
-  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: "1px dashed #EAEAE4" };
+  const hdr = { fontFamily: FONT_STORY, fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
   const act = { flex: 1, padding: "11px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 13, cursor: "pointer" };
   const hcLevel = HC[s.profile.country] ?? 0.3;
   const outlook = s.stats.health > 75 ? "Strong" : s.stats.health > 55 ? "Decent" : s.stats.health > 35 ? "Fragile" : "Serious";
@@ -13244,7 +13468,7 @@ function HealthPanel({ state, apply, accent }) {
           <span>{hcLevel < 0.15 ? "mostly covered" : hcLevel > 0.6 ? "you pay, dearly" : "part-subsidised"}</span>
         </div>
         {sick.length > 0 && (
-          <div style={{ marginTop: 10, fontSize: 12, color: "#B4443C", lineHeight: 1.5 }}>
+          <div style={{ marginTop: 10, fontSize: 12, color: TH.coral, lineHeight: 1.5 }}>
             {sick.length} untreated condition{sick.length > 1 ? "s" : ""} — untreated illness wears you down and shortens the odds.
           </div>
         )}
@@ -13258,13 +13482,13 @@ function HealthPanel({ state, apply, accent }) {
           const cfg = CONDITIONS[id];
           const yrs = Math.max(0, Math.floor((s.ageDays - c.since) / 365));
           return (
-            <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px dashed #EAEAE4" }}>
+            <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px dashed ${TH.line}` }}>
               <span style={{ fontSize: 20 }}>{cfg.emoji}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14 }}>{cfg.name}</div>
                 <div style={{ fontSize: 11.5, opacity: 0.55 }}>{yrs < 1 ? "diagnosed this year" : `${yrs} year${yrs > 1 ? "s" : ""}`}{c.known === false ? " · unmonitored" : ""}</div>
               </div>
-              <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap", border: `1px solid ${c.treated ? accent + "66" : "#E0C3C0"}`, background: c.treated ? accent + "14" : "#FBF0EF", color: c.treated ? accent : "#B4443C" }}>
+              <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap", border: `1px solid ${c.treated ? accent + "66" : TH.coral + A25}`, background: c.treated ? accent + "14" : TH.coral + A06, color: c.treated ? accent : TH.coral }}>
                 {c.treated ? "managed" : "untreated"}
               </span>
             </div>
@@ -13304,13 +13528,14 @@ function Game({ state, setState, onReset }) {
   const [openRel, setOpenRel] = useState(null);
   const [openCat, setOpenCat] = useState(null);
   const [ask, setAsk] = useState(null);
+  const [sweeping, setSweeping] = useState(false);
   const confirm = (cfg, onYes) => setAsk({ ...cfg, onYes });
   const toggleRel = (k) => setOpenRel((cur) => (cur === k ? null : k));
   const [tab, setTab] = useState("life");
   const feedRef = useRef(null);
   const rootRef = useRef(null);
   const year = yearOf(state);
-  const accent = DECADE_ACCENT[Math.floor(year / 10) * 10] || "#888";
+  const accent = accentFor(year);
   const age = ageYears(state);
 
   // Module 15: presentation-only AI narration. Fires in the background for a
@@ -13328,7 +13553,18 @@ function Game({ state, setState, onReset }) {
   }, [state.feed.length, state.pending, tab]);
 
   const apply = (fn) => { const n = fn(state); setState(n); saveGame(n); };
-  const doAdvance = () => apply((st) => advance(st, st.timeStep));
+  /* The compass ring pulses once per advance. Purely visual: it is cleared on a
+     timer and never gates the advance itself, so a slow frame can't cost the
+     player a turn. Cleaned up on unmount so a pending timer can't setState on a
+     dead component (React logs that as a leak warning). */
+  const sweepTimer = useRef(null);
+  useEffect(() => () => clearTimeout(sweepTimer.current), []);
+  const doAdvance = () => {
+    setSweeping(true);
+    clearTimeout(sweepTimer.current);
+    sweepTimer.current = setTimeout(() => setSweeping(false), 620);
+    apply((st) => advance(st, st.timeStep));
+  };
   const doChoose = (opt) => apply((st) => chooseOption(st, opt));
   const setStep = (d) => apply((st) => ({ ...JSON.parse(JSON.stringify(st)), timeStep: d }));
 
@@ -13343,12 +13579,26 @@ function Game({ state, setState, onReset }) {
   const gpa = Math.round(Object.values(state.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length);
   const feedView = state.feed.slice(-150);
 
-  const tabBtn = (id, label) => (
-    <button className="btn" onClick={() => setTab(id)}
-      style={{ flex: 1, padding: "10px 0", background: "none", border: "none", borderBottom: `2.5px solid ${tab === id ? accent : "transparent"}`, color: tab === id ? accent : INK, fontWeight: tab === id ? 700 : 400, fontSize: 14, cursor: "pointer", transition: "color .25s, border-color .25s" }}>
-      {label}
-    </button>
-  );
+  /* Nav tabs: emoji above a small label, coloured per category (§8) when
+     active. Two lines rather than one keeps the five labels from truncating on
+     a narrow phone, which the single-row text version did at 360px. */
+  const tabBtn = (id, emoji, label, badge) => {
+    const on = tab === id;
+    const c = groupColor(id, accent);
+    return (
+      <button className="btn" onClick={() => setTab(id)} aria-pressed={on}
+        style={{ flex: 1, padding: "7px 0 8px", background: "none", border: "none",
+          borderBottom: `2.5px solid ${on ? c : "transparent"}`,
+          color: on ? c : TH.muted, cursor: "pointer",
+          transition: "color .25s, border-color .25s",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+        <span style={{ fontSize: 16, lineHeight: 1, filter: on ? "none" : "grayscale(.55)", transition: "filter .25s" }}>{emoji}</span>
+        <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500, letterSpacing: ".01em" }}>
+          {label}{badge ? <span style={{ fontFamily: FONT_LEDGER, opacity: .75 }}> {badge}</span> : null}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div ref={rootRef} style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column", background: PAPER, position: "relative" }}>
@@ -13356,14 +13606,17 @@ function Game({ state, setState, onReset }) {
 
       {state.pending && (
         <Modal accent={accent}>
-          <div style={{ fontFamily: "Georgia, serif", fontSize: 18, marginBottom: 4 }}>{state.pending.emoji} {state.pending.title}</div>
-          <div style={{ fontSize: 14, lineHeight: 1.55, marginBottom: 14, opacity: 0.85 }}>{state.pending.aiText || state.pending.text}</div>
+          <div style={{ fontFamily: FONT_UI, fontWeight: 700, fontSize: 17, marginBottom: 6, letterSpacing: "-.01em", color: TH.text }}>{state.pending.emoji} {state.pending.title}</div>
+          {/* Popup body is the game's primary narrative surface, so it takes
+              the story face. Module 15's aiText fallback is untouched — the
+              redesign restyles the container, never this expression. */}
+          <div style={{ fontFamily: FONT_STORY, fontSize: 15, lineHeight: 1.6, marginBottom: 16, color: TH.text, opacity: 0.92 }}>{state.pending.aiText || state.pending.text}</div>
           {state.pending.layout === "grid" ? (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
                 {visibleOptions.filter((o) => o.card).map((o, i) => (
                   <button key={i} className="btn" onClick={() => doChoose(o)}
-                    style={{ padding: "13px 8px 11px", borderRadius: 13, border: `1px solid ${o.hi ? accent + "66" : "#E2E2DC"}`, background: o.hi ? accent + "0D" : PAPER, cursor: "pointer", color: INK, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, boxShadow: "0 1px 4px rgba(35,35,30,.05)" }}>
+                    style={{ padding: "13px 8px 11px", borderRadius: 13, border: `1px solid ${o.hi ? accent + "66" : TH.line}`, background: o.hi ? accent + "1F" : TH.surface2, cursor: "pointer", color: INK, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                     <span style={{ fontSize: 26, lineHeight: 1.1 }}>{o.card.emoji}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, textAlign: "center", lineHeight: 1.25 }}>{o.card.name}</span>
                     {o.card.sub && <span style={{ fontSize: 11, opacity: 0.55, textAlign: "center", lineHeight: 1.3 }}>{o.card.sub}</span>}
@@ -13374,7 +13627,7 @@ function Game({ state, setState, onReset }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 9 }}>
                 {visibleOptions.filter((o) => !o.card).map((o, i) => (
                   <button key={i} className="btn" onClick={() => doChoose(o)}
-                    style={{ padding: "11px", borderRadius: 10, border: "1px solid #E2E2DC", background: CARD, fontSize: 13.5, textAlign: "center", cursor: "pointer", color: INK, opacity: 0.85 }}>
+                    style={{ padding: "11px", borderRadius: 10, border: `1px solid ${TH.line}`, background: "transparent", fontSize: 13.5, textAlign: "center", cursor: "pointer", color: TH.muted }}>
                     {o.label}
                   </button>
                 ))}
@@ -13384,7 +13637,7 @@ function Game({ state, setState, onReset }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {visibleOptions.map((o, i) => (
               <button key={i} className="btn" onClick={() => doChoose(o)}
-                style={{ padding: "12px", borderRadius: 10, border: "1px solid #D8D8D2", background: PAPER, fontSize: 14, textAlign: "left", cursor: "pointer", color: INK }}>
+                style={{ padding: "12px 13px", borderRadius: 10, border: `1px solid ${TH.line}`, background: TH.surface2, fontSize: 14, textAlign: "left", cursor: "pointer", color: INK, lineHeight: 1.4 }}>
                 {o.label}
               </button>
             ))}
@@ -13396,7 +13649,7 @@ function Game({ state, setState, onReset }) {
       {showActs && !state.pending && (
         <Sheet accent={accent} onClose={() => { setShowActs(false); setOpenCat(null); }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-            <div style={{ fontFamily: "Georgia, serif", fontSize: 19 }}>What do you feel like doing?</div>
+            <div style={{ fontFamily: FONT_STORY, fontSize: 19 }}>What do you feel like doing?</div>
             <button onClick={() => { setShowActs(false); setOpenCat(null); }} style={{ background: "none", border: "none", fontSize: 15, opacity: 0.5, cursor: "pointer" }}>✕</button>
           </div>
           {ACT_GROUPS.map((g) => {
@@ -13406,12 +13659,19 @@ function Game({ state, setState, onReset }) {
             const items = g.items.filter((a) => age >= (a.minAge || 0) && age <= (a.maxAge || 200) && (!a.cond || a.cond(state)));
             if (!items.length) return null;
             const open = openCat === g.id;
+            const gc = groupColor(g.id, accent);
             return (
-              <div key={g.id} style={{ marginBottom: 8, border: `1px solid ${open ? accent + "55" : "#E7E7E2"}`, borderRadius: 12, overflow: "hidden", background: open ? "#FCFCFA" : CARD }}>
+              <div key={g.id} style={{ marginBottom: 8, border: `1px solid ${open ? gc + "66" : TH.line}`, borderRadius: 12, overflow: "hidden", background: open ? TH.surface2 : CARD, transition: "border-color .2s" }}>
                 <button className="btn" onClick={() => setOpenCat(open ? null : g.id)}
-                  style={{ width: "100%", padding: "13px 14px", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", color: INK, fontSize: 15 }}>
-                  <span>{g.emoji}&nbsp;&nbsp;{g.name}</span>
-                  <span style={{ fontSize: 11, opacity: 0.4, transform: open ? "rotate(90deg)" : "none", transition: "transform .2s", display: "inline-block" }}>▶</span>
+                  style={{ width: "100%", padding: "12px 14px", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", color: INK, fontSize: 15 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                    {/* icon-in-circle in the category's own colour — the
+                        reference's "colour distinguishes categories, not text
+                        alone" lesson (§2/§8), scaled to this game's groups */}
+                    <span style={{ width: 30, height: 30, borderRadius: "50%", background: gc + "1F", border: `1px solid ${gc}55`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{g.emoji}</span>
+                    <span style={{ fontWeight: open ? 700 : 500 }}>{g.name}</span>
+                  </span>
+                  <span style={{ fontSize: 10, color: TH.faint, transform: open ? "rotate(90deg)" : "none", transition: "transform .2s", display: "inline-block" }}>▶</span>
                 </button>
                 {open && (
                   <div style={{ padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -13420,9 +13680,9 @@ function Game({ state, setState, onReset }) {
                       return (
                         <button key={a.id} className="btn" disabled={broke}
                           onClick={() => { if (broke) return; setShowActs(false); setOpenCat(null); if (a.danger) confirm(a.danger, () => apply((st) => doActivity(st, a))); else apply((st) => doActivity(st, a)); }}
-                          style={{ padding: "11px 12px", borderRadius: 10, border: "1px solid #E2E2DC", background: broke ? "#F0F0EB" : PAPER, fontSize: 14, textAlign: "left", cursor: broke ? "default" : "pointer", color: INK, opacity: broke ? 0.45 : 1, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          style={{ padding: "11px 12px", borderRadius: 10, border: `1px solid ${TH.line}`, background: broke ? TH.bg : PAPER, fontSize: 14, textAlign: "left", cursor: broke ? "default" : "pointer", color: INK, opacity: broke ? 0.45 : 1, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                           <span>{a.emoji} {a.label}</span>
-                          <span style={{ opacity: 0.5, fontSize: 11.5, whiteSpace: "nowrap" }}>
+                          <span style={{ color: broke ? TH.coral : TH.faint, fontSize: 11.5, whiteSpace: "nowrap", fontFamily: FONT_LEDGER }}>
                             {a.price ? `${state.profile.curSym}${a.price} · ` : ""}{a.cost}d
                           </span>
                         </button>
@@ -13437,38 +13697,45 @@ function Game({ state, setState, onReset }) {
       )}
 
       {/* header */}
-      <div style={{ padding: "12px 16px 0", borderBottom: `2px solid ${accent}`, background: `linear-gradient(180deg, ${accent}14, transparent)`, transition: "border-color .5s, background .5s" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <button onClick={() => setShowProfile(!showProfile)} style={{ background: "none", border: "none", fontFamily: "Georgia, serif", fontSize: 19, color: INK, cursor: "pointer", padding: 0 }}>
-            {usedName(state)} {state.profile.last} <span style={{ fontSize: 12, opacity: 0.5 }}>▾</span>
-          </button>
-          <div style={{ fontWeight: 700, fontSize: 15, color: accent, fontVariantNumeric: "tabular-nums" }}>
-            {state.profile.curSym}{state.money}{state.education.debt > 0 && <span style={{ fontSize: 11, opacity: 0.7 }}> · −{state.profile.curSym}{state.education.debt}</span>}
+      <div style={{ padding: "12px 16px 0", borderBottom: `1px solid ${TH.line}`, background: `linear-gradient(180deg, ${accent}1A, transparent 70%)`, transition: "border-color .5s, background .5s" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+          <Avatar state={state} accent={accent} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <button onClick={() => setShowProfile(!showProfile)} style={{ background: "none", border: "none", fontFamily: FONT_UI, fontWeight: 700, fontSize: 17, color: INK, cursor: "pointer", padding: 0, textAlign: "left", letterSpacing: "-.01em", textDecoration: "underline", textDecorationColor: `${accent}66`, textUnderlineOffset: 4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {usedName(state)} {state.profile.last} <span style={{ fontSize: 11, opacity: 0.55 }}>▾</span>
+              </button>
+              <div style={{ fontFamily: FONT_LEDGER, fontWeight: 700, fontSize: 14, color: TH.gold, whiteSpace: "nowrap" }}>
+                {state.profile.curSym}{state.money}{state.education.debt > 0 && <span style={{ fontSize: 11, color: TH.coral, fontWeight: 500 }}> −{state.profile.curSym}{state.education.debt}</span>}
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: TH.muted, marginTop: 2, gap: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
+                {ageLabel(state)} · {state.profile.city}
+                {statusChips(state).map((c, i) => (
+                  <span key={i} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 20, background: c.startsWith("⛓") || c.startsWith("🏃") ? TH.slate : accent, color: TH.bg, whiteSpace: "nowrap", fontWeight: 600 }}>{c}</span>
+                ))}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                <span style={{ fontFamily: FONT_LEDGER, fontSize: 11 }}>{fmtDate(currentDate(state))}</span>
+                <b style={{ color: TH.bg, background: accent, borderRadius: 20, padding: "1px 8px", fontSize: 11, letterSpacing: .3, fontFamily: FONT_LEDGER }}>{Math.floor(year / 10) * 10}s</b>
+              </span>
+            </div>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, opacity: 0.65, marginTop: 2 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-            {ageLabel(state)} · {state.profile.city}
-            {statusChips(state).map((c, i) => (
-              <span key={i} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 20, background: c.startsWith("⛓") || c.startsWith("🏃") ? "#3B3B3B" : accent, color: "#fff", whiteSpace: "nowrap" }}>{c}</span>
-            ))}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {fmtDate(currentDate(state))}
-            <b style={{ color: "#fff", background: accent, borderRadius: 20, padding: "1px 8px", fontSize: 11, letterSpacing: .3 }}>{Math.floor(year / 10) * 10}s</b>
-          </span>
-        </div>
-        <button onClick={() => setShowStats(!showStats)} style={{ margin: "6px 0", background: "none", border: "none", fontSize: 12, color: accent, cursor: "pointer", padding: 0 }}>
-          {showStats ? "hide stats ▴" : "stats ▾"}
-        </button>
+        {/* Always-visible stats (UI_REDESIGN_PLAN.md §6A). The old "stats ▾"
+            disclosure is gone: the reference's real lesson is that the four
+            numbers you steer by should never be a tap away. */}
+        <StatRail stats={state.stats} accent={accent} />
+        {Object.keys(state.emergent).length > 0 && (
+          <button onClick={() => setShowStats(!showStats)} style={{ margin: "2px 0 4px", background: "none", border: "none", fontSize: 11, color: TH.faint, cursor: "pointer", padding: 0 }}>
+            {showStats ? "hide traits ▴" : `traits (${Object.keys(state.emergent).length}) ▾`}
+          </button>
+        )}
         {showStats && (
           <div className="rise" style={{ paddingBottom: 8 }}>
-            <StatBar label="Health" emoji="🩺" value={state.stats.health} accent={accent} />
-            <StatBar label="Happiness" emoji="😊" value={state.stats.happiness} accent={accent} />
-            <StatBar label="Smarts" emoji="🧠" value={state.stats.smarts} accent={accent} />
-            <StatBar label="Looks" emoji="✨" value={state.stats.looks} accent={accent} />
             {Object.entries(state.emergent).map(([k, v]) => (
-              <StatBar key={k} label={k[0].toUpperCase() + k.slice(1)} emoji="🌱" value={v} accent="#8A8A82" />
+              <StatBar key={k} label={k[0].toUpperCase() + k.slice(1)} emoji="🌱" value={v} accent={TH.muted} />
             ))}
           </div>
         )}
@@ -13492,15 +13759,15 @@ function Game({ state, setState, onReset }) {
                 )}
               </div>
             )}
-            <button onClick={() => confirm({ title: "Start a new life?", body: "This life will be erased permanently.", yes: "Begin again", danger: true }, onReset)} style={{ marginTop: 6, fontSize: 12, color: "#B4443C", background: "none", border: "none", cursor: "pointer", padding: 0 }}>⟲ Start a new life</button>
+            <button onClick={() => confirm({ title: "Start a new life?", body: "This life will be erased permanently.", yes: "Begin again", danger: true }, onReset)} style={{ marginTop: 6, fontSize: 12, color: TH.coral, background: "none", border: "none", cursor: "pointer", padding: 0 }}>⟲ Start a new life</button>
           </div>
         )}
-        <div style={{ display: "flex" }}>
-          {tabBtn("life", "📖 Life")}
-          {tabBtn("people", `👥 People (${peopleCount})`)}
-          {tabBtn("career", "🎓 Career")}
-          {tabBtn("home", "🏠 Home")}
-          {tabBtn("health", "🩺 Health")}
+        <div style={{ display: "flex", marginTop: 2 }}>
+          {tabBtn("life", "📖", "Life")}
+          {tabBtn("people", "👥", "People", peopleCount)}
+          {tabBtn("career", "🎓", "Career")}
+          {tabBtn("home", "🏠", "Home")}
+          {tabBtn("health", "🩺", "Health")}
         </div>
       </div>
 
@@ -13508,18 +13775,20 @@ function Game({ state, setState, onReset }) {
       {tab === "life" ? (
         <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "16px 16px 8px" }}>
           <div style={{ position: "relative", paddingLeft: 18 }}>
-            <div style={{ position: "absolute", left: 5, top: 0, bottom: 0, width: 2, background: "#E0E0DA" }} />
+            <div style={{ position: "absolute", left: 5, top: 0, bottom: 0, width: 2, background: TH.line }} />
             {state.feed.length > 150 && <div style={{ fontSize: 11, opacity: 0.45, marginBottom: 12 }}>· earlier years archived ·</div>}
             {feedView.map((e, i) => e.world ? (
-              <div key={i} className="rise" style={{ position: "relative", margin: "16px 0 16px -18px", padding: "10px 12px", borderRadius: 10, background: "#ECEDE9", border: "1px dashed #C9CAC4", fontSize: 13, lineHeight: 1.5 }}>
-                <span style={{ opacity: 0.55, fontSize: 11, display: "block", marginBottom: 2 }}>🌍 Meanwhile, in the world · {e.date}</span>
+              <div key={i} className="rise" style={{ position: "relative", margin: "16px 0 16px -18px", padding: "11px 13px", borderRadius: 10, background: TH.surface, border: `1px solid ${TH.line}`, borderLeft: `2px solid ${accent}99`, fontSize: 13.5, lineHeight: 1.55, fontFamily: FONT_STORY, color: TH.text }}>
+                <span style={{ color: TH.faint, fontSize: 10.5, display: "block", marginBottom: 3, fontFamily: FONT_UI, letterSpacing: ".05em", textTransform: "uppercase" }}>🌍 Meanwhile, in the world · {e.date}</span>
                 {e.text}
               </div>
             ) : (
-              <div key={i} className="rise" style={{ position: "relative", marginBottom: 14 }}>
-                <div style={{ position: "absolute", left: -18, top: 5, width: 8, height: 8, borderRadius: 4, background: accent }} />
-                <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 2 }}>{e.date}</div>
-                <div style={{ fontSize: 15, lineHeight: 1.5 }}>{e.text}</div>
+              <div key={i} className="rise" style={{ position: "relative", marginBottom: 15 }}>
+                <div style={{ position: "absolute", left: -18, top: 6, width: 7, height: 7, borderRadius: 4, background: accent, boxShadow: `0 0 0 3px ${accent}22` }} />
+                {/* date is interface, so it takes the ledger face; the event
+                    line is story, so it takes the serif (§4's type rule) */}
+                <div style={{ fontSize: 10.5, color: TH.faint, marginBottom: 3, fontFamily: FONT_LEDGER, letterSpacing: ".02em" }}>{e.date}</div>
+                <div style={{ fontSize: 15.5, lineHeight: 1.58, fontFamily: FONT_STORY, color: TH.text }}>{e.text}</div>
               </div>
             ))}
             {state.feed.length === 0 && <div style={{ opacity: 0.5, fontSize: 14 }}>Your story begins when you take your first step through time.</div>}
@@ -13569,29 +13838,22 @@ function Game({ state, setState, onReset }) {
         <HealthPanel state={state} apply={apply} accent={accent} />
       )}
 
-      {/* action area */}
-      <div style={{ padding: "8px 16px calc(14px + env(safe-area-inset-bottom))", borderTop: "1px solid #E7E7E2", background: PAPER }}>
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-          {TIME_STEPS.map((t) => (
-            <button key={t.d} className="btn" onClick={() => setStep(t.d)}
-              style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 13, cursor: "pointer", fontVariantNumeric: "tabular-nums",
-                border: `1.5px solid ${state.timeStep === t.d ? accent : "#D8D8D2"}`,
-                background: state.timeStep === t.d ? accent : CARD,
-                color: state.timeStep === t.d ? "#fff" : INK }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn" onClick={() => setShowActs(true)}
-            style={{ flex: 1, padding: 13, borderRadius: 12, border: `1.5px solid ${accent}`, background: CARD, color: accent, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
-            🎯 Act
-          </button>
-          <button className="btn" onClick={doAdvance}
-            style={{ flex: 2, padding: 13, borderRadius: 12, border: "none", background: `linear-gradient(135deg, ${accent}, ${accent}D0)`, color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer", boxShadow: `0 4px 14px ${accent}44` }}>
-            Live on ⏳ {TIME_STEPS.find((t) => t.d === state.timeStep)?.label}
-          </button>
-        </div>
+      {/* action area — the Compass Advance replaces the old pill row + Live-on
+          button (UI_REDESIGN_PLAN.md §6B). Act keeps its own distinct control. */}
+      <div style={{ padding: "10px 16px calc(12px + env(safe-area-inset-bottom))", borderTop: `1px solid ${TH.line}`, background: `linear-gradient(180deg, ${TH.surface}, ${TH.bg})` }}>
+        <CompassAdvance
+          steps={TIME_STEPS}
+          value={state.timeStep}
+          accent={accent}
+          onPick={setStep}
+          onAdvance={doAdvance}
+          busy={sweeping}
+          label={(TIME_STEPS.find((t) => t.d === state.timeStep) || TIME_STEPS[0]).label}
+        />
+        <button className="btn" onClick={() => setShowActs(true)}
+          style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: `1.5px solid ${accent}`, background: `${accent}14`, color: accent, fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: ".01em" }}>
+          🎯 Act
+        </button>
       </div>
     </div>
   );
@@ -13611,20 +13873,44 @@ export default function App() {
   };
 
   return (
-    <div style={{ minHeight: "100dvh", background: PAPER, color: INK, fontFamily: "-apple-system, 'Segoe UI', Roboto, sans-serif" }}>
+    <div style={{ minHeight: "100dvh", background: PAPER, color: INK, fontFamily: FONT_UI }}>
       <style>{`
+        :root {
+          color-scheme: dark;
+          --bg: ${TH.bg}; --surface: ${TH.surface}; --surface2: ${TH.surface2};
+          --line: ${TH.line}; --text: ${TH.text}; --muted: ${TH.muted};
+          --blue: ${TH.blue}; --pink: ${TH.pink}; --coral: ${TH.coral};
+        }
+        html, body { background: ${TH.bg}; }
         @keyframes riseIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
+        @keyframes sweepPulse { 0% { transform: scale(1); opacity: .55; } 70% { transform: scale(1.5); opacity: 0; } 100% { transform: scale(1.5); opacity: 0; } }
         .slideUp { animation: slideUp .28s cubic-bezier(.22,.9,.3,1) both; }
-        button { font-family: inherit; }
-        ::selection { background: rgba(0,0,0,.12); }
+        button { font-family: inherit; color: inherit; }
+        ::selection { background: ${TH.blue}44; }
         .rise { animation: riseIn .35s ease both; }
         .fadeBg { animation: fadeIn .25s ease both; }
         .btn { transition: transform .12s ease, filter .2s ease, background .25s, border-color .25s, color .25s; }
         .btn:active { transform: scale(.965); }
-        .btn:hover { filter: brightness(.97); }
-        @media (prefers-reduced-motion: reduce) { .rise, .fadeBg, .slideUp { animation: none; } .btn { transition: none; } }
+        .btn:hover { filter: brightness(1.14); }
+        /* Dark scrollbars — a light default scrollbar on a near-black panel is
+           the single most obvious "this was themed halfway" tell. */
+        * { scrollbar-width: thin; scrollbar-color: ${TH.line} transparent; }
+        *::-webkit-scrollbar { width: 8px; height: 8px; }
+        *::-webkit-scrollbar-thumb { background: ${TH.line}; border-radius: 4px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        /* The compass needle's sweep is the one real motion risk in the redesign
+           (UI_REDESIGN_PLAN.md §6). Reduced motion snaps it instead — a CSS-only
+           fallback, so no persisted preference and no migrate() change (that
+           doc's open question 5, resolved in favour of the media query). */
+        .needle { transition: transform .45s cubic-bezier(.34,1.3,.44,1); }
+        .ring { transition: stroke-dashoffset .45s cubic-bezier(.34,1.3,.44,1); }
+        .pulse { animation: sweepPulse .6s ease-out; }
+        @media (prefers-reduced-motion: reduce) {
+          .rise, .fadeBg, .slideUp, .pulse { animation: none; }
+          .btn, .needle, .ring { transition: none; }
+        }
       `}</style>
       {loading ? (
         <div style={{ padding: 40, textAlign: "center", opacity: 0.5 }}>Loading your life…</div>

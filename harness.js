@@ -112,6 +112,56 @@ function buildSlice() {
 
 const M = require(buildSlice());
 
+/* ──────────────────── deterministic randomness (test-only) ────────────────────
+ * WHY THIS EXISTS
+ * life-sim.jsx calls Math.random() in nine places — `rnd`/`pick`, the hidden
+ * identity rolls, the family-composition rolls, and (deliberately) the HRE
+ * world seed on a NEW character. That is correct for the game: two players
+ * starting the same character should not get the same house or the same
+ * siblings. It is poison for a test suite.
+ *
+ * Measured before this was added: test-hre-s09.js alternated between 78 and 79
+ * passing across consecutive runs on an UNCHANGED file, because its shim
+ * -equivalence soak and its "more than one tenure state was reached" assertion
+ * both depend on which lives the RNG happens to produce. A suite that moves on
+ * its own cannot answer the only question a suite exists to answer — did MY
+ * change break this? — so a real regression and a coin flip were
+ * indistinguishable.
+ *
+ * The fix belongs here rather than in the game. Math.random is replaced with a
+ * seeded mulberry32 for the duration of a test process, so every suite is
+ * reproducible and a failure can be re-run into the same failure. Production
+ * code is untouched: this file is never bundled into the app.
+ *
+ * Escape hatches, because determinism can also HIDE a bug that only appears on
+ * some seeds:
+ *   H.seed(n)          — re-seed mid-suite, e.g. per soak iteration
+ *   H.eachSeed(ns, fn) — run fn once per seed, the way to test across worlds
+ *   H.realRandom()     — restore the genuine Math.random
+ * Set A_LIFE_TEST_SEED=<n> to shift every suite onto a different world, which
+ * is how you check that a green suite is green on purpose and not by luck.
+ */
+const REAL_RANDOM = Math.random;
+let _rngState = 0;
+function _mulberry32() {
+  _rngState |= 0; _rngState = (_rngState + 0x6D2B79F5) | 0;
+  let t = Math.imul(_rngState ^ (_rngState >>> 15), 1 | _rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function seed(n) {
+  _rngState = (n >>> 0) || 1;
+  Math.random = _mulberry32;
+  return n;
+}
+function realRandom() { Math.random = REAL_RANDOM; }
+function eachSeed(seeds, fn) {
+  const out = [];
+  for (const n of seeds) { seed(n); out.push(fn(n)); }
+  return out;
+}
+seed(+(process.env.A_LIFE_TEST_SEED || 20240817));
+
 /* ─────────────────────────────── mkChar ─────────────────────────────── */
 
 const CLASSES = ["Poor", "Working", "Middle", "Wealthy"];
@@ -193,4 +243,5 @@ function runLife(state, opts) {
     popups: popups, inSchool: inSchool, state: s };
 }
 
-module.exports = { M: M, mkChar: mkChar, runLife: runLife, CLASSES: CLASSES, SRC: SRC, ROOT: ROOT };
+module.exports = { M: M, mkChar: mkChar, runLife: runLife, CLASSES: CLASSES, SRC: SRC, ROOT: ROOT,
+  seed: seed, eachSeed: eachSeed, realRandom: realRandom };
