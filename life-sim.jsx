@@ -477,7 +477,14 @@ function newCharacter(form) {
   for (const k in SUBJECTS) subj[k] = clamp(sm + rnd(-15, 15));
   return {
     v: 4,
-    profile: { ...form, usedName: form.first },
+    /* curSym defaults from the country rather than being required on `form`.
+       It used to be set in exactly ONE place — the Creation screen's onStart —
+       while 72 sites across the file render `${s.profile.curSym}` directly, so
+       any character that did not come through that screen printed prices as
+       "undefined180". Deriving it here makes the field impossible to omit;
+       Creation still passes it explicitly and that value wins, since `form` is
+       spread last. */
+    profile: { curSym: (COUNTRIES[form.country] || {}).cur, ...form, usedName: form.first },
     hidden,
     discovered: { gender: false, orientation: false },
     outTo: {},
@@ -552,6 +559,10 @@ function migrate(s) {
   if (s.spouse === undefined) s.spouse = null;
   if (!s.outTo) s.outTo = {};
   if (!s.profile.usedName) s.profile.usedName = s.profile.first;
+  /* Gotcha #4, the other half: a save written before curSym existed carries no
+     symbol, and every price in the game would render as "undefined". Backfilled
+     from the character's own country, which is where Creation gets it too. */
+  if (!s.profile.curSym) s.profile.curSym = (COUNTRIES[s.profile.country] || {}).cur || "$";
   if (!s.education) {
     const sm = s.stats.smarts, subj = {};
     for (const k in SUBJECTS) subj[k] = clamp(sm + rnd(-15, 15));
@@ -603,6 +614,23 @@ function applyFx(s, fx) {
   if (fx.setR) for (const k in fx.setR) if (s.romance[k]) Object.assign(s.romance[k], fx.setR[k]);
   if (fx.breakup) doBreakup(s, fx.breakup.key, fx.breakup.hard);
   if (fx.run) fx.run(s);
+  /* The `money:` key above is floored at 0, and the whole game is written on
+     the assumption that money never goes negative — every purchase in the file
+     is gated on `st.money >= price`. But `run:` mutates the draft directly and
+     so bypasses that floor, and a run that deducts more than the option's own
+     `cond` checked for takes the balance below zero. Measured in a full-life
+     soak before this line existed: -200 and -500 from moving in with a partner
+     (no affordability check at all), -300 from the "cheap fix" car repair
+     (whose fx floors -90 and whose run then takes another 300), and -25 from
+     the house-party lamp (charged after the party's own 60, under a `>= 60`
+     gate). There are 43 direct `money` writes inside `run:` blocks across the
+     file; auditing each one leaves the 44th free to reintroduce this, so the
+     floor is enforced here, once, where the contract is already stated.
+     Negative money is not a debt mechanic — `education.debt` is a separate
+     field — it is a silent trap: while the balance is under zero every
+     `money >= n` condition in the game fails, so the player is quietly locked
+     out of content until an income event lifts them back over the line. */
+  if (typeof s.money === "number" && s.money < 0) s.money = 0;
   if (fx.flags) Object.assign(s.flags, fx.flags);
   if (fx.feed) push(s, fx.feed);
   if (fx.next) s.pending = fx.next;
@@ -5540,7 +5568,26 @@ function hreDecayPerPeriod(seed, home, country, year, cmp, deferPeriods) {
    s.hre.upk — bookkeeping only. Never a condition number.
      { v, home, period, at, base, defer{}, open{}, spent, fails, disasters, ins } */
 
-function hreUpkeep(s) { return s && s.hre && s.hre.upk ? s.hre.upk : null; }
+/* The tracker is only meaningful ALONGSIDE a dwelling, so this read is
+   home-aware rather than a raw field access.
+
+   WHY: S10 tore its own tracker down on its own two terminal paths (a condemned
+   tenant, a condemned owner) — but a home can also be lost by eviction (S08b),
+   repossession (S08c), giving notice, or moving in with a partner, and none of
+   those know S10 exists. Every one of them left `s.hre.upk` behind, so
+   `hreUpkeep()` returned a live tracker for a building the character no longer
+   had. Caught by test-integration.js, which compares the two records at every
+   step of a real life; the per-module suites could not see it, because from
+   inside S10 nothing was wrong.
+
+   Making the ACCESSOR authoritative rather than patching each of the four exit
+   paths means a fifth way to lose a home cannot reintroduce this. The stored
+   field is cleared by the tick, below, so a stale tracker does not ride along
+   in the save either. */
+function hreUpkeep(s) {
+  if (!s || !s.hre || !s.hre.upk) return null;
+  return hreHome(s) ? s.hre.upk : null;
+}
 
 /* Who is responsible for the fabric. A tenant's landlord fixes things (slowly,
    and only as fast as the law makes them); an owner fixes them or lives with
@@ -6051,7 +6098,14 @@ function hreUpkeepPeriod(s, u, home, seed, country, year, period) {
 function hreUpkeepTick(s) {
   if (!s || !s.alive || !s.hre) return;
   const home = hreHome(s);
-  if (!home || !home.condition) return;
+  if (!home || !home.condition) {
+    /* Storage hygiene for the leak documented on hreUpkeep(): whoever removed
+       the dwelling — eviction, repossession, notice, moving in with someone —
+       had no reason to know about this tracker, so it is dropped here, on the
+       first tick without a home, rather than in four unrelated call sites. */
+    if (s.hre.upk) s.hre.upk = null;
+    return;
+  }
   const u = hreEnsureUpkeep(s);
   if (!u) return;
   const seed = hreWorldSeedOf(s);
@@ -7043,7 +7097,9 @@ function partyMenu(state) {
       st.money -= 60; boostAll(st, 4); st.stats.happiness = clamp(st.stats.happiness + 4);
       const r = Math.random();
       if (r < 0.2) push(st, `🏠 House party — great until the neighbor's third knock. You turned it down, they stayed for a drink, and now THEY'RE invited next time. Diplomacy.`);
-      else if (r < 0.35) { st.money -= 25; push(st, `🏠 A legendary house party with one casualty: the lamp. Nobody knows how. Everybody knows how. ${cur}25 and a great story.`); }
+      /* The lamp is charged AFTER the party's own 60, but the option is only
+         gated on >= 60 — so a character with exactly 60 went to -25. */
+      else if (r < 0.35) { st.money = Math.max(0, st.money - 25); push(st, `🏠 A legendary house party with one casualty: the lamp. Nobody knows how. Everybody knows how. ${cur}25 and a great story.`); }
       else push(st, `🏠 The house party hit that rare perfect frequency — every room a good conversation, the kitchen a dance floor by eleven. Your place is now "the place".`);
       maybeNewFriend(st, 0.45);
     } } },
@@ -8320,9 +8376,15 @@ const XPOOL_C = [
     { label: "Take a photo of yourself", fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +4 }, feed: "🪞 A photo, kept privately, from a day you felt like yourself. Evidence for the days you won't." } },
   ] } }) },
   { id: "x_partnerMilestone", i: 1, w: 3, minAge: 18, maxAge: 90, cd: 900, cond: (s) => activePartners(s).some(([, p]) => p.rel > 60), run: (s) => { const [k, p] = partnerPick(s, (q) => q.rel > 60); return { event: { emoji: "🔑", title: "A bigger step", text: pick([`${p.name} leaves a toothbrush. Then a drawer's worth. Then the question arrives without being asked.`, `You and ${p.name} have been spending every night at one flat or the other. One of you is paying rent on storage.`]), options: [
-    { label: "Move in together", fx: { run: (st) => { hreSetTenure(st, "withPartner", null); st.flags.cohabiting = true; const q = st.romance[k]; q.rel = clamp(q.rel + 12); q.status = q.status === "dating" ? "serious" : q.status; st.stats.happiness = clamp(st.stats.happiness + 10); st.money -= 200; push(st, `🔑 You and ${q.name} moved in together. Two sets of everything, one very difficult conversation about a sofa, and the daily astonishment of them just being there.`); } } },
+    /* Costs are floored rather than gated: moving in with someone you love is
+       not an option a poor character should be denied, and `applyFx` floors
+       every `money:` key at 0 for exactly that reason. These deductions sit
+       inside `run:`, which bypasses that floor — unguarded they drove money to
+       -200/-500, and once negative every `st.money >= n` condition in the game
+       silently fails until an income event lifts it back over zero. */
+    { label: "Move in together", fx: { run: (st) => { hreSetTenure(st, "withPartner", null); st.flags.cohabiting = true; const q = st.romance[k]; q.rel = clamp(q.rel + 12); q.status = q.status === "dating" ? "serious" : q.status; st.stats.happiness = clamp(st.stats.happiness + 10); st.money = Math.max(0, st.money - 200); push(st, `🔑 You and ${q.name} moved in together. Two sets of everything, one very difficult conversation about a sofa, and the daily astonishment of them just being there.`); } } },
     { label: "Not yet — keep your own place", fx: { run: (st) => { const q = st.romance[k]; q.rel = clamp(q.rel - 5); st.stats.happiness = clamp(st.stats.happiness + 2); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 4); push(st, `🔑 You said not yet, and meant it kindly. ${q.name} took it well on the surface. You both heard the surface.`); } } },
-    { label: "Suggest a place that's new to you both", fx: { run: (st) => { hreSetTenure(st, "withPartner", null); st.flags.cohabiting = true; const q = st.romance[k]; q.rel = clamp(q.rel + 16); st.money -= 500; st.stats.happiness = clamp(st.stats.happiness + 12); push(st, `🔑 Neither of your flats — a third place, chosen together, with nobody's ghosts in it. Best decision either of you made that year.`); } } },
+    { label: "Suggest a place that's new to you both", fx: { run: (st) => { hreSetTenure(st, "withPartner", null); st.flags.cohabiting = true; const q = st.romance[k]; q.rel = clamp(q.rel + 16); st.money = Math.max(0, st.money - 500); st.stats.happiness = clamp(st.stats.happiness + 12); push(st, `🔑 Neither of your flats — a third place, chosen together, with nobody's ghosts in it. Best decision either of you made that year.`); } } },
   ] } }; } },
   { id: "x_argument", i: 1, w: 3, minAge: 16, maxAge: 90, cd: 1100, cond: (s) => activePartners(s).length > 0, run: (s) => { const pk = partnerPick(s, () => true); if (!pk) return { auto: [] }; const [k, p] = pk; return { event: { emoji: "⚡", title: "The argument", text: pick([`It started about the dishes and is now about something from four years ago.`, `Neither of you can remember how it started. Both of you can remember exactly what was said.`, `${p.name} said the thing they know not to say. You said the thing you know not to say, faster.`]), options: [
     { label: "Apologise first", fx: { run: (st) => { const q = st.romance[k]; q.rel = clamp(q.rel + 10); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); st.stats.happiness = clamp(st.stats.happiness + 4); push(st, `⚡ You went first. It cost nothing and fixed most of it. ${q.name} apologised thirty seconds later, badly, which counted.`); } } },
