@@ -1,0 +1,18 @@
+# Build cache produced by harness.js (a CJS bundle of life-sim.jsx for tests)
+.harness-cache/
+
+# Section files regenerated from life-sim.jsx by hre-extract.py.
+# life-sim.jsx is the ONLY authority for HRE code — committing generated
+# copies would recreate the duplicated-authority problem that script exists
+# to solve. Run `python3 hre-extract.py` to produce them locally.
+hre-s01.js
+hre-s02.js
+hre-s03-s04.js
+hre-s05.js
+hre-s06.js
+hre-s09.js
+hre-s10.js
+hre-calib.js
+
+# Splice backups
+life-sim.jsx.bak*

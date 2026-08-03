@@ -65,7 +65,10 @@ Never skip step 1. Never claim something works without running the harness — a
 | `test-hre-s05.js` | HRE market index + valuation | 88 |
 | `test-hre-s09.js` | HRE state/tenure/migration + shim equivalence, incl. explicit v1→v2 ladder | 87 |
 | `test-hre-s06.js` | HRE marketplace/channels/listings + Act-sheet wiring | 60 |
-| | **total** | **698** |
+| `test-hre-s10.js` | **HRE Phase 9 exit gate** — R5 continuity, decay, compounding, failures, disasters, insurance | 170 |
+| | **total** | **868** |
+
+> **This table is stale beyond Phase 6 and is superseded by `RESTART-BRIEF.md` §2.** That doc has the current suite list (19 files), the current totals, and — importantly — the note on which test files actually exist in the git repo versus only in the sandbox. `harness.js` in the repo is a reimplementation written from this document's own contract, because the original was never uploaded. Trust `RESTART-BRIEF.md`'s numbers over this table's.
 
 Run them all:
 ```bash
@@ -314,4 +317,4 @@ Second person, literary/short-story register, specific concrete detail over gene
 - Always verify the rebuilt bundle actually **mounts** (jsdom + react-dom/client, stub `window.storage`) before repackaging — not just that esbuild compiled it.
 
 ## Backlog (raised, not yet built)
-Assets (car, investing, self-employment), richer partner personalities beyond the current trait set, fuller pets, immigration as an adult, war/conscription events, economic events (recession — note `HRE_SHOCKS` and `HRE_ECONOMIC_WORLD_EVENT_YEARS` already exist and should be the source), memories/year-in-review recap, achievements list, notoriety UI surface (stat exists, invisible). **Housing is no longer backlog — see `HRE-STATUS.md`.**
+Assets (car, investing, self-employment), richer partner personalities beyond the current trait set, fuller pets, immigration as an adult, war/conscription events, economic events (recession — note `HRE_SHOCKS` and `HRE_ECONOMIC_WORLD_EVENT_YEARS` already exist and should be the source), memories/year-in-review recap, achievements list, notoriety UI surface (stat exists, invisible). **Housing is no longer backlog — see `HRE-STATUS.md`.** As of Phase 9, HRE v1 is complete (decay/maintenance/failures/disasters/insurance shipped); the one clause of its own v1 sentence still unmet is a **voluntary sale** — an owner can only leave ownership involuntarily.

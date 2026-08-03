@@ -7,7 +7,7 @@
  * landing, and about no state contradiction surviving the transition — the two
  * things the Phase 7 exit gate asks for.
  */
-const H = require("/home/claude/harness.js");
+const H = require(require("path").join(__dirname, "harness.js"));
 const M = H.M;
 
 let pass = 0, fail = 0;

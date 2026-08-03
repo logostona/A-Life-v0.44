@@ -9,7 +9,7 @@
  * all of them passed while the system as a whole still had an un-executed
  * eviction ladder and a stale tenure accessor. Integration is where those hid.
  */
-const H = require("/home/claude/harness.js");
+const H = require(require("path").join(__dirname, "harness.js"));
 const M = H.M;
 
 let pass = 0, fail = 0;

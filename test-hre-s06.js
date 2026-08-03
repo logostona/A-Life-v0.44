@@ -13,7 +13,7 @@
    depends on S03/S04 (law, geography) and S05 (valuation), and the whole
    point is whether the marketplace agrees with the running game, not with an
    isolated copy of itself. */
-const H = require("/home/claude/harness.js");
+const H = require(require("path").join(__dirname, "harness.js"));
 const M = H.M;
 
 let pass = 0, fail = 0;

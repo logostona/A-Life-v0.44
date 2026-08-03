@@ -16,8 +16,8 @@
 
 ## 1. Current state — verified, not asserted
 
-**File: `life-sim.jsx`, 12,531 lines, ~945 KB.**
-**998 assertions across 18 suites, all green**, re-run this session against this exact file.
+**File: `life-sim.jsx`, 13,638 lines, ~1,005 KB** (was 12,531 / ~945 KB before Phase 9).
+**Of the suites present in the git repo: 299 of 307 assertions green** — the 8 failures are one stale uploaded fixture, not a regression, and are diagnosed in §2. The full 18-suite / 998-assertion figure below describes the sandbox, which has files this repo does not; read §2's availability note before quoting it.
 
 **HRE phase status against the spec's own roadmap** (`HRE-ARCHITECTURE-part3.md` §10.3–10.4):
 
@@ -27,8 +27,10 @@
 | 6 | S06 marketplace, S12 adapter (browsing) | done |
 | **7** | **renting end to end — the MVP gate** | **done, formal exit gate passed** (`test-hre-phase7-gate.js`) |
 | 8 | S08 finance & buying (mortgages, purchase, repossession) | done, independently verified this session |
-| **9** | **S10 upkeep & failures — this is what "HRE v1 complete" actually means** | **not started — zero symbols in the file** |
+| **9** | **S10 upkeep & failures — this is what "HRE v1 complete" actually means** | **done, formal exit gate passed** (`test-hre-s10.js`, 170 assertions) |
 | 10–15 | event fabric, NPC housing, renovation, advanced tenure, content, polish | not started, and not required for v1 |
+
+**HRE v1 is complete.** Phase 9 shipped this session: `HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE` (§5225–6060), the B3-hooked `hreUpkeepTick` (§5982), and the `hreUpkeep` Act item. The spec's v1 sentence — *"a character can live with their parents, leave, rent, be discriminated against or protected according to where and when they live, buy, borrow, maintain, neglect, lose, and move"* — is now true except for **"move" in the sense of a voluntary sale**, which still has no mechanism (see §4, unchanged and still the top adjacent gap).
 
 **The spec is explicit that Phase 9, not Phase 7 or 8, is the finish line:** *"HRE v1 is complete at Phase 9: a character can live with their parents, leave, rent, be discriminated against or protected according to where and when they live, buy, borrow, maintain, neglect, lose, and move — coherently, in any of 41 countries, in any era."* (The spec's own prose says "39 countries" here — that's stale; the real, verified count is 41, corrected everywhere else. Don't let this one line reintroduce the old number.)
 
@@ -56,7 +58,20 @@
 | `test-hre-s08b.js` | eviction, notice, deposit settlement | 39 |
 | `test-hre-s08c.js` | mortgages, purchase, amortisation, repossession | 58 |
 | `test-hre-phase7-gate.js` | **formal Phase 7 exit gate** — leave/rent/live/lose, multi-country soak | 30 |
-| | **total** | **998** |
+| `test-hre-s10.js` | **formal Phase 9 exit gate** — R5 continuity, decay, compounding, failures, disasters, insurance | 170 |
+| | **total** | **1,168** |
+
+### ⚠️ Test-file availability in the GitHub repo — read before trusting the table above
+
+The table is the *project's* full suite as it exists in the Claude.ai sandbox. **The `logostona/A-Life-v0.44` git repo contains only 5 of the 19 files**: `test-hre-s06.js`, `test-hre-s08b.js`, `test-hre-s09.js`, `test-hre-phase7-gate.js` and (new) `test-hre-s10.js`. `harness.js`, `build-slice.py` and the other 14 suites were never uploaded there.
+
+Consequences, all verified this session rather than assumed:
+
+- **`harness.js` in the repo is a reimplementation, not the original.** It was rewritten from `PROJECT_CONTEXT.md`'s documented contract because the real one was absent. It exposes `mkChar`/`runLife`/`CLASSES` and builds a CJS bundle of `life-sim.jsx` into `.harness-cache/`. If the original is ever uploaded, prefer it and delete this one — but re-run all five suites first, because they now depend on this one's exact surface.
+- **Hardcoded `/home/claude/...` paths were repointed to the repo root** in `hre-extract.py` (`SRC`/`OUT_DIR`) and in the `require(...)` line of all four pre-existing suites. These were artifacts of the sandbox's home directory, not design.
+- **`test-hre-s09.js` in the repo is the STALE pre-Phase-7 version** (87 assertions, not the 107 this doc's table claims). Its section 5, "nothing inverted", asserts the legacy call sites have *not* been inverted — but Phase 7 inverted them deliberately. **It reports 79 passed / 8 failed, and it does so identically against the pristine pre-Phase-9 file.** Confirmed by checking out the untouched original and re-running: the 8 failures are the stale fixture, not a regression. Do not "fix" them by re-inverting anything.
+
+**Actual current state of what the repo can run:** S06 60/60 · S08b 39/39 · phase7-gate 30/30 · S10 170/170 · S09 79/87 (8 pre-existing stale-fixture failures). Run them one at a time — running all five in one `for` loop OOM-killed the S09 process (exit 137); `node --max-old-space-size=4096` fixes it.
 
 ```bash
 for f in test-integration-1.js test-stx-verify.js test-stx-wiring.js test-ai-guarantee.js \
@@ -78,7 +93,9 @@ grep -n "^const COUNTRIES\|^function newCharacter\|^function migrate\|^function 
 As of this file: `COUNTRIES` §5, `newCharacter` §403, `migrate` §447, `advance` §5204, `ACT_GROUPS` §5338, `doActivity` §5399, `Game` §12193, `App` §12495.
 
 **HRE section positions** (12 sections in `hre-extract.py`) — note these are **not in phase order in the file**, because later phases got spliced at earlier line numbers than some Phase 7 work:
-`S01` §1465 · `S03/S04` · `S02` · `calib` · `S05` · `S09` (state/tenure) · `S06` (marketplace) §3633 · `S08c` (mortgages) §4505 · `S08b` (eviction) §4796 · `S07b` (applications) §4923 · `S08a` (tenancy/tick) · `ENGINE`/`ACT_GROUPS`/`doActivity` §5204–5399 · `S12` (adapter) §8288.
+`S01` §1465 · `S03/S04` · `S02` · `calib` · `S05` · `S09` (state/tenure) · `S06` (marketplace) §3633 · `S08c` (mortgages) §4505 · `S08b` (eviction) §4796 · `S07b` (applications) §4923 · `S08a` (tenancy/tick) · **`S10` (upkeep) §5225** · `ENGINE`/`ACT_GROUPS`/`doActivity` · `S12` (adapter).
+
+**`hre-extract.py` now extracts 8 sections, not 7** — `hre-s10.js` was added to its `SECTIONS` list. Its list is order-checked against the file, and S10 sits between S08a and the `ENGINE` banner. Post-Phase-9 the file is **13,638 lines**; every § above Phase 8's has shifted, so grep the banner name as always.
 
 **Always grep the banner name, never trust a cached line number** — this file has grown by ~7,000 lines since Phase 0 and every prior anchor table in every doc has gone stale within one or two sessions.
 
@@ -108,7 +125,7 @@ As of this file: `COUNTRIES` §5, `newCharacter` §403, `migrate` §447, `advanc
 
 ## 6. Known feature inventory (do NOT rebuild)
 
-Full identity/transition/coming-out/relationship/crime/health/school systems — see `PROJECT_CONTEXT.md`. **HRE specifically**, Phases 0–8: deterministic core; geography+law across 41 countries; 16-archetype property generator; market index with shocks; tenure/migration with ownership-authority model (`s.hre.owned`); marketplace with 6 era-gated channels; engagement pinning; viewings/applications with deterministic, R13-bounded landlord decisions; tenancy formation with 100%-reliable recurring rent; eviction that actually executes; mortgages with correctly-terminating amortisation; purchase; repossession that actually executes. **Not present: any condition/decay/maintenance/failure system, any renovation system, any voluntary sale.**
+Full identity/transition/coming-out/relationship/crime/health/school systems — see `PROJECT_CONTEXT.md`. **HRE specifically**, Phases 0–8: deterministic core; geography+law across 41 countries; 16-archetype property generator; market index with shocks; tenure/migration with ownership-authority model (`s.hre.owned`); marketplace with 6 era-gated channels; engagement pinning; viewings/applications with deterministic, R13-bounded landlord decisions; tenancy formation with 100%-reliable recurring rent; eviction that actually executes; mortgages with correctly-terminating amortisation; purchase; repossession that actually executes. **Phase 9 adds:** per-component decay driven by archetype/build quality/age/climate exposure with compounding deferred maintenance; four maintenance tiers; failures emitted by the condition model crossing `HRE_FAIL_THRESHOLD` (not an authored list); a three-stage failure ladder (`open`→`worsening`→`unfit`) whose terminal stage genuinely condemns the building or forces a paid emergency repair; hazard-based disasters; three insurance tiers with claim loading and a neglect-based refusal rule. **Not present: any renovation system (Phase 12), any voluntary sale.**
 
 ## 7. Deployment (only if asked to update the live build)
 
@@ -119,6 +136,26 @@ npx esbuild life-sim.jsx --bundle --format=iife --global-name=LifeSimBundle \
 Wait — check the actual deployed `index.html`/`storage-polyfill.js` load order before assuming this command is exactly right; it wasn't re-derived this session, only the *output* of a prior run was verified. Push to `logostona/A-Life-v0.44` main branch; GitHub Pages serves it from there directly (confirmed: no separate build step in the repo, the committed bundle *is* what's served).
 
 ## 8. What "next" means right now
+
+**Phase 9 is DONE — the section below is kept as the record of what it was built against, not as an open task.** How each gate clause was satisfied, and the measured evidence:
+
+| gate clause | how it was met | evidence |
+|---|---|---|
+| condition handoff continuous at purchase (R5) | `s.hre.upk` holds **bookkeeping only** — never a condition number. Decay mutates the crystallised `home.condition` object in place, so there is no second condition value to disagree with the first. | §1 of `test-hre-s10.js`: the home's condition at purchase equals the blueprint's component-for-component, the first tick changes nothing, and `u.base` equals the crystallised score rather than a fresh derivation |
+| failures emerge from the model, not a list | `hreEmitFailures` fires off `hreFailureRisk(v)`, a function of the component's **live** condition value crossing `HRE_FAIL_THRESHOLD` (20). Any of the 10 components can fail; none is special-cased. | §6 |
+| a neglected property degrades and loses value measurably over decades | 4-country soak, neglected vs. maintained control: condition **60→30** and value **×0.85** neglected, against **×1.20** kept. | §9 |
+
+**The decorative-state-machine trap was checked explicitly** (§6b), because this codebase has shipped that bug twice. The `unfit` terminal stage is not a label: a destitute owner loses the building (`tenure → homeless`, `hre.home → null`, `flags.homeless` kept in step, prose in the feed), and a solvent one is forced into a real emergency repair that costs money and actually restores the component. Both branches assert on observable state, not on the stage name being reached.
+
+**Design decisions a human should sanity-check:**
+- **Insurance** was under-specified in the spec (one word). It shipped as three tiers with premium loading per prior claim (`HRE_CLAIM_LOADING`, capped) and a neglect rule: a failure claim on a component neglected beyond `HRE_CLAIM_NEGLECT_YEARS` (4) is refused as wear and tear. That refusal rule is a judgment call, not something the spec dictated.
+- **The `hreUpkeep` Act item is `cost: 0`**, matching the other 35 menu-openers rather than deviating; the brake on repeat use is `hreMaintenanceReady`'s cooldown and the money, not the clock. Consistent with the file, but it does mean maintenance is time-free like everything else — revisit if module 24 ever lands the cross-cutting fix.
+- **`hreUpkeepTick` is its own line in `advance()`, not folded into `hreOnTick`**, because `hreOnTick` returns early for a tenant in prison and a building does not stop rotting while its occupant is inside.
+
+**Next after this:** Phases 10–15 (event fabric, NPC housing, renovation, advanced tenure, content, polish) are not required for v1. The highest-value adjacent item remains **the missing voluntary-sale mechanism** — an owner can still only leave ownership via repossession or condemnation, so "move" in the spec's v1 sentence is the one clause still unmet.
+
+<details>
+<summary>Original Phase 9 brief (superseded — kept for reference)</summary>
 
 **Phase 9 — S10 Upkeep & Failures core** (renovation is Phase 12, separate and later). Per the spec (`HRE-ARCHITECTURE-part1.md` §3.4, `part3.md` §10.3):
 
@@ -131,3 +168,5 @@ Wait — check the actual deployed `index.html`/`storage-polyfill.js` load order
 **Where it plugs in:** `hreCloseTenancy`/purchase (S08c) is where a property currently gets a `home` object with a static `condition`. Decay needs a tick source — likely the same B3 hook rent and mortgage payments already use, since it's proven reliable and the alternative (POOL) has the same 30%-delivery problem for this as for everything else recurring.
 
 **Not required for the Phase 9 gate, but flagged above as adjacent and worth deciding early:** the missing voluntary-sale mechanism.
+
+</details>

@@ -17,8 +17,9 @@ It is idempotent and read-only with respect to life-sim.jsx.
 """
 import re, sys, os
 
-SRC = "/home/claude/life-sim.jsx"
-OUT_DIR = "/home/claude"
+ROOT = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(ROOT, "life-sim.jsx")
+OUT_DIR = ROOT
 
 # (output filename, banner text that opens the section)
 SECTIONS = [
@@ -29,6 +30,9 @@ SECTIONS = [
     ("hre-s05.js",      "HRE · S05 · MARKET INDEX & VALUATION"),
     ("hre-s09.js",      "HRE · S09 · STATE, TENURE & RESIDENCE MIGRATION"),
     ("hre-s06.js",      "HRE · S06 · MARKETPLACE, CHANNELS & LISTINGS"),
+    # NOTE: hre-s06.js also carries S07/S07b/S08a/S08b/S08c — those sections were
+    # spliced between S06 and this one and have never had their own entries here.
+    ("hre-s10.js",      "HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE"),
 ]
 END_BANNER = "/* ═══════════════ ENGINE ═══════════════ */"
 

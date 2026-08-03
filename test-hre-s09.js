@@ -6,7 +6,7 @@
    This suite runs against the REAL spliced life-sim.jsx, not a stub, because
    the whole point is whether HRE agrees with the running game. */
 const fs = require("fs");
-const H = require("/home/claude/harness.js");
+const H = require(require("path").join(__dirname, "harness.js"));
 const M = H.M;
 
 let pass = 0, fail = 0;
@@ -284,7 +284,7 @@ sec("4 · save size");
 /* ───────────── 5 · GATE: no call site inverted yet ───────────── */
 sec("5 · nothing inverted");
 {
-  const src = fs.readFileSync("/home/claude/life-sim.jsx", "utf8");
+  const src = fs.readFileSync(require("path").join(__dirname, "life-sim.jsx"), "utf8");
   /* the legacy predicates must still be present, verbatim, at their call sites */
   const parentsRoomPred = 'ageYears(s) < 26 && !s.flags.movedOut && !s.flags.homeless && !s.flags.cohabiting && !s.spouse && !s.flags.couchAt';
   ok("the parentsroom Act-item predicate is untouched", src.includes(parentsRoomPred), null);
