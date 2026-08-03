@@ -3316,7 +3316,7 @@ function hreIndexCoverage(countryKeys) {
      shim deliberately reproduces it rather than quietly fixing it — a shim that
      improves on legacy behaviour cannot be proven equivalent to it. */
 
-const HRE_STATE_V = 3;
+const HRE_STATE_V = 4;
 
 /* Migration ladder (§8.6). Each step upgrades exactly one version to the next
    and they are applied in order, so a Phase 5 v1 save and a freshly created v2
@@ -3333,6 +3333,13 @@ const HRE_STATE_LADDER = {
      so it carries both a cap and a TTL enforced at its single write site
      (`hrePinEngagement`) — an uncapped branch is a defect (§8.2). */
   2: function (h) { h.eng = []; },
+  /* v3 -> v4 (Phase 9): S10 upkeep. null, deliberately — a save written before
+     condition was tracked has no maintenance history, and inventing one would
+     assert a fact about a life that was never lived. hreUpkeepInit builds the
+     tracker from the dwelling's OWN condition the first time the tick sees it,
+     which is the same seam a purchase goes through, so a migrated owner's house
+     does not jump either (R5). */
+  3: function (h) { h.upk = null; },
 };
 
 function hreStateLadder(h) {
@@ -3521,6 +3528,10 @@ function hreInit(seed, country, cityName, cls, year) {
     mtg: null,
     everOwned: false,
     ownedOutright: false,
+    /* Upkeep tracker (S10). null until something is actually being lived in and
+       ticked; hreUpkeepInit derives it FROM s.hre.home.condition and never
+       writes a condition number of its own — that is R5's whole mitigation. */
+    upk: null,
   };
 }
 
@@ -3544,7 +3555,7 @@ function hreMigrate(s) {
       (p.country || "") + ":" + (p.city || "") + ":" + (p.birthYear || 0));
     s.hre = { v: HRE_STATE_V, seed: seed, tenure: hreLegacyTenure(s),
       since: s.ageDays || 0, home: null, recon: true, mem: { ch: null, filt: "all" }, eng: [], owned: false,
-      ten: null, lastEnd: null, everRented: false, mtg: null, everOwned: false, ownedOutright: false };
+      ten: null, lastEnd: null, everRented: false, mtg: null, everOwned: false, ownedOutright: false, upk: null };
     return s.hre;
   }
   const h = s.hre;
@@ -3578,6 +3589,10 @@ function hreMigrate(s) {
      backfill — no tenancy, so hreOnTick is a no-op until one is formed. */
   if (h.ten === undefined) h.ten = null;
   if (h.lastEnd === undefined) h.lastEnd = null;
+  /* Upkeep (S10). Repaired as well as laddered: a hand-edited save can carry a
+     current version and a missing branch. Never reconstructed with invented
+     history — see the ladder note. */
+  if (h.upk === undefined) h.upk = null;
   return h;
 }
 
@@ -4048,6 +4063,14 @@ function hreListing(seed, id, year, dayOfYear, channelId, opts) {
     title: hreListingTitle(bp, tenure),
     defects: hreDisclosedDefects(bp, seller),
     register: hreRegisterAt(year),
+    /* R5 (Phase 9). hreBuyProperty and hreResolveApplication have always read
+       `listing.crystallised` — nothing had ever written it, so both silently
+       fell back to `s.hre.home` and a buyer ended up owning the record of the
+       house they grew up in, condition and all. That is precisely the handoff
+       discontinuity R5 names. hreCrystallise is a projection of `bp`, which
+       this listing already holds in full, so this costs nothing to add and is
+       the value S10 then decays in place. */
+    crystallised: hreCrystallise(bp),
   };
   listing.blurb = hreListingBlurb(seed, bp, hood, tenure, listing, year);
   return listing;
@@ -5199,6 +5222,905 @@ function hreResolveApplication(s, eng, listing) {
   return verdict;
 }
 
+/* ═══════════════ HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE ═══════════════ */
+/* Phase 9. Part 1 §3.4 S10, Part 3 §10.3. The phase the spec calls the finish
+ * line for HRE v1: "buy, borrow, maintain, neglect, lose, and move".
+ *
+ * FOUR THINGS LIVE HERE
+ *   1. Per-component condition decay, with DEFERRED MAINTENANCE COMPOUNDING —
+ *      the rate itself worsens the longer a component is left alone, so
+ *      neglect is not a straight line down, it is a curve.
+ *   2. Maintenance spend that slows it (the player-facing half, in S12).
+ *   3. Failures EMITTED BY THE CONDITION MODEL. There is no list of authored
+ *      "the boiler breaks" events anywhere below, and there must never be one.
+ *      Every component in HRE_COMPONENTS can fail, and does, purely because its
+ *      own tracked value crossed a threshold. hreFailureRisk() is a function of
+ *      one number: the live condition of that component. The prose is composed
+ *      from the component's own vocabulary the way S06 composes a listing blurb
+ *      from a blueprint's own attributes — presentation may compose, it may not
+ *      invent, and it may not decide WHETHER something fails.
+ *   4. Disasters and insurance: event-driven damage to the same condition
+ *      numbers, and a mechanism to mitigate the cost of it.
+ *
+ * R5 — THE CONDITION HANDOFF, AND WHY IT CANNOT DRIFT
+ * The spec's risk R5 is "condition handoff discontinuity — house visibly
+ * changes on purchase". The mitigation here is structural, not a test bolted on
+ * afterwards: THERE IS NO SECOND CONDITION VALUE. S02's hreStage7Condition
+ * produces a condition map, hreCrystallise carries it into the dwelling payload
+ * verbatim, hreBuyProperty hands that same payload to hreSetTenure, and this
+ * module decays THAT OBJECT IN PLACE. `s.hre.upk` holds only bookkeeping —
+ * elapsed periods, deferred-maintenance counters, open failures, the policy.
+ * It never holds a condition number of its own, so there is nothing that could
+ * disagree with the one the player was shown at the viewing. A buyer's first
+ * tick applies zero elapsed periods, so the house they move into is the house
+ * they saw, component for component.
+ *
+ * DETERMINISM. Decay is arithmetic — no dice at all. Failures and disasters do
+ * roll, but through hreRng seeded on (world seed, dwelling id, period), never
+ * Math.random, so a given house in a given month fails or floods identically on
+ * every replay. That is what makes a neglect soak reproducible.
+ */
+
+const HRE_S10_V = 1;
+
+/* Upkeep runs on the same 30-day clock as rent and mortgage payments, for the
+   same reason: it is charged through the B3 tick, and two housing clocks that
+   disagree would drift apart over a lifetime. */
+const HRE_UPKEEP_PERIOD_DAYS = HRE_RENT_PERIOD_DAYS;
+
+/* ─────────────────────── decay: the shape of neglect ───────────────────────
+   Nominal rate is 100 points over a component's service life. Everything else
+   is a multiplier on that, and every multiplier is DATA. */
+
+/* How hard a given kind of building is on its own fabric. Light structures and
+   mass-produced blocks shed condition faster than solid masonry; a mobile home
+   is not built to last a century and does not pretend to. */
+const HRE_DECAY_ARCHETYPE = {
+  informalSelfBuilt: 1.62, courtyardHouse: 0.94, terrace: 1.00, tenement: 1.22,
+  mansionBlockFlat: 0.92, semiDetached: 1.00, detachedHouse: 1.02, bungalow: 1.06,
+  farmhouse: 1.18, walkUpApartment: 1.10, panelBlockFlat: 1.30, towerBlockFlat: 1.24,
+  newBuildFlat: 1.08, convertedFlat: 1.14, villa: 0.90, mobileHome: 1.85,
+};
+
+/* How exposed each component is to weather. The roof and the damp course take
+   the climate; the wiring mostly does not. Multiplies only the climate term,
+   never the base rate — a dry country does not make a boiler immortal. */
+const HRE_DECAY_EXPOSURE = {
+  structure: 0.55, roof: 1.45, exterior: 1.35, windows: 1.15, plumbing: 0.85,
+  electrical: 0.70, heating: 0.95, kitchen: 0.80, bathroom: 0.90, damp: 1.60,
+};
+
+/* Climate by region. `wear` is the whole-fabric multiplier; freeze-thaw and
+   monsoon are hard on buildings, hot and dry is not. Provisional (module 22),
+   same as every other regional table in HRE. */
+const HRE_CLIMATE_REGION = {
+  anglo: { wear: 1.06 }, westEu: { wear: 1.02 }, nordic: { wear: 1.20 },
+  southEu: { wear: 0.93 }, eastEu: { wear: 1.15 }, latam: { wear: 1.10 },
+  eastAsia: { wear: 1.08 }, southAsia: { wear: 1.32 }, seAsia: { wear: 1.36 },
+  mena: { wear: 0.88 }, subSaharan: { wear: 1.18 }, universal: { wear: 1.00 },
+};
+
+/* Deferred maintenance compounding (§3.4 S10). Each YEAR a component goes
+   untouched adds HRE_DEFER_K to its own decay multiplier, capped. This is the
+   difference between accrual and compounding: the rate is a function of how
+   long the neglect has run, so the second decade of ignoring a roof costs far
+   more condition than the first. Nothing else in HRE has this shape. */
+const HRE_DEFER_K = 0.075;
+const HRE_DEFER_CAP_YEARS = 16;
+
+/* How much condition a component loses across one full service life at the
+   nominal rate. NOT 100: S02's own Stage 7 puts a component at 28-62 when it
+   reaches its service life (`100 - wear * (72 - care * 34)`), not at zero, and
+   S10 must decay at the rate S02 already implied or a bought house would fall
+   apart faster than the generator says an identical un-bought one has. */
+const HRE_NOMINAL_LOSS_PER_LIFE = 58;
+
+/* No combination of building, place, age and neglect may make a dwelling rot
+   more than HRE_DECAY_CLAMP[1] times faster than nominal. Five independent
+   multipliers compose to 25x at the extremes without this, which is not a
+   building, it is a bonfire. */
+const HRE_DECAY_CLAMP = [0.45, 3.0];
+
+/* An open, unrepaired failure is itself a form of neglect — water gets in and
+   keeps getting in — so it accelerates its own component further. */
+const HRE_OPEN_FAILURE_DEFER = 2.0;
+
+const HRE_CONDITION_FLOOR = 2;      /* matches S02's floor; a ruin is still a ruin */
+
+/* ───────────────────────── failure emission ─────────────────────────
+   The threshold and the curve. Nothing else decides whether a component
+   fails. */
+const HRE_FAIL_THRESHOLD = 20;
+const HRE_FAIL_SLOPE = 0.055;
+const HRE_FAIL_STAGES = ["open", "worsening", "unfit"];
+const HRE_FAIL_STAGE_AT = { open: 0, worsening: 8, unfit: 24 };   /* periods open */
+const HRE_EMERGENCY_MULT = 2.2;     /* what it costs when you have no choice */
+const HRE_EMERGENCY_RESTORE = 45;   /* an emergency fix is a fix, not a refurbishment */
+const HRE_REPAIR_OF_VALUE = 0.34;   /* a total component failure, as a share of value */
+
+/* ──────────────────────────── disasters ──────────────────────────── */
+const HRE_DISASTER_BASE = 0.011;    /* annual, before region and condition */
+
+const HRE_HAZARDS = {
+  flood:   { label: "flood",           hits: ["damp", "exterior", "kitchen", "electrical", "structure"], sev: [0.20, 0.60] },
+  storm:   { label: "storm",           hits: ["roof", "windows", "exterior"],                            sev: [0.14, 0.48] },
+  quake:   { label: "earthquake",      hits: ["structure", "exterior", "plumbing", "windows"],           sev: [0.26, 0.72] },
+  fire:    { label: "fire",            hits: ["kitchen", "electrical", "structure", "roof"],             sev: [0.30, 0.80] },
+  freeze:  { label: "burst pipes",     hits: ["plumbing", "damp", "bathroom"],                           sev: [0.16, 0.42] },
+  subside: { label: "ground movement", hits: ["structure", "exterior", "windows"],                       sev: [0.20, 0.52] },
+};
+
+/* Regional hazard mix. `rate` scales the base annual probability. Provisional. */
+const HRE_HAZARD_REGION = {
+  anglo:      { rate: 1.00, w: { flood: 30, storm: 30, quake: 2,  fire: 14, freeze: 12, subside: 12 } },
+  westEu:     { rate: 0.90, w: { flood: 32, storm: 24, quake: 3,  fire: 14, freeze: 14, subside: 13 } },
+  nordic:     { rate: 0.95, w: { flood: 18, storm: 26, quake: 1,  fire: 16, freeze: 32, subside: 7 } },
+  southEu:    { rate: 1.05, w: { flood: 22, storm: 16, quake: 22, fire: 26, freeze: 4,  subside: 10 } },
+  eastEu:     { rate: 1.00, w: { flood: 28, storm: 16, quake: 6,  fire: 18, freeze: 24, subside: 8 } },
+  latam:      { rate: 1.35, w: { flood: 34, storm: 24, quake: 22, fire: 12, freeze: 1,  subside: 7 } },
+  eastAsia:   { rate: 1.40, w: { flood: 26, storm: 30, quake: 28, fire: 12, freeze: 2,  subside: 2 } },
+  southAsia:  { rate: 1.55, w: { flood: 46, storm: 26, quake: 14, fire: 10, freeze: 1,  subside: 3 } },
+  seAsia:     { rate: 1.60, w: { flood: 48, storm: 30, quake: 10, fire: 10, freeze: 0,  subside: 2 } },
+  mena:       { rate: 0.85, w: { flood: 16, storm: 10, quake: 24, fire: 24, freeze: 2,  subside: 24 } },
+  subSaharan: { rate: 1.20, w: { flood: 38, storm: 20, quake: 6,  fire: 24, freeze: 0,  subside: 12 } },
+  universal:  { rate: 1.00, w: { flood: 28, storm: 24, quake: 10, fire: 18, freeze: 12, subside: 8 } },
+};
+
+/* Defects that make a specific hazard much likelier. Reads S02's own defect
+   ids — the generator already decided this plot floods; S10 must not decide it
+   a second time and differently. */
+const HRE_HAZARD_DEFECT = {
+  floodHistory: { flood: 5.0 }, subsidence: { subside: 4.5 },
+  structuralCrack: { quake: 2.0, subside: 2.2 }, risingDamp: { flood: 1.6 },
+  wiringUnsafe: { fire: 3.2 }, unsafeCladding: { fire: 3.6 },
+};
+
+/* ──────────────────────────── insurance ────────────────────────────
+   Era-gated by the S04 law table's own `insurance.exists` band, so a 1910
+   Nigerian tenant is not offered a product that did not exist. Two tiers: the
+   cheap one covers catastrophe only, the expensive one also covers things
+   breaking. Neither covers rot you watched happen — see hreClaim. */
+const HRE_INSURANCE_TIERS = [
+  { id: "basic", label: "buildings only",
+    rate: 0.0026, excessPct: 0.25, coversDisaster: true, coversFailure: false,
+    blurb: "Fire, flood, storm. The things that arrive all at once." },
+  { id: "full", label: "buildings, contents and accidental damage",
+    rate: 0.0052, excessPct: 0.12, coversDisaster: true, coversFailure: true,
+    blurb: "Catastrophe, and the boiler, and the wiring. Everything except what you let happen." },
+];
+const HRE_CLAIM_NEGLECT_YEARS = 4;   /* beyond this, a failure claim is wear and tear */
+const HRE_CLAIM_LOADING = 0.14;      /* premium loading per prior claim */
+const HRE_CLAIM_LOADING_CAP = 1.75;
+
+function hreInsuranceTier(id) {
+  for (let i = 0; i < HRE_INSURANCE_TIERS.length; i++) if (HRE_INSURANCE_TIERS[i].id === id) return HRE_INSURANCE_TIERS[i];
+  return null;
+}
+
+/* ─────────────────────── condition arithmetic ─────────────────────── */
+
+/* Weighted overall, recomputed from the LIVE component values rather than read
+   from `_overall`. Two independent derivations of the same thing is how this
+   project has caught every cached-value bug it has had, so the cached field is
+   kept in step but is never the thing anything reasons about. */
+function hreConditionScore(cond) {
+  if (!cond) return 0;
+  let sum = 0, wsum = 0;
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    const c = HRE_COMPONENTS[i];
+    const v = typeof cond[c.id] === "number" ? cond[c.id] : 50;
+    sum += v * c.weight; wsum += c.weight;
+  }
+  return wsum ? Math.round(sum / wsum) : 0;
+}
+
+/* Keeps the S02 internals honest after S10 has moved the numbers. `_overall`
+   and `_care` stay underscore-prefixed and stay out of hrePublicCondition's
+   output, which is still the only thing a display surface may read. */
+function hreSyncCondition(cond) {
+  if (!cond) return cond;
+  cond._overall = hreConditionScore(cond);
+  return cond;
+}
+
+/* Stage 9's own condition term, reused verbatim so a condition-adjusted value
+   and a freshly generated one price condition the same way. */
+function hreConditionFactor(overall) { return 0.58 + 0.42 * (Math.max(0, Math.min(100, overall)) / 100); }
+
+const HRE_CONDITION_BANDS = [
+  [82, "immaculate"], [68, "sound"], [54, "lived-in"], [40, "tired"],
+  [26, "in poor repair"], [12, "failing"], [0, "barely habitable"],
+];
+
+function hreConditionBand(score) {
+  for (let i = 0; i < HRE_CONDITION_BANDS.length; i++) if (score >= HRE_CONDITION_BANDS[i][0]) return HRE_CONDITION_BANDS[i][1];
+  return "barely habitable";
+}
+
+/* Construction quality. A property of the BUILDING, derived from the world seed
+   and the dwelling id, so it is the same number for every character who ever
+   lives there and does not have to be stored. Higher = slower decay. */
+function hreBuildQuality(seed, home) {
+  if (!home) return 1;
+  const r = hreRng(seed === null || seed === undefined ? 0 : seed, home.id || "unknown", "s10:quality");
+  const care = home.condition && typeof home.condition._care === "number" ? home.condition._care / 100 : 0.5;
+  const q = 0.74 + care * 0.26 + r.gauss(0, 0.13);
+  return Math.max(0.55, Math.min(1.45, q));
+}
+
+/* Points of condition a single component loses in one 30-day period.
+   Every argument to this is either a fact about the building, a fact about
+   where it is, or the length of time it has been ignored. */
+function hreDecayPerPeriod(seed, home, country, year, cmp, deferPeriods) {
+  const nominal = HRE_NOMINAL_LOSS_PER_LIFE / (cmp.life * HRE_PERIODS_PER_YEAR);
+  const archMul = HRE_DECAY_ARCHETYPE[home.archetype] || 1.0;
+  const age = Math.max(0, (year || home.builtYear) - home.builtYear);
+  const ageMul = 1 + Math.min(0.45, age / 280);
+  const clim = HRE_CLIMATE_REGION[hreRegionOf(country)] || HRE_CLIMATE_REGION.universal;
+  const exposure = HRE_DECAY_EXPOSURE[cmp.id] || 1.0;
+  const climMul = 1 + (clim.wear - 1) * exposure;
+  const q = hreBuildQuality(seed, home);
+  const deferYears = Math.max(0, deferPeriods || 0) / HRE_PERIODS_PER_YEAR;
+  const deferMul = 1 + HRE_DEFER_K * Math.min(HRE_DEFER_CAP_YEARS, deferYears);
+  const mul = Math.max(HRE_DECAY_CLAMP[0],
+    Math.min(HRE_DECAY_CLAMP[1], (archMul * ageMul * climMul * deferMul) / (0.55 + 0.45 * q)));
+  return nominal * mul;
+}
+
+/* ─────────────────────────── state ───────────────────────────
+   s.hre.upk — bookkeeping only. Never a condition number.
+     { v, home, period, at, base, defer{}, open{}, spent, fails, disasters, ins } */
+
+function hreUpkeep(s) { return s && s.hre && s.hre.upk ? s.hre.upk : null; }
+
+/* Who is responsible for the fabric. A tenant's landlord fixes things (slowly,
+   and only as fast as the law makes them); an owner fixes them or lives with
+   them; everyone else is in someone else's building and this module leaves
+   their happiness alone. Decay still happens to every dwelling regardless — the
+   world does not pause because nobody is watching. */
+function hreUpkeepRole(s) {
+  /* Residence authority first (S09). hreTenure falls back to the legacy
+     derivation until HRE has actually written a tenure, and that derivation
+     reports "renting" for anyone over 26 with no flags set — i.e. most of the
+     game. Treating that inference as a tenancy would hand every ordinary
+     character a landlord they do not have, and drain their happiness over a
+     building nobody ever said they lived in. Responsibility requires a RECORD:
+     a tenancy HRE formed, or a purchase HRE made. */
+  if (!s || !s.hre || !s.hre.owned) return "none";
+  const t = hreTenure(s);
+  if (t === "owning" || t === "ownOutright") return "owner";
+  if (t === "renting" && hreTenancy(s)) return "tenant";
+  return "none";
+}
+
+/* R5's seam. Reads the dwelling's existing condition; writes none of it. */
+function hreUpkeepInit(s) {
+  const home = hreHome(s);
+  if (!home || !home.condition) return null;
+  /* Take ownership of the condition object before decaying it. hreCrystallise
+     carries `bp.condition` through BY REFERENCE, so a freshly bought dwelling
+     shares its condition map with the listing it came from and, through that,
+     with a blueprint the generator can re-derive at any time. Decaying in place
+     across that alias would write S10's history into a regenerable object.
+     This is a COPY, not a re-derivation: every value is identical, which is
+     what R5 requires — the numbers do not change, only who owns them. */
+  home.condition = Object.assign({}, home.condition);
+  const defer = {};
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) defer[HRE_COMPONENTS[i].id] = 0;
+  const u = {
+    v: HRE_S10_V,
+    home: home.id || null,
+    /* the period this tracker is CAUGHT UP TO. Set to now, so the first tick
+       after a purchase applies zero elapsed periods and therefore zero decay. */
+    period: hrePeriodIndex(s.ageDays || 0),
+    at: s.ageDays || 0,
+    /* the condition the crystallised baseHvu was priced against — the
+       denominator of every later "and what is it worth now" */
+    base: hreConditionScore(home.condition),
+    defer: defer,
+    open: {},
+    spent: 0, fails: 0, disasters: 0, repairs: 0, lastWork: -9999,
+    ins: null,
+  };
+  s.hre.upk = u;
+  return u;
+}
+
+/* Idempotent. Re-initialises when the character moves, because the counters
+   belong to the dwelling, not to the life. */
+function hreEnsureUpkeep(s) {
+  if (!s || !s.hre) return null;
+  const home = hreHome(s);
+  if (!home || !home.condition) return null;
+  const u = s.hre.upk;
+  if (!u || u.home !== (home.id || null)) return hreUpkeepInit(s);
+  if (!u.defer) u.defer = {};
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    if (typeof u.defer[HRE_COMPONENTS[i].id] !== "number") u.defer[HRE_COMPONENTS[i].id] = 0;
+  }
+  if (!u.open) u.open = {};
+  if (typeof u.period !== "number") u.period = hrePeriodIndex(s.ageDays || 0);
+  if (typeof u.base !== "number") u.base = hreConditionScore(home.condition);
+  if (typeof u.lastWork !== "number") u.lastWork = -9999;
+  return u;
+}
+
+/* ─────────────────────── valuation with condition ───────────────────────
+   hreValue is NOT touched: it prices the property as crystallised, which is
+   what every other consumer of it expects. This is a layer on top, applying
+   Stage 9's own condition term as a ratio between the condition now and the
+   condition the base HVU was computed from. Maintain it and it tracks the
+   market; neglect it and it falls behind. */
+function hreHomeValueNow(s) {
+  const home = hreHome(s);
+  const seed = hreWorldSeedOf(s);
+  if (!home || !home.id || seed === null) return null;
+  const p = hreIdParse(home.id);
+  if (!p) return null;
+  const year = yearOf(s);
+  const hood = hreNeighbourhood(seed, p.country, p.city, p.hood, year);
+  if (!hood) return null;
+  const v = hreValue(seed, { country: p.country, city: p.city, baseHvu: home.baseHvu }, hood, year);
+  if (!v) return null;
+  const u = hreUpkeep(s);
+  const baseScore = u && typeof u.base === "number" ? u.base : hreConditionScore(home.condition);
+  const nowScore = hreConditionScore(home.condition);
+  const factor = hreConditionFactor(nowScore) / Math.max(0.01, hreConditionFactor(baseScore));
+  return {
+    market: v, hood: hood, condition: nowScore, base: baseScore, factor: factor,
+    money: v.money * factor, rentMonthly: v.rentMonthly * factor,
+  };
+}
+
+/* What a job costs. Proportional to what the property is worth, because a
+   roof on a villa is not a roof on a bedsit. */
+function hreUpkeepUnitCost(s) {
+  const v = hreHomeValueNow(s);
+  const money = v && Number.isFinite(v.money) ? v.money : 40000;
+  return Math.max(60, Math.round(money * 0.006));
+}
+
+function hreRepairCost(s, cmp, sev) {
+  const v = hreHomeValueNow(s);
+  const money = v && Number.isFinite(v.money) ? v.money : 40000;
+  const raw = money * cmp.weight * HRE_REPAIR_OF_VALUE * Math.max(0.15, Math.min(1, sev));
+  return Math.max(80, Math.round(raw));
+}
+
+/* ─────────────────────── failure, from the model ───────────────────────
+   The whole emission rule, in one function of one number. Above the threshold
+   nothing can fail; below it, the further down a component has gone the likelier
+   it is to go this month. No component is special-cased and no failure is
+   authored — add an eleventh component to HRE_COMPONENTS and it acquires the
+   ability to fail without a line of code being written here. */
+function hreFailureRisk(v) {
+  if (typeof v !== "number" || v > HRE_FAIL_THRESHOLD) return 0;
+  const depth = (HRE_FAIL_THRESHOLD - Math.max(HRE_CONDITION_FLOOR, v)) / HRE_FAIL_THRESHOLD;
+  return HRE_FAIL_SLOPE * Math.pow(Math.max(0, depth), 1.35);
+}
+
+function hreFailStage(periodsOpen) {
+  if (periodsOpen >= HRE_FAIL_STAGE_AT.unfit) return "unfit";
+  if (periodsOpen >= HRE_FAIL_STAGE_AT.worsening) return "worsening";
+  return "open";
+}
+
+/* Component vocabulary. This is PRESENTATION — the same contract S06's listing
+   blurbs work under. It decides how a failure reads, never whether one happens,
+   and it composes from the component and the severity the model produced. */
+const HRE_COMPONENT_VOICE = {
+  structure: { thing: "a crack in the back wall", open: "has opened wide enough to put a coin in", worse: "has grown a second crack at right angles to the first" },
+  roof: { thing: "the roof", open: "let go over the landing, and the bucket is not a joke any more", worse: "is coming in properly now, and the ceiling below it has started to sag" },
+  exterior: { thing: "the render", open: "has come off the front wall in sheets", worse: "is off in most places, and the brick underneath is soft where the water sits" },
+  windows: { thing: "the window frames", open: "have rotted through at the sills; one no longer shuts", worse: "have gone entirely at the front, and the glass is held by paint and habit" },
+  plumbing: { thing: "a pipe", open: "went in the night and took the hall floor with it", worse: "keeps going, somewhere behind the plaster, and the whole wall is cold and wet" },
+  electrical: { thing: "the wiring", open: "has started tripping every time the kettle goes on", worse: "smells hot behind the sockets, which is a smell you now know" },
+  heating: { thing: "the heating", open: "died on the coldest week of the year, which is when it always dies", worse: "has been off so long the damp has moved in behind it" },
+  kitchen: { thing: "the kitchen", open: "has lost a run of units; the doors are off and the carcass is swollen", worse: "is barely a kitchen — you cook on what still works and wash up in the bath" },
+  bathroom: { thing: "the bathroom", open: "leaks through to the ceiling below every time you use it", worse: "has rotted the floor under the bath, and the bath moves when you get in" },
+  damp: { thing: "the damp", open: "has come up the wall in a tidemark you can put your hand flat against", worse: "is in the plaster, the skirting and everything you leave against that wall" },
+};
+
+const HRE_SEVERITY_CLOSE = [
+  [0.70, "Someone would have to spend real money on this, and that someone is you."],
+  [0.45, "It is not going to get better on its own. Nothing in a house ever does."],
+  [0.00, "It can wait. It can always wait, which is exactly how it got here."],
+];
+
+function hreSeverityClose(sev) {
+  for (let i = 0; i < HRE_SEVERITY_CLOSE.length; i++) if (sev >= HRE_SEVERITY_CLOSE[i][0]) return HRE_SEVERITY_CLOSE[i][1];
+  return HRE_SEVERITY_CLOSE[HRE_SEVERITY_CLOSE.length - 1][1];
+}
+
+function hreFailureLine(cmpId, sev, stage) {
+  const voice = HRE_COMPONENT_VOICE[cmpId] || { thing: "something", open: "has failed", worse: "is worse" };
+  const body = stage === "open" ? voice.open : voice.worse;
+  const lead = stage === "open" ? "🔧 " : "🔧 Still: ";
+  return lead + voice.thing.charAt(0).toUpperCase() + voice.thing.slice(1) + " " + body + ". " + hreSeverityClose(sev);
+}
+
+/* ─────────────────────────── the period ─────────────────────────── */
+
+function hreApplyDecay(s, u, home, seed, country, year) {
+  const cond = home.condition;
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    const cmp = HRE_COMPONENTS[i];
+    const openHere = u.open[cmp.id];
+    /* an open failure is neglect that is actively getting worse */
+    const deferred = (u.defer[cmp.id] || 0) * (openHere ? HRE_OPEN_FAILURE_DEFER : 1);
+    const loss = hreDecayPerPeriod(seed, home, country, year, cmp, deferred);
+    const now = typeof cond[cmp.id] === "number" ? cond[cmp.id] : 50;
+    cond[cmp.id] = Math.max(HRE_CONDITION_FLOOR, Math.round((now - loss) * 100) / 100);
+    u.defer[cmp.id] = (u.defer[cmp.id] || 0) + 1;
+  }
+  hreSyncCondition(cond);
+}
+
+/* Disaster. Rolled per period against a region's own hazard mix, weighted by
+   the defects the generator already put on this plot. Damage lands on the same
+   condition numbers decay writes to, which is the point: a flood does not fire
+   its own bespoke event chain, it pushes components down until the condition
+   model emits failures on its own. */
+function hreDisasterCheck(s, u, home, seed, country, year, period) {
+  const reg = HRE_HAZARD_REGION[hreRegionOf(country)] || HRE_HAZARD_REGION.universal;
+  const cond = home.condition;
+  const overall = hreConditionScore(cond);
+  /* a badly kept building is likelier to burn, flood and fall down */
+  const condMul = 1 + Math.max(0, (60 - overall)) / 90;
+  const annual = HRE_DISASTER_BASE * (reg.rate || 1) * condMul;
+  const r = hreRng(seed === null ? 0 : seed, (home.id || "x") + ":" + period, "s10:disaster");
+  if (!r.chance(annual / HRE_PERIODS_PER_YEAR)) return null;
+
+  /* which hazard: the region's mix, bent by this property's own defects */
+  const weights = {};
+  for (const k in reg.w) weights[k] = reg.w[k];
+  const defects = home.defects || [];
+  for (let i = 0; i < defects.length; i++) {
+    const boost = HRE_HAZARD_DEFECT[defects[i].id];
+    if (!boost) continue;
+    for (const k in boost) if (weights[k] !== undefined) weights[k] = weights[k] * boost[k];
+  }
+  const kind = r.weighted(weights) || "storm";
+  const haz = HRE_HAZARDS[kind] || HRE_HAZARDS.storm;
+  const sev = r.range(haz.sev[0], haz.sev[1]);
+
+  let worst = 0;
+  for (let i = 0; i < haz.hits.length; i++) {
+    const id = haz.hits[i];
+    const before = typeof cond[id] === "number" ? cond[id] : 50;
+    const drop = before * sev * r.range(0.55, 1.0);
+    cond[id] = Math.max(HRE_CONDITION_FLOOR, Math.round((before - drop) * 100) / 100);
+    if (drop > worst) worst = drop;
+    /* a damaged component is now overdue whatever its history */
+    u.defer[id] = Math.max(u.defer[id] || 0, Math.round(HRE_PERIODS_PER_YEAR * 2));
+  }
+  hreSyncCondition(cond);
+  u.disasters = (u.disasters || 0) + 1;
+  return { kind: kind, label: haz.label, severity: sev, worst: worst };
+}
+
+const HRE_DISASTER_LINE = {
+  flood: "🌊 The water came up through the floor before it came through the door, which nobody ever expects. It stopped at the level of the light switches and left a line there to remember it by.",
+  storm: "🌬 The wind took the ridge tiles first and then most of a night's sleep. By morning there was sky where there should have been ceiling.",
+  quake: "🌏 Thirty seconds. Everything on every shelf on the floor, a new crack from the door frame to the corner, and the strange silence afterwards where the traffic used to be.",
+  fire: "🔥 It started small and behind something, the way they do. What the flames didn't take, the water they put them out with did.",
+  freeze: "🧊 The pipe burst somewhere above the ceiling and ran all night into the plaster. You found it in the morning, coming down the light fitting.",
+  subside: "🏚 The ground moved a few millimetres, which is nothing, except that the house is rigid and the ground is not. The doors stopped closing first.",
+};
+
+/* ───────────────────────── insurance mechanics ───────────────────────── */
+
+function hreInsuranceAvailable(s) {
+  const p = hreIdParse((hreHome(s) || {}).id || "") || {};
+  const country = p.country || (s.profile && s.profile.country) || null;
+  if (!country) return false;
+  const law = hreLaw(country, yearOf(s));
+  return !!(law && law.insurance && law.insurance.exists);
+}
+
+function hreInsuranceQuote(s, tierId) {
+  const tier = hreInsuranceTier(tierId);
+  if (!tier) return null;
+  const v = hreHomeValueNow(s);
+  const money = v && Number.isFinite(v.money) ? v.money : 40000;
+  const u = hreUpkeep(s);
+  const claims = u && u.ins && u.ins.claims ? u.ins.claims : 0;
+  const loading = Math.min(HRE_CLAIM_LOADING_CAP, 1 + HRE_CLAIM_LOADING * claims);
+  /* a wreck costs more to insure, which is the first bill neglect sends you */
+  const condLoad = 1 + Math.max(0, 55 - (v ? v.condition : 55)) / 110;
+  const premium = Math.max(4, Math.round((money * tier.rate / HRE_PERIODS_PER_YEAR) * loading * condLoad));
+  return { tier: tier, premium: premium, excessPct: tier.excessPct, loading: loading };
+}
+
+function hreTakeInsurance(s, tierId) {
+  const u = hreEnsureUpkeep(s);
+  if (!u) return null;
+  if (!hreInsuranceAvailable(s)) return null;
+  const q = hreInsuranceQuote(s, tierId);
+  if (!q) return null;
+  if ((s.money || 0) < q.premium) return null;
+  s.money -= q.premium;
+  u.ins = { tier: tierId, premium: q.premium, excessPct: q.excessPct,
+    start: s.ageDays || 0, paidThrough: u.period, claims: 0, paidOut: 0, lapsed: null };
+  return u.ins;
+}
+
+function hreCancelInsurance(s) {
+  const u = hreUpkeep(s);
+  if (!u || !u.ins) return false;
+  u.ins = null;
+  return true;
+}
+
+/* Premium collection, on the same clock as everything else. An unpaid premium
+   does not become arrears — it lapses, silently and completely, which is
+   exactly what it does in life and is far more dangerous. */
+function hreInsuranceTick(s, u) {
+  if (!u.ins) return null;
+  const q = hreInsuranceQuote(s, u.ins.tier);
+  const due = q ? q.premium : u.ins.premium;
+  u.ins.premium = due;
+  if ((s.money || 0) >= due) { s.money -= due; u.ins.paidThrough = u.period; return null; }
+  u.ins = null;
+  return "📄 The insurance lapsed. There was no drama about it — a payment didn't go, and then the cover wasn't there any more.";
+}
+
+/* A claim. `cause` is "disaster" or "failure". The only interesting rule is the
+   wear-and-tear exclusion: a component you have ignored for years is not an
+   accident, and the policy says so in a sentence you did not read. */
+function hreClaim(s, u, cause, cmpId, cost) {
+  if (!u.ins) return { paid: 0, denied: true, reason: "none" };
+  const tier = hreInsuranceTier(u.ins.tier);
+  if (!tier) return { paid: 0, denied: true, reason: "none" };
+  if (cause === "failure" && !tier.coversFailure) return { paid: 0, denied: true, reason: "notCovered" };
+  if (cause === "disaster" && !tier.coversDisaster) return { paid: 0, denied: true, reason: "notCovered" };
+  if (cause === "failure") {
+    const deferYears = (u.defer[cmpId] || 0) / HRE_PERIODS_PER_YEAR;
+    if (deferYears > HRE_CLAIM_NEGLECT_YEARS) return { paid: 0, denied: true, reason: "wear" };
+  }
+  const paid = Math.max(0, Math.round(cost * (1 - u.ins.excessPct)));
+  s.money = (s.money || 0) + paid;
+  u.ins.claims = (u.ins.claims || 0) + 1;
+  u.ins.paidOut = (u.ins.paidOut || 0) + paid;
+  return { paid: paid, denied: false, reason: "paid", excess: cost - paid };
+}
+
+const HRE_CLAIM_LINE = {
+  paid: "📄 The claim went through. Less the excess, which is a word that means the first slice is yours.",
+  wear: "📄 The claim was refused. The letter uses the phrase 'gradually operating cause' twice, and it means: you watched this happen.",
+  notCovered: "📄 The claim was refused — the policy you bought does not cover this, and the policy that would have costs more.",
+  none: "📄 No cover. The whole figure is yours.",
+};
+
+/* ──────────────────── failures: emit, escalate, terminate ────────────────────
+   The escalation ladder is the thing this project has got wrong twice: a stage
+   that is reachable and does nothing. `unfit` is not a label. It ends something
+   — a tenancy, or a bank balance, or a character's ownership of a building —
+   every time it is reached. */
+function hreEmitFailures(s, u, home, seed, period) {
+  const cond = home.condition;
+  const out = [];
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    const cmp = HRE_COMPONENTS[i];
+    if (u.open[cmp.id]) continue;
+    const v = cond[cmp.id];
+    const p = hreFailureRisk(v);
+    if (p <= 0) continue;
+    const r = hreRng(seed === null ? 0 : seed, (home.id || "x") + ":" + period, "s10:fail:" + cmp.id);
+    if (!r.chance(p)) continue;
+    const depth = (HRE_FAIL_THRESHOLD - Math.max(HRE_CONDITION_FLOOR, v)) / HRE_FAIL_THRESHOLD;
+    const sev = Math.max(0.15, Math.min(1, (0.32 + depth * 0.55) * (0.72 + cmp.weight * 2.4)));
+    u.open[cmp.id] = { at: s.ageDays || 0, since: period, sev: sev, stage: "open",
+      cost: hreRepairCost(s, cmp, sev) };
+    u.fails = (u.fails || 0) + 1;
+    out.push({ component: cmp.id, severity: sev, line: hreFailureLine(cmp.id, sev, "open") });
+  }
+  return out;
+}
+
+/* Restore a component after work is done on it, and clear its failure. One
+   place, so a landlord repair, a paid repair and a forced emergency repair can
+   never leave the three records disagreeing. */
+function hreRestoreComponent(s, u, cmpId, toAtLeast) {
+  const home = hreHome(s);
+  if (!home || !home.condition) return;
+  const now = typeof home.condition[cmpId] === "number" ? home.condition[cmpId] : 0;
+  home.condition[cmpId] = Math.max(now, Math.min(100, toAtLeast));
+  hreSyncCondition(home.condition);
+  u.defer[cmpId] = 0;
+  if (u.open[cmpId]) delete u.open[cmpId];
+  u.repairs = (u.repairs || 0) + 1;
+}
+
+/* THE TERMINAL STAGE. Called once a failure has been open for
+   HRE_FAIL_STAGE_AT.unfit periods. It must always do something the player can
+   observe; returning a line without changing state would rebuild the exact bug
+   S08b was written to fix. */
+function hreFailureTerminal(s, u, cmpId, rec) {
+  let comp = null;
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) if (HRE_COMPONENTS[i].id === cmpId) comp = HRE_COMPONENTS[i];
+  const role = hreUpkeepRole(s);
+
+  if (role === "tenant") {
+    /* Two branches, and BOTH of them do something. Where tenancy law has teeth
+       the landlord is finally made to act; where it does not, the cheapest way
+       to make a repair order go away is to make the tenancy go away. Which is
+       which is decided by S04's own protection number, not by a coin. */
+    const pid = hreIdParse((hreHome(s) || {}).id || "") || {};
+    const law = hreLaw(pid.country || (s.profile && s.profile.country) || "United States", yearOf(s));
+    const protection = law && law.tenancy && typeof law.tenancy.protection === "number" ? law.tenancy.protection : 10;
+    if (protection >= 35) {
+      hreRestoreComponent(s, u, cmpId, 58);
+      const t = hreTenancy(s);
+      if (t) t.rent = Math.round(t.rent * 1.06);
+      return { kind: "landlordForced",
+        line: "🧰 The environmental health officer wrote a sentence with a deadline in it, and the work was done inside a fortnight. The rent went up at the next review, which everyone understood was not a coincidence." };
+    }
+    const res = hreCloseTenancy(s, "unfit", "homeless");
+    s.hre.upk = null;
+    return { kind: "tenancyEnded", settlement: res ? res.settlement : null,
+      line: "🚪 The place was condemned as unfit, and that was that — a notice on the door in a plastic sleeve, and a date on it. You were out before the date." };
+  }
+
+  /* Owner. Emergency work at the price emergencies cost. */
+  const cost = Math.round((rec.cost || hreRepairCost(s, comp || HRE_COMPONENTS[0], rec.sev)) * HRE_EMERGENCY_MULT);
+  const claim = hreClaim(s, u, "failure", cmpId, cost);
+  const net = Math.max(0, cost - (claim.paid || 0));
+  if ((s.money || 0) >= net) {
+    s.money -= net;
+    u.spent = (u.spent || 0) + net;
+    hreRestoreComponent(s, u, cmpId, HRE_EMERGENCY_RESTORE);
+    return { kind: "forcedRepair", cost: cost, net: net, claim: claim,
+      line: "🧰 It stopped being a decision. Someone came out at a price you did not negotiate and made the place safe again, and the account is a great deal emptier for it." };
+  }
+
+  /* Cannot pay. The building is condemned and ownership of it stops being
+     shelter. The debt, if there is one, does not go anywhere. */
+  s.hre.lastEnd = "condemned";
+  hreSetTenure(s, "homeless", null);
+  s.flags.homeless = s.ageDays || 0;
+  s.hre.upk = null;
+  return { kind: "condemned",
+    line: "🏚 The notice was nailed to the door: unfit for human habitation. You owned it right up until you couldn't live in it, and the mortgage did not care either way." };
+}
+
+/* Landlord repair. Slow, and exactly as reliable as the tenancy law where the
+   character lives — S04's `protection` number is doing real work here rather
+   than being a table nobody reads. */
+function hreLandlordRepair(s, u, home, seed, cmpId, rec, period) {
+  const p = hreIdParse(home.id || "") || {};
+  const law = hreLaw(p.country || (s.profile && s.profile.country) || "United States", yearOf(s));
+  const protection = law && law.tenancy && typeof law.tenancy.protection === "number" ? law.tenancy.protection : 10;
+  const chance = 0.035 + (protection / 100) * 0.20;
+  const r = hreRng(seed === null ? 0 : seed, (home.id || "x") + ":" + period, "s10:landlord:" + cmpId);
+  if (!r.chance(chance)) return null;
+  hreRestoreComponent(s, u, cmpId, 52);
+  return "🧰 The landlord's man came, eventually, and did a job that will hold. Not well, but it will hold.";
+}
+
+/* ─────────────────────────── the tick ─────────────────────────── */
+
+/* One 30-day period of everything above, in the order it happens: the fabric
+   ages, then the sky falls in or doesn't, then the condition model says what
+   has broken, then somebody either fixes it or doesn't, then the insurer takes
+   its money. Returns lines for the caller to push, keeping feed writes in one
+   place the way hreOnTick does. */
+function hreUpkeepPeriod(s, u, home, seed, country, year, period) {
+  const lines = [];
+  const role = hreUpkeepRole(s);
+
+  hreApplyDecay(s, u, home, seed, country, year);
+
+  const dis = hreDisasterCheck(s, u, home, seed, country, year, period);
+  if (dis && role !== "none") {
+    lines.push(HRE_DISASTER_LINE[dis.kind] || "🏚 Something happened to the building, and it was not small.");
+    s.stats.happiness = clamp(s.stats.happiness - Math.round(3 + dis.severity * 7));
+    if (dis.severity > 0.5) s.stats.health = clamp(s.stats.health - 2);
+    if (role === "owner") {
+      const cost = Math.max(120, Math.round(hreUpkeepUnitCost(s) * (6 + dis.severity * 26)));
+      const claim = hreClaim(s, u, "disaster", null, cost);
+      const net = Math.max(0, cost - (claim.paid || 0));
+      s.money = Math.max(0, (s.money || 0) - net);
+      u.spent = (u.spent || 0) + net;
+      lines.push(HRE_CLAIM_LINE[claim.reason] || HRE_CLAIM_LINE.none);
+    }
+  }
+
+  /* Failures emitted BY the condition model — see hreFailureRisk. Gated on
+     responsibility: the fabric of a parents' house decays like any other, but a
+     child living in it does not get their landlord's problems, and an ownerless
+     backlog of open failures must not be waiting for whoever moves in next. */
+  if (role !== "none") {
+    const emitted = hreEmitFailures(s, u, home, seed, period);
+    for (let i = 0; i < emitted.length; i++) lines.push(emitted[i].line);
+  }
+
+  if (role !== "none") {
+    let severest = 0, openCount = 0;
+    for (const cid in u.open) {
+      const rec = u.open[cid];
+      openCount++;
+      if (rec.sev > severest) severest = rec.sev;
+      const periodsOpen = period - rec.since;
+      const stage = hreFailStage(periodsOpen);
+      if (stage !== rec.stage) {
+        rec.stage = stage;
+        if (stage === "worsening") lines.push(hreFailureLine(cid, rec.sev, "worsening"));
+      }
+      if (stage === "unfit") {
+        const term = hreFailureTerminal(s, u, cid, rec);
+        lines.push(term.line);
+        return lines;                      /* the dwelling or the tenancy is gone */
+      }
+      if (role === "tenant") {
+        const fixed = hreLandlordRepair(s, u, home, seed, cid, rec, period);
+        if (fixed) lines.push(fixed);
+      }
+    }
+    /* living with it costs something every month it is not fixed */
+    if (openCount > 0) {
+      s.stats.happiness = clamp(s.stats.happiness - (severest > 0.6 ? 2 : 1));
+      if (severest > 0.6 && period % 4 === 0) s.stats.health = clamp(s.stats.health - 1);
+    }
+  }
+
+  if (role !== "none") {
+    const lapse = hreInsuranceTick(s, u);
+    if (lapse) lines.push(lapse);
+  } else if (u.ins) {
+    /* not your building any more; the policy is not yours either */
+    u.ins = null;
+  }
+
+  return lines;
+}
+
+/* Called from advance()'s B3 hook, immediately after hreOnTick. Separate call
+   rather than a line inside hreOnTick because that function returns early for a
+   tenant in prison, and the fabric of a building does not stop rotting while
+   its occupant is inside. */
+function hreUpkeepTick(s) {
+  if (!s || !s.alive || !s.hre) return;
+  const home = hreHome(s);
+  if (!home || !home.condition) return;
+  const u = hreEnsureUpkeep(s);
+  if (!u) return;
+  const seed = hreWorldSeedOf(s);
+  const p = hreIdParse(home.id || "") || {};
+  const country = p.country || (s.profile && s.profile.country) || "United States";
+  const year = yearOf(s);
+  const now = hrePeriodIndex(s.ageDays || 0);
+  let guard = 0;
+  while (u.period < now && guard++ < 64) {
+    u.period += 1;
+    const lines = hreUpkeepPeriod(s, u, home, seed, country, year, u.period);
+    for (let i = 0; i < lines.length; i++) push(s, lines[i]);
+    if (!s.alive) break;
+    /* the terminal stage can take the dwelling away mid-loop */
+    if (!s.hre.upk || s.hre.upk !== u) break;
+    if (hreHome(s) !== home) break;
+  }
+  if (s.hre.upk === u) u.at = s.ageDays || 0;
+}
+
+/* ─────────────────────── maintenance (the spend) ───────────────────────
+   Three levels of looking after a place, all of which do the same two things
+   in different proportions: put condition back, and reset the deferred-
+   maintenance counter that is quietly making everything worse. Resetting the
+   counter is the part that matters — a coat of paint every few years is worth
+   more over forty years than one heroic renovation, which is true of houses
+   and is the mechanic this phase is actually about. */
+const HRE_MAINTENANCE = [
+  { id: "patch", label: "Patch the worst of it", mult: 0.5, restore: 6, worst: 3, worstRestore: 12, deferCut: 0.5, cooldown: 4,
+    line: "🧰 A weekend of it: sealant, a ladder, the bit of the gutter you can reach. Not everything, but the water is going where water should go again." },
+  { id: "service", label: "Get the place serviced properly", mult: 1.6, restore: 10, worst: 5, worstRestore: 20, deferCut: 0, cooldown: 10,
+    line: "🧰 You had people in and let them do it properly — boiler, gutters, the window that never shut. The house feels like it has been paid attention to." },
+  { id: "overhaul", label: "Overhaul everything that needs it", mult: 4.4, restore: 16, worst: 10, worstRestore: 34, floor: 58, deferCut: 0, cooldown: 36,
+    line: "🧰 Scaffolding for three weeks and a skip outside for two. It cost what it cost. The place has years back in it." },
+];
+
+function hreMaintenanceById(id) {
+  for (let i = 0; i < HRE_MAINTENANCE.length; i++) if (HRE_MAINTENANCE[i].id === id) return HRE_MAINTENANCE[i];
+  return null;
+}
+
+function hreMaintenancePrice(s, id) {
+  const job = hreMaintenanceById(id);
+  if (!job) return null;
+  return Math.max(40, Math.round(hreUpkeepUnitCost(s) * job.mult));
+}
+
+/* Components sorted worst-first, by live condition. */
+function hreWorstComponents(cond) {
+  const list = HRE_COMPONENTS.slice();
+  list.sort(function (a, b) {
+    const av = typeof cond[a.id] === "number" ? cond[a.id] : 50;
+    const bv = typeof cond[b.id] === "number" ? cond[b.id] : 50;
+    return av - bv;
+  });
+  return list;
+}
+
+/* Work has to take time to be worth anything. Without a cooldown the cheapest
+   job is repeatable inside a single turn — menu-opening Act items cost no
+   simulated time anywhere in this file (module 24's queue) — and condition
+   becomes a money faucet. The cooldown is the fix that does not depend on that
+   cross-cutting bug ever being fixed. */
+function hreMaintenanceReady(s, id) {
+  const job = hreMaintenanceById(id);
+  const u = hreUpkeep(s);
+  if (!job) return false;
+  if (!u) return true;
+  return (u.period - (typeof u.lastWork === "number" ? u.lastWork : -9999)) >= job.cooldown;
+}
+
+/* The spend. Returns null when it cannot happen, so the menu can hide the
+   option rather than offering a no-op. */
+function hreDoMaintenance(s, id) {
+  const job = hreMaintenanceById(id);
+  const u = hreEnsureUpkeep(s);
+  const home = hreHome(s);
+  if (!job || !u || !home || !home.condition) return null;
+  if (!hreMaintenanceReady(s, id)) return null;
+  const price = hreMaintenancePrice(s, id);
+  if ((s.money || 0) < price) return null;
+  s.money -= price;
+  u.spent = (u.spent || 0) + price;
+  u.lastWork = u.period;
+
+  const cond = home.condition;
+  const worst = hreWorstComponents(cond);
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    const cid = HRE_COMPONENTS[i].id;
+    const now = typeof cond[cid] === "number" ? cond[cid] : 50;
+    let next = now + job.restore;
+    if (job.floor) next = Math.max(next, job.floor);
+    cond[cid] = Math.min(100, Math.round(next * 100) / 100);
+    u.defer[cid] = Math.round((u.defer[cid] || 0) * job.deferCut);
+  }
+  for (let i = 0; i < Math.min(job.worst, worst.length); i++) {
+    const cid = worst[i].id;
+    cond[cid] = Math.min(100, Math.round((cond[cid] + job.worstRestore) * 100) / 100);
+    u.defer[cid] = 0;
+  }
+  hreSyncCondition(cond);
+  return { id: id, price: price, line: job.line, condition: hreConditionScore(cond) };
+}
+
+/* Repairing a specific open failure. Separate from maintenance because it is a
+   different decision: this is the bill that arrived, not the bill you chose. */
+function hreRepairFailure(s, cmpId) {
+  const u = hreEnsureUpkeep(s);
+  if (!u || !u.open[cmpId]) return null;
+  const rec = u.open[cmpId];
+  const claim = hreClaim(s, u, "failure", cmpId, rec.cost);
+  const net = Math.max(0, rec.cost - (claim.paid || 0));
+  if ((s.money || 0) < net) return { ok: false, needed: net, claim: claim };
+  s.money -= net;
+  u.spent = (u.spent || 0) + net;
+  hreRestoreComponent(s, u, cmpId, 62);
+  return { ok: true, cost: rec.cost, net: net, claim: claim,
+    line: "🧰 Fixed. Properly, by someone who has done it before, and the room smells of new plaster instead of old water." };
+}
+
+/* Diagnostic, mirroring hreLawCoverage/hreIndexCoverage: how fast a nominal
+   dwelling of each archetype loses condition, so a balance pass has numbers to
+   argue with rather than vibes. */
+function hreDecayCoverage(country, year) {
+  const rows = [];
+  for (let a = 0; a < HRE_ARCHETYPES.length; a++) {
+    const arch = HRE_ARCHETYPES[a];
+    const home = { id: "x", archetype: arch.id, builtYear: (year || 2000) - 40, condition: { _care: 50 } };
+    let perYear = 0;
+    for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+      perYear += hreDecayPerPeriod(0, home, country || "United Kingdom", year || 2000, HRE_COMPONENTS[i], 0) *
+        HRE_PERIODS_PER_YEAR * HRE_COMPONENTS[i].weight;
+    }
+    rows.push({ archetype: arch.id, pointsPerYear: Math.round(perYear * 100) / 100 });
+  }
+  return rows;
+}
+
 /* ═══════════════ ENGINE ═══════════════ */
 
 function advance(state, totalDays) {
@@ -5242,6 +6164,12 @@ function advance(state, totalDays) {
        rent in exactly the months something notable happened. hreOnTick never
        sets s.pending, so it cannot clobber a popup. */
     hreOnTick(s);
+    /* HRE S10 tick (Phase 9). Its own line rather than a call inside hreOnTick,
+       because that function returns early for a tenant in prison and a building
+       does not stop rotting while its occupant is inside. Runs AFTER rent and
+       mortgage so a month's housing costs are charged in the order they are
+       actually incurred. Like hreOnTick it never sets s.pending. */
+    hreUpkeepTick(s);
 
     let milestoneFired = false;
     for (const m of MILESTONES) {
@@ -5406,6 +6334,7 @@ function doActivity(state, act) {
   if (act.special === "aiSettings") { return Object.assign(s, { pending: aiSettingsMenu(s) }); }
   if (act.special === "stxBoard") { s.pending = stxBoardMenu(s); return s; }
   if (act.special === "hreHome") { s.pending = hreHomeMenu(s); return s; }
+  if (act.special === "hreUpkeep") { s.pending = hreUpkeepMenu(s); return s; }
   if (act.special === "hreMarket") {
     /* Market memory is written HERE, on the draft the engine keeps — never
        inside the menu builder, whose clone would be discarded (Gotcha #2). */
@@ -8631,9 +9560,187 @@ function hreHomeMenu(s) {
   return { emoji: "🏠", title: "Where you live", text: bits.join(" "), options: opts };
 }
 
+/* ─────────────── S12 · S10 surface: looking after the place ───────────────
+   Phase 9's player-facing half. Presentation only: every number here is read
+   from the condition model, never decided here, and every mutation goes through
+   an option's `fx.run` because applyFx understands a fixed key set and
+   `s.hre.home.condition` is not in it.
+
+   The condition internals (`_overall`, `_care`) are never rendered. What the
+   player sees is a band word and the names of the two worst things, which is
+   also what a person actually knows about their own house. */
+
+const HRE_COMPONENT_LABEL = {
+  structure: "the structure", roof: "the roof", exterior: "the outside walls",
+  windows: "the windows", plumbing: "the plumbing", electrical: "the wiring",
+  heating: "the heating", kitchen: "the kitchen", bathroom: "the bathroom",
+  damp: "the damp course",
+};
+
+function hreComponentLabel(id) { return HRE_COMPONENT_LABEL[id] || id; }
+
+/* The state of the place, in words. Composed strictly from live condition
+   values, open failures and the policy — it never invents a fact, the same rule
+   S06's listing blurbs work under. */
+function hreUpkeepSummary(s) {
+  const home = hreHome(s);
+  if (!home || !home.condition) return "There is no record of the rooms, let alone the state of them.";
+  const cond = home.condition;
+  const pub = hrePublicCondition(cond);
+  const score = hreConditionScore(cond);
+  const worst = hreWorstComponents(cond);
+  const bits = [];
+  bits.push("The place is " + hreConditionBand(score) + ".");
+
+  const w0 = worst[0], w1 = worst[1];
+  if (w0 && pub[w0.id] < 55) {
+    bits.push("What is worst is " + hreComponentLabel(w0.id) +
+      (w1 && pub[w1.id] < 55 ? ", and after that " + hreComponentLabel(w1.id) : "") + ".");
+  } else {
+    bits.push("Nothing is asking for attention yet, which is the moment to give it some.");
+  }
+
+  const u = hreUpkeep(s);
+  if (u) {
+    const openIds = Object.keys(u.open || {});
+    if (openIds.length === 1) bits.push("One thing is actually broken: " + hreComponentLabel(openIds[0]) + ".");
+    else if (openIds.length > 1) bits.push(openIds.length + " things are actually broken, and they are not waiting politely.");
+    /* deferred maintenance, in the only unit that means anything: time */
+    let deferMax = 0, deferId = null;
+    for (const k in u.defer) if (u.defer[k] > deferMax) { deferMax = u.defer[k]; deferId = k; }
+    const years = Math.floor(deferMax / HRE_PERIODS_PER_YEAR);
+    if (years >= 3 && deferId) {
+      bits.push("Nobody has touched " + hreComponentLabel(deferId) + " in " + years +
+        " years, and it is getting worse faster than it used to.");
+    }
+  }
+
+  const v = hreHomeValueNow(s);
+  if (v) {
+    bits.push("As it stands it is worth about " + hreMoney(s, v.money) + ".");
+    if (v.factor < 0.95) {
+      bits.push("A version of this house that had been looked after would fetch " +
+        hreMoney(s, v.market.money) + ".");
+    }
+  }
+
+  if (u && u.ins) {
+    const tier = hreInsuranceTier(u.ins.tier);
+    bits.push("Insured — " + (tier ? tier.label : u.ins.tier) + ", " + hreMoney(s, u.ins.premium) + " a month.");
+  } else if (hreInsuranceAvailable(s)) {
+    bits.push("There is no cover on it.");
+  }
+  return bits.join(" ");
+}
+
+function hreInsuranceMenu(s) {
+  const u = hreUpkeep(s);
+  const opts = [];
+  if (!hreInsuranceAvailable(s)) {
+    return { emoji: "📄", title: "Insurance", options: [{ label: "Back", fx: { run: function (st) { st.pending = hreUpkeepMenu(st); } } }],
+      text: "There is nothing to buy. Nobody within reach of you is selling a promise about your house, and if the roof goes, the roof going is the whole of it." };
+  }
+  if (u && u.ins) {
+    const tier = hreInsuranceTier(u.ins.tier);
+    opts.push({ label: "Cancel the policy", fx: { run: function (st) {
+      hreCancelInsurance(st);
+      push(st, "📄 You cancelled it. The direct debit stops, the letters stop, and so does the part where somebody else pays.");
+    } } });
+    return { emoji: "📄", title: "Insurance", options: opts.concat([{ label: "Back", fx: { run: function (st) { st.pending = hreUpkeepMenu(st); } } }]),
+      text: "You are covered: " + (tier ? tier.label : u.ins.tier) + ", " + hreMoney(s, u.ins.premium) +
+        " a month, and the first " + Math.round(u.ins.excessPct * 100) + "% of any claim is yours." +
+        (u.ins.claims ? " You have claimed " + u.ins.claims + (u.ins.claims === 1 ? " time" : " times") + ", and the premium remembers it." : "") };
+  }
+  for (let i = 0; i < HRE_INSURANCE_TIERS.length; i++) {
+    const tier = HRE_INSURANCE_TIERS[i];
+    const q = hreInsuranceQuote(s, tier.id);
+    if (!q) continue;
+    opts.push({ label: tier.label + " — " + hreMoney(s, q.premium) + "/month",
+      cond: (function (id, premium) { return function (st) { return (st.money || 0) >= premium; }; })(tier.id, q.premium),
+      fx: { run: (function (id, label) { return function (st) {
+        const pol = hreTakeInsurance(st, id);
+        if (pol) push(st, "📄 You signed up for " + label + ". A folder arrives in the post that you will not read until the day you need it.");
+        else push(st, "📄 The paperwork went in and came back. Whatever the reason was, it was not one they explained.");
+      }; })(tier.id, tier.label) } });
+  }
+  opts.push({ label: "Back", fx: { run: function (st) { st.pending = hreUpkeepMenu(st); } } });
+  return { emoji: "📄", title: "Insurance", options: opts,
+    text: "Two products, both of them a bet against your own house. " +
+      HRE_INSURANCE_TIERS[0].blurb + " " + HRE_INSURANCE_TIERS[1].blurb };
+}
+
+function hreUpkeepMenu(s) {
+  const role = hreUpkeepRole(s);
+  const home = hreHome(s);
+  const opts = [];
+
+  if (!home || !home.condition || role === "none") {
+    return { emoji: "🧰", title: "Looking after the place", options: [{ label: "Close", fx: {} }],
+      text: role === "none"
+        ? "It isn't yours to look after. Whatever is going wrong with it is going wrong on somebody else's account."
+        : "There is no record of the place — nothing to maintain, on paper at least." };
+  }
+
+  const u = hreEnsureUpkeep(s);
+
+  /* things that are actually broken, worst first */
+  if (u) {
+    const openIds = Object.keys(u.open).sort(function (a, b) { return u.open[b].sev - u.open[a].sev; });
+    for (let i = 0; i < Math.min(3, openIds.length); i++) {
+      const cid = openIds[i];
+      const rec = u.open[cid];
+      opts.push({ label: "Fix " + hreComponentLabel(cid) + " — " + hreMoney(s, rec.cost),
+        fx: { run: (function (id) { return function (st) {
+          const r = hreRepairFailure(st, id);
+          if (r && r.ok) {
+            push(st, r.line);
+            if (r.claim && !r.claim.denied) push(st, HRE_CLAIM_LINE.paid);
+            else if (r.claim && r.claim.reason !== "none") push(st, HRE_CLAIM_LINE[r.claim.reason] || HRE_CLAIM_LINE.none);
+          } else if (r) {
+            push(st, "🧰 You rang round for quotes and every one of them was more than you have. It stays as it is, and it will not stay as it is for long.");
+          } else {
+            push(st, "🧰 Nothing to fix there — someone has already been.");
+          }
+        }; })(cid) } });
+    }
+  }
+
+  /* the three levels of looking after it */
+  for (let i = 0; i < HRE_MAINTENANCE.length; i++) {
+    const job = HRE_MAINTENANCE[i];
+    const price = hreMaintenancePrice(s, job.id);
+    if (price === null) continue;
+    const ready = hreMaintenanceReady(s, job.id);
+    opts.push({ label: job.label + " — " + hreMoney(s, price) + (ready ? "" : " · not due yet"),
+      cond: (function (id, p) { return function (st) { return (st.money || 0) >= p && hreMaintenanceReady(st, id); }; })(job.id, price),
+      fx: { run: (function (id) { return function (st) {
+        const r = hreDoMaintenance(st, id);
+        if (r) push(st, r.line);
+        else push(st, "🧰 You got as far as the ladder and no further. It'll keep.");
+      }; })(job.id) } });
+  }
+
+  if (role === "owner") {
+    opts.push({ label: "Insurance", fx: { run: function (st) { st.pending = hreInsuranceMenu(st); } } });
+  }
+
+  opts.push({ label: "Leave it for now",
+    fx: { feed: "🧰 You looked at the ceiling for a while and then went and did something else, which is how ceilings get like that." } });
+  opts.push({ label: "Close", fx: {} });
+
+  return { emoji: "🧰", title: "Looking after the place", text: hreUpkeepSummary(s), options: opts };
+}
+
 const HRE_GROUP = { id: "housing", emoji: "🏘", name: "Property", cond: (s) => !inPrison(s), items: [
   { id: "hreHome", minAge: 5, emoji: "🏠", label: "Where you live", cost: 0, special: "hreHome" },
   { id: "hreMarket", minAge: 16, emoji: "🔎", label: "What's on the market", cost: 0, special: "hreMarket" },
+  /* S10. Hidden unless the character is actually responsible for a building —
+     a lodger has nothing to maintain. cost: 0 matches every other menu-opening
+     item in this file (35 of 38 charge no time; module 24's queue), so the
+     spend is money and the brake on repeating it is hreMaintenanceReady's
+     cooldown, not the clock. */
+  { id: "hreUpkeep", minAge: 16, emoji: "🧰", label: "Look after the place", cost: 0, special: "hreUpkeep",
+    cond: (s) => hreUpkeepRole(s) !== "none" && !!hreHome(s) },
 ] };
 ACT_GROUPS.push(HRE_GROUP);
 
