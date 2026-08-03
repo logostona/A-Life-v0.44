@@ -1,0 +1,12531 @@
+import { useState, useEffect, useRef } from "react";
+
+/* ═══════════════ DATA ═══════════════ */
+
+const COUNTRIES = {
+  "Argentina": { cur: "AR$", cities: ["Buenos Aires", "Córdoba", "Rosario", "Mendoza"], ssm: 2010, tui: 0.08, aoc: 18 },
+  "Australia": { cur: "A$", cities: ["Sydney", "Melbourne", "Brisbane", "Perth"], ssm: 2017, tui: 1.0, aoc: 16 },
+  "Austria": { cur: "€", cities: ["Vienna", "Graz", "Salzburg", "Innsbruck"], ssm: 2019, tui: 0.08, aoc: 14 },
+  "Brazil": { cur: "R$", cities: ["São Paulo", "Rio de Janeiro", "Salvador", "Porto Alegre"], ssm: 2013, tui: 0.1, aoc: 14 },
+  "Canada": { cur: "C$", cities: ["Toronto", "Montreal", "Vancouver", "Halifax"], ssm: 2005, tui: 0.8, aoc: 16 },
+  "Chile": { cur: "CLP$", cities: ["Santiago", "Valparaíso", "Concepción"], ssm: 2022, tui: 0.9, aoc: 18 },
+  "China": { cur: "¥", cities: ["Beijing", "Shanghai", "Chengdu", "Guangzhou"], ssm: 2045, tui: 0.25, aoc: 14 },
+  "Colombia": { cur: "COL$", cities: ["Bogotá", "Medellín", "Cali", "Cartagena"], ssm: 2016, tui: 0.4, aoc: 14 },
+  "Cuba": { cur: "CUP$", cities: ["Havana", "Santiago de Cuba", "Varadero"], ssm: 2022, tui: 0.03, aoc: 16 },
+  "Denmark": { cur: "kr", cities: ["Copenhagen", "Aarhus", "Odense"], ssm: 2012, tui: 0.05, aoc: 15 },
+  "Egypt": { cur: "E£", cities: ["Cairo", "Alexandria", "Giza"], ssm: 2075, tui: 0.1, aoc: 18 },
+  "France": { cur: "€", cities: ["Paris", "Lyon", "Marseille", "Toulouse"], ssm: 2013, tui: 0.12, aoc: 15 },
+  "Germany": { cur: "€", cities: ["Berlin", "Hamburg", "Cologne", "Munich"], ssm: 2017, tui: 0.06, aoc: 14 },
+  "Greece": { cur: "€", cities: ["Athens", "Thessaloniki", "Patras"], ssm: 2024, tui: 0.1, aoc: 15 },
+  "India": { cur: "₹", cities: ["Mumbai", "Delhi", "Bengaluru", "Kolkata", "Chennai"], ssm: 2033, tui: 0.2, aoc: 18 },
+  "Indonesia": { cur: "Rp", cities: ["Jakarta", "Surabaya", "Bandung", "Denpasar"], ssm: 2062, tui: 0.25, aoc: 16 },
+  "Ireland": { cur: "€", cities: ["Dublin", "Cork", "Galway"], ssm: 2015, tui: 0.5, aoc: 17 },
+  "Israel": { cur: "₪", cities: ["Tel Aviv", "Jerusalem", "Haifa"], ssm: 2035, tui: 0.45, aoc: 16 },
+  "Italy": { cur: "€", cities: ["Rome", "Milan", "Naples", "Bologna"], ssm: 2032, tui: 0.3, aoc: 14 },
+  "Japan": { cur: "¥", cities: ["Tokyo", "Osaka", "Kyoto", "Sapporo"], ssm: 2031, tui: 0.7, aoc: 16 },
+  "Kenya": { cur: "KSh", cities: ["Nairobi", "Mombasa", "Kisumu"], ssm: 2065, tui: 0.3, aoc: 18 },
+  "Mexico": { cur: "MX$", cities: ["Mexico City", "Guadalajara", "Monterrey", "Oaxaca"], ssm: 2022, tui: 0.15, aoc: 17 },
+  "Netherlands": { cur: "€", cities: ["Amsterdam", "Rotterdam", "Utrecht", "Eindhoven"], ssm: 2001, tui: 0.4, aoc: 16 },
+  "New Zealand": { cur: "NZ$", cities: ["Auckland", "Wellington", "Christchurch"], ssm: 2013, tui: 0.7, aoc: 16 },
+  "Nigeria": { cur: "₦", cities: ["Lagos", "Abuja", "Kano", "Port Harcourt"], ssm: 2072, tui: 0.2, aoc: 18 },
+  "Norway": { cur: "kr", cities: ["Oslo", "Bergen", "Trondheim"], ssm: 2009, tui: 0.05, aoc: 16 },
+  "Philippines": { cur: "₱", cities: ["Manila", "Cebu City", "Davao"], ssm: 2036, tui: 0.25, aoc: 16 },
+  "Poland": { cur: "zł", cities: ["Warsaw", "Kraków", "Gdańsk", "Wrocław"], ssm: 2038, tui: 0.15, aoc: 15 },
+  "Portugal": { cur: "€", cities: ["Lisbon", "Porto", "Coimbra"], ssm: 2010, tui: 0.3, aoc: 16 },
+  "Russia": { cur: "₽", cities: ["Moscow", "Saint Petersburg", "Kazan", "Novosibirsk"], ssm: 2070, tui: 0.3, aoc: 16 },
+  "South Africa": { cur: "R", cities: ["Johannesburg", "Cape Town", "Durban", "Pretoria"], ssm: 2006, tui: 0.5, aoc: 16 },
+  "South Korea": { cur: "₩", cities: ["Seoul", "Busan", "Incheon"], ssm: 2033, tui: 0.6, aoc: 16 },
+  "Spain": { cur: "€", cities: ["Madrid", "Barcelona", "Valencia", "Seville"], ssm: 2005, tui: 0.25, aoc: 16 },
+  "Sweden": { cur: "kr", cities: ["Stockholm", "Gothenburg", "Malmö"], ssm: 2009, tui: 0.05, aoc: 15 },
+  "Switzerland": { cur: "CHF", cities: ["Zurich", "Geneva", "Bern", "Lausanne"], ssm: 2022, tui: 0.15, aoc: 16 },
+  "Thailand": { cur: "฿", cities: ["Bangkok", "Chiang Mai", "Phuket"], ssm: 2025, tui: 0.25, aoc: 15 },
+  "Turkey": { cur: "₺", cities: ["Istanbul", "Ankara", "Izmir", "Antalya"], ssm: 2055, tui: 0.15, aoc: 18 },
+  "Ukraine": { cur: "₴", cities: ["Kyiv", "Lviv", "Odesa", "Kharkiv"], ssm: 2032, tui: 0.2, aoc: 16 },
+  "United Kingdom": { cur: "£", cities: ["London", "Manchester", "Brighton", "Glasgow"], ssm: 2014, tui: 1.2, aoc: 16 },
+  "United States": { cur: "$", cities: ["New York", "San Francisco", "Chicago", "Austin", "Atlanta"], ssm: 2015, tui: 2.2, aoc: 17 },
+  "Vietnam": { cur: "₫", cities: ["Hanoi", "Ho Chi Minh City", "Da Nang"], ssm: 2042, tui: 0.2, aoc: 16 },
+};
+
+/* ~20 given names + surnames per country: drives your name, your parents,
+   dating candidates, and chosen-name options for trans arcs. */
+const NAMES = {
+  "Argentina": { m: ["Santiago", "Nicolás", "Facundo", "Tomás", "Lautaro", "Ignacio"], f: ["Sofía", "Valentina", "Micaela", "Julieta", "Rocío", "Camila"], n: ["Alex", "Ariel", "Cruz"], last: ["González", "Rodríguez", "Fernández", "Gómez", "Sosa", "Romero"] },
+  "Australia": { m: ["Jack", "Cooper", "Liam", "Xavier", "Beau", "Hamish"], f: ["Chloe", "Zara", "Mia", "Isla", "Tayla", "Sienna"], n: ["Riley", "Jules", "Kai"], last: ["Nguyen", "Thompson", "Kelly", "O'Brien", "Singh", "Baker"] },
+  "Austria": { m: ["Lukas", "Florian", "Sebastian", "Elias", "Maximilian", "Tobias"], f: ["Lena", "Sophie", "Johanna", "Marlene", "Valentina", "Elisabeth"], n: ["Kim", "Toni", "Noa"], last: ["Gruber", "Huber", "Wagner", "Pichler", "Steiner", "Moser"] },
+  "Brazil": { m: ["Lucas", "Thiago", "Rafael", "João", "Matheus", "Caio"], f: ["Ana", "Larissa", "Beatriz", "Camila", "Juliana", "Fernanda"], n: ["Alex", "Ariel", "Darci"], last: ["Silva", "Souza", "Ferreira", "Oliveira", "Costa", "Almeida"] },
+  "Canada": { m: ["Liam", "Étienne", "Owen", "Mathieu", "Cole", "Nathan"], f: ["Chloé", "Emma", "Sophie", "Hannah", "Josée", "Kiara"], n: ["Jesse", "Sam", "Reese"], last: ["Tremblay", "Nguyen", "MacDonald", "Chan", "Gagnon", "Fraser"] },
+  "Chile": { m: ["Matías", "Vicente", "Benjamín", "Cristóbal", "Felipe", "Sebastián"], f: ["Javiera", "Antonia", "Catalina", "Fernanda", "Josefa", "Constanza"], n: ["Alex", "Cruz", "Ariel"], last: ["Muñoz", "Contreras", "Silva", "Rojas", "Fuentes", "Espinoza"] },
+  "China": { m: ["Wei", "Jun", "Hao", "Feng", "Liang", "Bo"], f: ["Mei", "Xiuying", "Yan", "Fang", "Jia", "Ting"], n: ["Xin", "Yu", "Jing"], last: ["Zhang", "Wang", "Li", "Chen", "Liu", "Huang"] },
+  "Colombia": { m: ["Santiago", "Andrés", "Juan", "Camilo", "Esteban", "Mateo"], f: ["Valeria", "Isabella", "Daniela", "Manuela", "Salomé", "Luciana"], n: ["Alex", "Cruz", "Ariel"], last: ["Rodríguez", "Gómez", "Restrepo", "Ospina", "Cardona", "Vargas"] },
+  "Cuba": { m: ["Yoandry", "Reinier", "Alejandro", "Osvaldo", "Yunior", "Ernesto"], f: ["Yaimara", "Dayana", "Mariela", "Yanet", "Odalys", "Lisandra"], n: ["Alex", "Cruz", "Ariel"], last: ["Pérez", "Rodríguez", "Hernández", "Valdés", "Castillo", "Ferrer"] },
+  "Denmark": { m: ["Mikkel", "Jesper", "Anders", "Rasmus", "Frederik", "Emil"], f: ["Freja", "Astrid", "Mette", "Signe", "Ida", "Camilla"], n: ["Kim", "Bo", "Alex"], last: ["Jensen", "Nielsen", "Sørensen", "Holm", "Kjær", "Mikkelsen"] },
+  "Egypt": { m: ["Ahmed", "Mostafa", "Karim", "Youssef", "Tarek", "Hesham"], f: ["Mariam", "Salma", "Yasmin", "Heba", "Dalia", "Rania"], n: ["Nour", "Amal", "Sirin"], last: ["Hassan", "El-Sayed", "Mansour", "Fahmy", "Abdelrahman", "Shafik"] },
+  "France": { m: ["Lucas", "Thibault", "Mathis", "Rémi", "Baptiste", "Yanis"], f: ["Léa", "Manon", "Chloé", "Amandine", "Inès", "Sylvie"], n: ["Camille", "Sacha", "Charlie"], last: ["Moreau", "Dubois", "Lefèvre", "Bernard", "Traoré", "Rousseau"] },
+  "Germany": { m: ["Lukas", "Jonas", "Matthias", "Felix", "Hendrik", "Emre"], f: ["Lena", "Annika", "Katrin", "Greta", "Ayşe", "Ingrid"], n: ["Kim", "Alex", "Toni"], last: ["Meyer", "Schneider", "Bauer", "Krüger", "Yilmaz", "Hoffmann"] },
+  "Greece": { m: ["Nikos", "Yiannis", "Dimitris", "Stavros", "Kostas", "Alexandros"], f: ["Eleni", "Maria", "Katerina", "Sofia", "Despina", "Ioanna"], n: ["Alex", "Sasha", "Ari"], last: ["Papadopoulos", "Nikolaidis", "Georgiou", "Vlachos", "Pappas", "Antoniou"] },
+  "India": { m: ["Arjun", "Rohit", "Vikram", "Aditya", "Imran", "Karthik"], f: ["Priya", "Ananya", "Meera", "Divya", "Fatima", "Lakshmi"], n: ["Kiran", "Anmol", "Nirmal"], last: ["Sharma", "Iyer", "Banerjee", "Patel", "Reddy", "Khan"] },
+  "Indonesia": { m: ["Budi", "Agus", "Rizky", "Dimas", "Bayu", "Hendra"], f: ["Siti", "Dewi", "Ayu", "Ratna", "Fitri", "Indah"], n: ["Andi", "Cahaya", "Nur"], last: ["Wijaya", "Santoso", "Sari", "Pratama", "Halim", "Nasution"] },
+  "Ireland": { m: ["Cian", "Oisín", "Declan", "Fionn", "Pádraig", "Eoin"], f: ["Saoirse", "Niamh", "Aoife", "Róisín", "Ciara", "Sinéad"], n: ["Rory", "Casey", "Sam"], last: ["Murphy", "Kelly", "Byrne", "O'Sullivan", "Doyle", "Gallagher"] },
+  "Israel": { m: ["Yonatan", "Eitan", "Avi", "Yossi", "Itai", "Daniel"], f: ["Shira", "Tamar", "Yael", "Michal", "Efrat", "Noa"], n: ["Ariel", "Amit", "Omer"], last: ["Levi", "Cohen", "Mizrahi", "Peretz", "Shapira", "Barak"] },
+  "Italy": { m: ["Matteo", "Lorenzo", "Alessandro", "Davide", "Giacomo", "Federico"], f: ["Giulia", "Chiara", "Francesca", "Alessia", "Martina", "Elena"], n: ["Andrea", "Alex", "Nico"], last: ["Rossi", "Ferrari", "Conti", "Greco", "Marino", "Ricci"] },
+  "Japan": { m: ["Kenji", "Haruto", "Daichi", "Ryo", "Takumi", "Yuto"], f: ["Aiko", "Sakura", "Hana", "Miyu", "Keiko", "Nanami"], n: ["Hikaru", "Akira", "Sora"], last: ["Tanaka", "Watanabe", "Sato", "Nakamura", "Kobayashi", "Yoshida"] },
+  "Kenya": { m: ["Kamau", "Otieno", "Mwangi", "Juma", "Kipchoge", "Baraka"], f: ["Wanjiru", "Akinyi", "Nyokabi", "Zawadi", "Halima", "Njeri"], n: ["Amani", "Imani", "Upendo"], last: ["Otieno", "Mwangi", "Kamau", "Wanjala", "Ochieng", "Njoroge"] },
+  "Mexico": { m: ["Mateo", "Diego", "Alejandro", "Javier", "Emiliano", "Rodrigo"], f: ["Ximena", "Guadalupe", "Valentina", "Lucía", "Regina", "Fernanda"], n: ["Alex", "Cruz", "Andrea"], last: ["Hernández", "García", "Martínez", "Ramírez", "Torres", "Vázquez"] },
+  "Netherlands": { m: ["Daan", "Sven", "Bram", "Joris", "Youssef", "Thijs"], f: ["Sanne", "Femke", "Anouk", "Marijke", "Fatima", "Lotte"], n: ["Robin", "Sam", "Bo"], last: ["de Vries", "Jansen", "van Dijk", "Bakker", "Visser", "Mulder"] },
+  "New Zealand": { m: ["Tane", "Liam", "Hemi", "Jack", "Rawiri", "Ethan"], f: ["Aroha", "Ruby", "Anahera", "Charlotte", "Kiri", "Hine"], n: ["Ari", "Maia", "Kauri"], last: ["Ngata", "Williams", "Thompson", "Rewi", "Kahu", "Smith"] },
+  "Nigeria": { m: ["Chidi", "Emeka", "Tunde", "Segun", "Ifeanyi", "Musa"], f: ["Amara", "Ngozi", "Folake", "Adaeze", "Zainab", "Chiamaka"], n: ["Kelechi", "Chika", "Ebube"], last: ["Okafor", "Adeyemi", "Balogun", "Eze", "Okonkwo", "Abubakar"] },
+  "Norway": { m: ["Håkon", "Ola", "Sindre", "Magnus", "Jonas", "Even"], f: ["Ingrid", "Kari", "Solveig", "Maja", "Thea", "Silje"], n: ["Kim", "Robin", "Alex"], last: ["Hansen", "Berg", "Dahl", "Solberg", "Lund", "Nygård"] },
+  "Philippines": { m: ["Jose", "Carlo", "Miguel", "Rico", "Andres", "Paulo"], f: ["Maria", "Angeline", "Divina", "Liza", "Rosalie", "Jhoanna"], n: ["Jan", "Kris", "Alex"], last: ["Santos", "Reyes", "Dela Cruz", "Bautista", "Mendoza", "Villanueva"] },
+  "Poland": { m: ["Piotr", "Jakub", "Tomasz", "Michał", "Bartek", "Kacper"], f: ["Agnieszka", "Zofia", "Magdalena", "Julia", "Ewa", "Kinga"], n: ["Alex", "Sasha", "Kim"], last: ["Kowalski", "Nowak", "Wiśniewski", "Kaczmarek", "Zieliński", "Lewandowski"] },
+  "Portugal": { m: ["Tiago", "Rui", "Diogo", "Gonçalo", "Nuno", "Miguel"], f: ["Beatriz", "Inês", "Matilde", "Carolina", "Rita", "Joana"], n: ["Alex", "Ariel", "Sam"], last: ["Ferreira", "Costa", "Almeida", "Rocha", "Marques", "Teixeira"] },
+  "Russia": { m: ["Dmitri", "Sergei", "Nikolai", "Anton", "Ruslan", "Artyom"], f: ["Anastasia", "Olga", "Yulia", "Svetlana", "Marina", "Dasha"], n: ["Sasha", "Zhenya", "Valya"], last: ["Ivanov", "Petrova", "Sokolov", "Volkov", "Novikova", "Orlov"] },
+  "South Africa": { m: ["Sipho", "Thabo", "Johan", "Bongani", "Pieter", "Tshepo"], f: ["Nomsa", "Zanele", "Anneke", "Thandiwe", "Palesa", "Refilwe"], n: ["Lerato", "Ayanda", "Katlego"], last: ["Dlamini", "Nkosi", "van der Merwe", "Botha", "Mokoena", "Naidoo"] },
+  "South Korea": { m: ["Min-jun", "Ji-hoon", "Seung-ho", "Dong-hyun", "Tae-yang", "Joon-woo"], f: ["Seo-yeon", "Ha-eun", "Min-seo", "Yu-jin", "Eun-ji", "Hyun-ju"], n: ["Ji-woo", "Ha-neul", "Eun-woo"], last: ["Kim", "Lee", "Park", "Choi", "Jung", "Kang"] },
+  "Spain": { m: ["Iván", "Álvaro", "Sergio", "Javier", "Mateo", "Unai"], f: ["Lucía", "Marisol", "Carmen", "Nerea", "Paula", "Elena"], n: ["Alex", "Andrea", "Cruz"], last: ["Álvarez", "Fernández", "Iglesias", "Vidal", "Serrano", "Ortega"] },
+  "Sweden": { m: ["Erik", "Johan", "Nils", "Gustav", "Mattias", "Elias"], f: ["Elin", "Ingrid", "Astrid", "Sara", "Maja", "Linnea"], n: ["Kim", "Robin", "Love"], last: ["Lindqvist", "Andersson", "Berg", "Öberg", "Sjöberg", "Nyström"] },
+  "Switzerland": { m: ["Luca", "Noah", "Matthias", "Rémy", "Gian", "Elias"], f: ["Mia", "Elena", "Céline", "Anouk", "Ladina", "Sarah"], n: ["Robin", "Kim", "Andrea"], last: ["Müller", "Favre", "Bernasconi", "Keller", "Brunner", "Rochat"] },
+  "Thailand": { m: ["Somchai", "Anan", "Kittipong", "Chaiwat", "Nattapong", "Peerapat"], f: ["Siriporn", "Malee", "Ploy", "Suda", "Kanya", "Wanida"], n: ["Fah", "Nam", "Beam"], last: ["Saetang", "Chaiyaporn", "Wongsawat", "Srisuk", "Thongchai", "Boonmee"] },
+  "Turkey": { m: ["Emre", "Mustafa", "Kerem", "Burak", "Yusuf", "Levent"], f: ["Ayşe", "Zeynep", "Elif", "Merve", "Sibel", "Esra"], n: ["Deniz", "Umut", "Özgür"], last: ["Yılmaz", "Kaya", "Demir", "Şahin", "Çelik", "Arslan"] },
+  "Ukraine": { m: ["Andriy", "Taras", "Dmytro", "Bohdan", "Oleh", "Yaroslav"], f: ["Oksana", "Kateryna", "Yulia", "Iryna", "Sofiia", "Lesia"], n: ["Sasha", "Zhenya", "Valya"], last: ["Shevchenko", "Kovalenko", "Bondarenko", "Tkachuk", "Melnyk", "Kravets"] },
+  "United Kingdom": { m: ["Oliver", "Callum", "Harry", "Rhys", "Alfie", "Idris"], f: ["Amelia", "Niamh", "Poppy", "Freya", "Shanice", "Eleanor"], n: ["Jamie", "Charlie", "Alex"], last: ["Bennett", "Okafor", "Hughes", "Patel", "Whitfield", "Campbell"] },
+  "United States": { m: ["Daniel", "Marcus", "Tyler", "Andre", "Kevin", "Ethan"], f: ["Ashley", "Naomi", "Clara", "Danielle", "Brittany", "Maya"], n: ["Jordan", "Riley", "Casey"], last: ["Bennett", "Rivera", "Johnson", "Nguyen", "Coleman", "García"] },
+  "Vietnam": { m: ["Tuan", "Hung", "Duc", "Bao", "Khanh", "Long"], f: ["Linh", "Mai", "Thao", "Hoa", "Trang", "Yen"], n: ["Minh", "An", "Ngoc"], last: ["Nguyen", "Tran", "Le", "Pham", "Hoang", "Vu"] },
+};
+
+const sexKind = (sex) => (sex === "Male" ? "m" : sex === "Female" ? "f" : "n");
+function nameList(country, kind) {
+  const n = NAMES[country] || NAMES["United States"];
+  const l = n[kind];
+  return l && l.length ? l : n.m;
+}
+
+const PET_DOG = ["Biscuit", "Rex", "Luna", "Pipoca", "Mochi"];
+const PET_CAT = ["Soot", "Miso", "Duchess", "Bagel", "Nyx"];
+const BOSS_NAMES = ["Ms. Krantz", "Mr. Oduya", "Ms. Ferraro", "Mr. Watanabe", "Ms. Lindt", "Mr. Baros"];
+
+const DECADE_ACCENT = {
+  1970: "#C77D2E", 1980: "#C2477E", 1990: "#2E8C8A",
+  2000: "#3A6EA5", 2010: "#7A5AA6", 2020: "#D65A7A",
+  2030: "#4E9E6B", 2040: "#4E9E6B", 2050: "#4E9E6B", 2060: "#4E9E6B", 2070: "#4E9E6B",
+};
+const INK = "#22252A", PAPER = "#F6F5F1", CARD = "#FFFFFF";
+
+const WORLD_EVENTS = {
+  1973: ["The APA removes homosexuality from its list of mental disorders."],
+  1977: ["Harvey Milk wins office in San Francisco — one of the first openly gay elected officials."],
+  1981: ["Reports emerge of a mysterious illness among young men. The world will come to call it AIDS."],
+  1987: ["Hundreds of thousands march on Washington for lesbian and gay rights."],
+  1989: ["The Berlin Wall falls. Denmark becomes the first country to recognize same-sex partnerships."],
+  1991: ["The Soviet Union dissolves."],
+  1997: ["Ellen DeGeneres comes out on national television. 42 million people watch."],
+  2001: ["The Netherlands legalizes same-sex marriage — a world first.", "Terror attacks in the United States shake the world."],
+  2004: ["Massachusetts becomes the first US state with marriage equality."],
+  2008: ["A global financial crisis wipes out savings and jobs worldwide."],
+  2011: ["'Don't Ask, Don't Tell' is repealed in the US military."],
+  2013: ["Same-sex marriage arrives in Brazil, France, England and more in a single sweeping year."],
+  2015: ["The US Supreme Court legalizes same-sex marriage nationwide. Ireland does it by popular vote."],
+  2019: ["Taiwan becomes the first place in Asia with marriage equality."],
+  2020: ["A global pandemic locks down the world."],
+  2022: ["War returns to Europe as Russia invades Ukraine."],
+  2025: ["AI assistants become part of everyday life almost overnight."],
+  2028: ["The first crewed mission around Mars is announced."],
+  2031: ["Japan legalizes same-sex marriage after years of court rulings."],
+  2032: ["Solar power becomes the cheapest energy source in most of the world."],
+  2037: ["The last combustion-engine car rolls off a major production line."],
+  2043: ["A quarter of the world's workforce now shares jobs with AI colleagues."],
+};
+
+const TIME_STEPS = [
+  { label: "1d", d: 1 }, { label: "3d", d: 3 }, { label: "1w", d: 7 },
+  { label: "2w", d: 14 }, { label: "1m", d: 30 }, { label: "3m", d: 91 },
+];
+
+const SUBJECTS = { math: "Math", science: "Science", lit: "Literature", history: "History", arts: "Arts", lang: "Languages", geo: "Geography", music: "Music", pe: "Phys ed", tech: "Computing" };
+
+const INDUSTRIES = {
+  retail:      { name: "Retail", titles: ["Sales Associate", "Shift Lead", "Store Manager", "Regional Manager"], minYear: 0, deg: null, vibe: 0 },
+  food:        { name: "Food service", titles: ["Line Cook", "Chef de Partie", "Sous Chef", "Head Chef"], minYear: 0, deg: null, vibe: 0 },
+  construction:{ name: "Construction", titles: ["Laborer", "Foreman", "Site Manager", "Project Director"], minYear: 0, deg: null, vibe: -15 },
+  tech:        { name: "Tech", titles: ["Junior Developer", "Developer", "Senior Engineer", "Engineering Lead"], minYear: 1982, deg: "Computer Science", vibe: 12 },
+  healthcare:  { name: "Healthcare", titles: ["Orderly", "Nurse Assistant", "Nurse", "Head Nurse"], minYear: 0, deg: "Nursing", vibe: 8 },
+  medicine:    { name: "Medicine", titles: ["Resident", "Doctor", "Senior Physician", "Chief of Medicine"], minYear: 0, deg: "Medicine", degRequired: true, vibe: 5 },
+  education:   { name: "Education", titles: ["Teaching Aide", "Teacher", "Head of Department", "Principal"], minYear: 0, deg: "Education", vibe: 8 },
+  finance:     { name: "Finance", titles: ["Bank Teller", "Analyst", "Manager", "Director"], minYear: 0, deg: "Business", vibe: -10 },
+  media:       { name: "Media", titles: ["Runner", "Junior Writer", "Editor", "Executive Producer"], minYear: 0, deg: "Arts", vibe: 15 },
+  law:         { name: "Law", titles: ["Paralegal", "Associate", "Senior Associate", "Partner"], minYear: 0, deg: "Law", degRequired: true, vibe: -5 },
+};
+const TIER_SALARY = [0, [900, 1800], [2200, 3800], [4500, 8000], [9000, 16000]];
+const MAJORS = ["Computer Science", "Medicine", "Law", "Business", "Engineering", "Arts", "Education", "Nursing"];
+function collegeFee(s, tier) { return Math.max(120, Math.round(COLLEGE_TIERS[tier].fee * (COUNTRIES[s.profile.country].tui ?? 1))); }
+const COLLEGE_TIERS = { state: { name: "State college", fee: 3500, presBonus: 0 }, uni: { name: "University", fee: 8000, presBonus: 8 }, prestige: { name: "Prestigious university", fee: 18000, presBonus: 18 } };
+
+/* ═══════════════ HELPERS ═══════════════ */
+
+const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v) => Math.max(0, Math.min(100, v));
+
+function countryTol(country) {
+  const ssm = COUNTRIES[country].ssm;
+  return Math.max(-60, Math.min(20, Math.round((2015 - ssm) * 0.9)));
+}
+// acceptance where you actually live, not the world average
+function localAcceptance(s) { return clamp(eraAcceptance(yearOf(s)) + countryTol(s.profile.country)); }
+function criminalized(s) { return localAcceptance(s) < 12; }
+function ageOfConsent(s) { return Math.max(16, COUNTRIES[s.profile.country].aoc ?? 16); }
+
+function eraAcceptance(year) {
+  const pts = [[1970, 10], [1980, 15], [1990, 25], [2000, 40], [2010, 60], [2015, 75], [2020, 80], [2030, 85], [2040, 88], [2070, 90]];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [y1, v1] = pts[i], [y2, v2] = pts[i + 1];
+    if (year >= y1 && year <= y2) return Math.round(v1 + ((year - y1) / (y2 - y1)) * (v2 - v1));
+  }
+  return year < 1970 ? 8 : 90;
+}
+
+function currentDate(s) { const d = new Date(s.birth.y, s.birth.m - 1, s.birth.d); d.setDate(d.getDate() + s.ageDays); return d; }
+function fmtDate(d) { return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+function ageYears(s) { return Math.floor(s.ageDays / 365.25); }
+function ageLabel(s) { const y = ageYears(s); const m = Math.floor((s.ageDays % 365.25) / 30.44); return y === 0 ? `${m} mo` : `${y}y ${m}m`; }
+function yearOf(s) { return currentDate(s).getFullYear(); }
+function push(s, text, extra) { s.feed.push({ date: fmtDate(currentDate(s)), text, ...(extra || {}) }); }
+
+const sexTag = (s) => s.profile.sex === "Male" ? "M" : s.profile.sex === "Female" ? "F" : "I";
+function isQueerO(s) { return s.hidden.orientation !== "Straight"; }
+function syncOrientationToGender(s) {
+  if (s.flags.orientSynced) return null;
+  if (!s.discovered.gender || !s.discovered.orientation) return null;
+  const g = s.hidden.gender;
+  if (g !== "Trans woman" && g !== "Trans man") { s.flags.orientSynced = true; return null; } // non-binary/genderfluid: no binary flip
+  const o = s.hidden.orientation;
+  let next = null;
+  if (g === "Trans woman") { if (o === "Straight") next = "Lesbian"; else if (o === "Gay") next = "Straight"; }
+  else { if (o === "Straight") next = "Gay"; else if (o === "Lesbian") next = "Straight"; }
+  s.flags.orientSynced = true;
+  if (next && next !== o) { s.hidden.orientation = next; return next; }
+  return null;
+}
+function isQueerG(s) { return s.hidden.gender !== "Cisgender"; }
+function isOutQueer(s) { return (s.discovered.orientation && isQueerO(s)) || (s.discovered.gender && isQueerG(s)); }
+function sameSexCouple(s, p) { const me = sexTag(s); return (me === "M" && p.g === "M") || (me === "F" && p.g === "F") || p.g === "NB"; }
+function marriageLegal(s, p) { return !sameSexCouple(s, p) || yearOf(s) >= COUNTRIES[s.profile.country].ssm; }
+function activePartners(s) { return Object.entries(s.romance).filter(([, p]) => ["dating", "serious", "engaged", "married"].includes(p.status)); }
+function usedName(s) { return s.profile.usedName || s.profile.first; }
+
+/* ═══════════════ PROCEDURAL SIMULATION ENGINE ═══════════════ */
+/* Module 14. Generalizes the two existing "computed-from-attributes"
+   reference patterns — staffDisposition() (06) and schoolLegal()'s 5-tier
+   ladder (11) — into domain-agnostic frameworks other systems can call
+   instead of each writing a bespoke version.
+   Deterministic: no RNG inside npcDisposition/institutionalTier. Callers
+   roll their own dice against the returned score/tier if variance is
+   wanted, exactly as their reference implementations do.
+   NOTE (integration, 2026-07): the incoming handoff assumed higher
+   `politics` meant LESS accepting. The real convention is the opposite —
+   traitText() at the RELATIONSHIP ACTIONS section reads politics > 65 as
+   "leans progressive". Corrected here to use politics directly. */
+
+function npcDisposition(npc, s, opts = {}) {
+  // npc: any person object (family/friends/romance/relatives/children).
+  // opts.weight: per-trait weighting override for THIS kind of reaction
+  //   (e.g. lending money weights loyalty/rel; coming out weights acceptance).
+  // opts.stakes: 0-100. How much the era/country climate swings the result
+  //   vs. the npc's own personality. 0 = pure personal read, 100 = fully
+  //   CE-gated (period bigotry can override an individually kind npc). Def 40.
+  // Returns { score: 0-100, tier: hostile|cold|neutral|warm|ally, factors }
+  const w = {
+    warmth: 0.25, kindness: 0.2, loyalty: 0.15,
+    acceptance: 0.25, politics: 0.05, rel: 0.1,
+    ...opts.weight,
+  };
+  const stakes = opts.stakes ?? 40;
+
+  const personal =
+    (npc.warmth ?? 50) * w.warmth +
+    (npc.kindness ?? 50) * w.kindness +
+    (npc.loyalty ?? 50) * w.loyalty +
+    (npc.acceptance ?? 50) * w.acceptance +
+    (npc.politics ?? 50) * w.politics +
+    clamp(npc.rel ?? 50) * w.rel;
+
+  const totalW = w.warmth + w.kindness + w.loyalty + w.acceptance + w.politics + w.rel;
+  const personalScore = totalW > 0 ? personal / totalW : 50;
+
+  const ce = localAcceptance(s);
+  const blended = personalScore * (1 - stakes / 100) + ce * (stakes / 100);
+  const score = clamp(Math.round(blended));
+  const tier =
+    score >= 80 ? "ally" : score >= 60 ? "warm" :
+    score >= 40 ? "neutral" : score >= 20 ? "cold" : "hostile";
+
+  return {
+    score, tier,
+    factors: {
+      warmth: npc.warmth, kindness: npc.kindness, loyalty: npc.loyalty,
+      acceptance: npc.acceptance, politics: npc.politics, rel: npc.rel,
+      ceContext: ce, stakesWeight: stakes,
+    },
+  };
+}
+
+const INST_TIER_ORDER = ["criminalised", "none", "emerging", "protected", "strong"];
+
+function institutionalTier(domain, s, opts = {}) {
+  // domain: label only ("school","workplace","healthcare","housing","military",
+  //   "adoption","immigration"...). No per-domain hardcoding — parameterized
+  //   entirely via opts, so new domains need no edit to this function.
+  // opts.domainLag: years to shift the era curve for domains that historically
+  //   trail (workplace protections lag marriage; military lags further).
+  // opts.institutionModifier: -20..+20 for ONE institution within the domain —
+  //   this is how "faith schools lag their country's tier" generalizes.
+  // Returns { tier, index (0-4 into INST_TIER_ORDER), score, domain }
+  const year = yearOf(s);
+  const country = s.profile.country;
+  const lag = opts.domainLag ?? 0;
+  const eraAtEffective = eraAcceptance(year - lag);
+  const score = clamp(Math.round(eraAtEffective + countryTol(country) + (opts.institutionModifier ?? 0)));
+
+  let tier;
+  if (criminalized(s)) tier = "criminalised";
+  else if (score < 25) tier = "none";
+  else if (score < 50) tier = "emerging";
+  else if (score < 75) tier = "protected";
+  else tier = "strong";
+
+  return { tier, index: INST_TIER_ORDER.indexOf(tier), score, domain };
+}
+
+function makeReactionEvent(cfg) {
+  // Collapses the "one hand-written event per (relationship-type × outcome)"
+  // pattern into a factory: the domain author supplies ONE tier-banked
+  // fragment set, and disposition picks the fitting fragment at runtime.
+  // cfg: { id, minAge, maxAge, cd, once, w,
+  //        pickNpc: (s) => ({ container, key, npc }) | null,
+  //        dispositionOpts: { weight?, stakes? },
+  //        relKey: "rel" | "relF" | "relR",
+  //        fragments: { hostile:[{text,fx?,relDelta?}], cold:[], neutral:[], warm:[], ally:[] } }
+  return {
+    id: cfg.id, i: 1, w: cfg.w ?? 10,
+    minAge: cfg.minAge, maxAge: cfg.maxAge, cd: cfg.cd, once: cfg.once,
+    cond: (s) => !!cfg.pickNpc(s),
+    run: (s) => {
+      const picked = cfg.pickNpc(s);
+      if (!picked) return {};
+      const { npc, key } = picked;
+      const disp = npcDisposition(npc, s, cfg.dispositionOpts || {});
+      const bank = cfg.fragments[disp.tier] || cfg.fragments.neutral || [];
+      if (!bank.length) return {};
+      const choice = pick(bank);
+      const fx = { ...(choice.fx || {}) };
+      if (cfg.relKey && typeof fx[cfg.relKey] === "undefined" && typeof choice.relDelta === "number") {
+        fx[cfg.relKey] = { [key]: choice.relDelta };
+      }
+      return { auto: [choice.text], fx };
+    },
+  };
+}
+
+/* ═══════════════ CHARACTER ═══════════════ */
+
+function genderOptionsFor(sex) {
+  const base = ["Cisgender", "Non-binary", "Genderfluid"];
+  if (sex === "Male") return ["Cisgender", "Trans woman", "Non-binary", "Genderfluid"];
+  if (sex === "Female") return ["Cisgender", "Trans man", "Non-binary", "Genderfluid"];
+  return ["Cisgender", "Trans woman", "Trans man", "Non-binary", "Genderfluid"];
+}
+function orientOptionsFor(sex) {
+  return ["Straight", sex === "Female" ? "Lesbian" : "Gay", "Bisexual", "Pansexual", "Asexual", "Fluid"];
+}
+function rollHiddenIdentity(sex, chosenO, chosenG) {
+  // a person assigned female at birth can't be a trans woman — silently re-roll incoherent picks
+  if (chosenG && !genderOptionsFor(sex).includes(chosenG)) chosenG = "random";
+  if (chosenO && !orientOptionsFor(sex).includes(chosenO) && chosenO !== "random") chosenO = "random";
+  if (chosenO && chosenO !== "random" && chosenG && chosenG !== "random") return { orientation: chosenO, gender: chosenG };
+  const r = Math.random() * 100;
+  let orientation;
+  if (r < 35) orientation = "Straight";
+  else if (r < 60) orientation = sex === "Female" ? "Lesbian" : "Gay";
+  else if (r < 80) orientation = "Bisexual";
+  else if (r < 88) orientation = "Pansexual";
+  else if (r < 95) orientation = "Asexual";
+  else orientation = "Fluid";
+  const g = Math.random() * 100;
+  let gender;
+  if (g < 60) gender = "Cisgender";
+  else if (g < 80) gender = sex === "Male" ? "Trans woman" : "Trans man";
+  else if (g < 95) gender = "Non-binary";
+  else gender = "Genderfluid";
+  return { orientation: chosenO && chosenO !== "random" ? chosenO : orientation, gender: chosenG && chosenG !== "random" ? chosenG : gender };
+}
+
+function makePerson(name, role, opts = {}) {
+  return {
+    name, role,
+    rel: opts.rel ?? rnd(50, 80),
+    warmth: opts.warmth ?? rnd(25, 95),
+    kindness: opts.kindness ?? rnd(25, 95),
+    loyalty: opts.loyalty ?? rnd(25, 95),
+    acceptance: opts.acceptance ?? rnd(20, 90),
+    politics: opts.politics ?? rnd(5, 95),
+    pet: opts.pet ?? false,
+    g: opts.g ?? null,
+    known: [], lastTime: -999, lastTalk: -999, lastGift: -999,
+  };
+}
+
+function makeParents(birthYear, country) {
+  const era = eraAcceptance(birthYear + 14);
+  const roll = (bias) => clamp(era + rnd(-30, 30) + bias);
+  return {
+    mom: { ...makePerson(pick(nameList(country, "f")), "Mom", { rel: rnd(70, 95), acceptance: roll(5), politics: clamp(era + rnd(-25, 25)) }), ageAtBirth: rnd(19, 40) },
+    dad: { ...makePerson(pick(nameList(country, "m")), "Dad", { rel: rnd(65, 92), acceptance: roll(-5), politics: clamp(era + rnd(-30, 20)) }), ageAtBirth: rnd(20, 45) },
+  };
+}
+function parentAge(s, key) { const p = s.family[key]; return (p?.ageAtBirth ?? 28) + ageYears(s); }
+
+function candidateGender(s) {
+  const me = sexTag(s), o = s.hidden.orientation;
+  if (o === "Straight") return me === "M" ? "F" : "M";
+  if (o === "Gay") return "M";
+  if (o === "Lesbian") return "F";
+  if (o === "Pansexual" || o === "Fluid") return pick(["M", "F", "NB"]);
+  return pick(["M", "F"]); // Bi, Ace
+}
+function candidateName(s, g) {
+  const pool = nameList(s.profile.country, g === "M" ? "m" : g === "F" ? "f" : "n");
+  const used = new Set([usedName(s), s.family.mom.name, s.family.dad.name,
+    ...Object.values(s.friends).map((p) => p.name), ...Object.values(s.romance).map((p) => p.name)]);
+  const free = pool.filter((n) => !used.has(n));
+  // pool exhausted? disambiguate with a surname, the way real life does
+  return free.length ? pick(free) : `${pick(pool)} ${pick(nameList(s.profile.country, "last"))}`;
+}
+
+function newCharacter(form) {
+  const hidden = rollHiddenIdentity(form.sex, form.orient, form.gid);
+  const clsHealth = { Poor: rnd(45, 70), Working: rnd(55, 80), Middle: rnd(60, 88), Wealthy: rnd(70, 95) }[form.cls];
+  const sm = form.stSmarts != null ? +form.stSmarts : rnd(30, 90);
+  const subj = {};
+  for (const k in SUBJECTS) subj[k] = clamp(sm + rnd(-15, 15));
+  return {
+    v: 4,
+    profile: { ...form, usedName: form.first },
+    hidden,
+    discovered: { gender: false, orientation: false },
+    outTo: {},
+    stats: {
+      health: form.stHealth != null ? +form.stHealth : clsHealth,
+      happiness: form.stHappiness != null ? +form.stHappiness : rnd(60, 90),
+      smarts: sm,
+      looks: form.stLooks != null ? +form.stLooks : rnd(30, 90),
+    },
+    emergent: {}, money: 0,
+    family: { ...makeParents(form.birthYear, form.country), ...makeSiblings(form.birthYear, form.country, form.sex) },
+    relatives: makeRelatives(form.birthYear, form.country),
+    friends: {}, romance: {}, spouse: null, children: {}, conditions: {}, suspicion: {}, school: null, social: { accounts: {}, followers: 0, reach: 0, drama: 0 },
+    body: { hair: null, color: null, nails: null, pedi: false, tan: 0, wax: 0, laserFace: 0, laserBody: 0 },
+    education: { stage: "pre", subjects: subj, extra: null, college: null, degree: null, debt: 0 },
+    career: { job: null, sideHustle: null, quitCount: 0 },
+    birth: { y: form.birthYear, m: rnd(1, 12), d: rnd(1, 28) },
+    ageDays: 0, feed: [], pending: null, timeStep: 7,
+    flags: {
+      ...(form.discOAt && form.discOAt !== "random" ? { discOAt: +form.discOAt } : {}),
+      ...(form.discGAt && form.discGAt !== "random" ? { discGAt: +form.discGAt } : {}),
+      fam_newSibRoll: Math.random() < 0.5,
+      fam_divorceRoll: Math.random() < 0.28,
+      fam_deathRoll: Math.random() < 0.1,
+      fam_momRemarry: Math.random() < 0.5,
+      fam_dadRemarry: Math.random() < 0.5,
+    },
+    ai: { enabled: false, level: "flavor" },
+    hre: hreInit(hreSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random()),
+                 form.country, form.city, form.cls, +form.birthYear),
+    stx: { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] },
+    alive: true, death: null,
+  };
+}
+
+function migrate(s) {
+  if (!s.ai) s.ai = { enabled: false, level: "flavor" };
+  hreMigrate(s);
+  if (!s.stx) s.stx = { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] };
+  if (!s.stx.req) s.stx.req = {};
+  if (!s.stx.staff) s.stx.staff = {};
+  if (!Array.isArray(s.stx.lies)) s.stx.lies = [];
+  if (!Array.isArray(s.stx.log)) s.stx.log = [];
+  if (s.stx.inst == null) s.stx.inst = 0;
+  if (s.stx.cred == null) s.stx.cred = 100;
+  if (s.stx.caught == null) s.stx.caught = 0;
+  if (s.stx.complaints == null) s.stx.complaints = 0;
+  if (!s.outTo || typeof s.outTo !== "object" || Array.isArray(s.outTo)) s.outTo = {};
+  stxRepairOut(s);
+  if (!s.friends) s.friends = {};
+  if (!s.children) s.children = {};
+  if (!s.conditions) s.conditions = {};
+  if (!s.suspicion) s.suspicion = {};
+  if (!s.relatives) s.relatives = {};
+  if (s.school === undefined) s.school = null;
+  if (!s.social) s.social = { accounts: {}, followers: 0, reach: 0, drama: 0 };
+  if (!s.body) s.body = { hair: null, color: null, nails: null, pedi: false, tan: 0, wax: 0, laserFace: 0, laserBody: 0 };
+  // saves from before mid-life family events existed: give them the same one-time rolls a new life gets
+  if (s.flags && s.flags.fam_newSibRoll === undefined) {
+    s.flags.fam_newSibRoll = Math.random() < 0.5;
+    s.flags.fam_divorceRoll = Math.random() < 0.28;
+    s.flags.fam_deathRoll = Math.random() < 0.1;
+    s.flags.fam_momRemarry = Math.random() < 0.5;
+    s.flags.fam_dadRemarry = Math.random() < 0.5;
+  }
+  if (s.flags && Array.isArray(s.flags.record)) s.flags.record = s.flags.record.map((r) => typeof r === "string" ? { id: r, deg: ({pickpocket:1,shoplift:1,porch:1,mischief:1,morality:1}[r] ? "misdemeanor" : ({arson:1,bank:1,train:1,hitman:1,murder:1}[r] ? "violent" : "felony")), day: 0 } : r);
+  // older saves predate the extra subjects and the renamed childhood friend
+  if (s.education && s.education.subjects) for (const k in SUBJECTS) if (s.education.subjects[k] === undefined) s.education.subjects[k] = clamp((s.stats?.smarts ?? 50) + rnd(-15, 15));
+  if (s.friends && s.friends.dee && !s.friends.bff) { s.friends.bff = s.friends.dee; delete s.friends.dee; }
+  if (!s.timeStep) s.timeStep = 7;
+  if (!s.romance) s.romance = {};
+  if (s.spouse === undefined) s.spouse = null;
+  if (!s.outTo) s.outTo = {};
+  if (!s.profile.usedName) s.profile.usedName = s.profile.first;
+  if (!s.education) {
+    const sm = s.stats.smarts, subj = {};
+    for (const k in SUBJECTS) subj[k] = clamp(sm + rnd(-15, 15));
+    const a = ageYears(s);
+    s.education = { stage: a < 6 ? "pre" : a < 11 ? "primary" : a < 14 ? "middle" : a < 18 ? "high" : "done", subjects: subj, extra: null, college: null, degree: null, debt: 0 };
+  }
+  if (!s.career) s.career = { job: null, sideHustle: null, quitCount: 0 };
+  if (s.alive === undefined) s.alive = true;
+  if (s.death === undefined) s.death = null;
+  for (const grp of [s.family, s.friends, s.romance]) {
+    for (const k of Object.keys(grp)) {
+      const p = grp[k];
+      if (p.politics === undefined) p.politics = rnd(5, 95);
+      if (p.loyalty === undefined) p.loyalty = rnd(25, 95);
+      if (!p.known) p.known = [];
+      if (p.lastTime === undefined) { p.lastTime = -999; p.lastTalk = -999; }
+      if (p.lastGift === undefined) p.lastGift = -999;
+    }
+  }
+
+  s.v = 4;
+  return s;
+}
+
+/* ═══════════════ FX ═══════════════ */
+
+function applyFx(s, fx) {
+  if (!fx) return;
+  if (fx.stats) for (const k in fx.stats) s.stats[k] = clamp(s.stats[k] + fx.stats[k]);
+  if (fx.money) s.money = Math.max(0, s.money + fx.money);
+  if (fx.rel) for (const k in fx.rel) if (s.family[k]) s.family[k].rel = clamp(s.family[k].rel + fx.rel[k]);
+  if (fx.relF) for (const k in fx.relF) if (s.friends[k]) s.friends[k].rel = clamp(s.friends[k].rel + fx.relF[k]);
+  if (fx.relR) for (const k in fx.relR) if (s.romance[k]) s.romance[k].rel = clamp(s.romance[k].rel + fx.relR[k]);
+  if (fx.subj) for (const k in fx.subj) s.education.subjects[k] = clamp(s.education.subjects[k] + fx.subj[k]);
+  if (fx.emergent) for (const k in fx.emergent) {
+    if (!(k in s.emergent)) s.emergent[k] = 50;
+    s.emergent[k] = clamp(s.emergent[k] + fx.emergent[k]);
+  }
+  if (fx.addFriend) {
+    const f = fx.addFriend;
+    s.friends[f.key] = makePerson(f.name, f.role, { rel: f.rel, pet: f.pet });
+    if (f.key === "bff") s.flags.bestFriend = true;
+  }
+  if (fx.addRomance) {
+    const f = fx.addRomance;
+    const key = "r" + (s.flags.rSeq = (s.flags.rSeq || 0) + 1);
+    s.romance[key] = { ...makePerson(f.name, "Dating", { rel: f.rel ?? rnd(55, 70), g: f.g }), status: "dating", openOk: false, chem: f.chem ?? rnd(50, 90) };
+  }
+  if (fx.setR) for (const k in fx.setR) if (s.romance[k]) Object.assign(s.romance[k], fx.setR[k]);
+  if (fx.breakup) doBreakup(s, fx.breakup.key, fx.breakup.hard);
+  if (fx.run) fx.run(s);
+  if (fx.flags) Object.assign(s.flags, fx.flags);
+  if (fx.feed) push(s, fx.feed);
+  if (fx.next) s.pending = fx.next;
+}
+
+function doBreakup(s, key, hard) {
+  const p = s.romance[key]; if (!p) return;
+  const wasDeep = ["serious", "engaged", "married"].includes(p.status);
+  if (p.status === "married") { s.spouse = null; s.money = Math.round(s.money * (0.5 + Math.random() * 0.2)); }
+  p.status = "ex"; p.role = "Ex"; p.openOk = false; p.exSince = s.ageDays;
+  s.stats.happiness = clamp(s.stats.happiness - (wasDeep ? 12 : 6) - (hard ? 4 : 0));
+  s.stats.health = clamp(s.stats.health - (wasDeep ? 2 : 0));
+}
+
+function gainDegree(s) {
+  const c = s.education.college;
+  s.education.degree = c.major;
+  s.education.college = null;
+  s.education.stage = "done";
+  push(s, `🎓 You graduated: ${c.major}, ${COLLEGE_TIERS[c.tier].name}. ${s.education.debt > 0 ? `Student debt: ${s.profile.curSym}${s.education.debt}.` : "Debt-free, somehow."}`);
+  s.stats.happiness = clamp(s.stats.happiness + 8);
+}
+
+/* ═══════════════ COMING OUT ═══════════════ */
+
+function comeOutTo(state, group, key) {
+  const s = JSON.parse(JSON.stringify(state));
+  const p = s[group][key];
+  const era = localAcceptance(s);
+  // nobody is tolerant in a vacuum — an open-minded parent in 1986 Lagos is still shaped by 1986 Lagos
+  const eff = p.acceptance * (0.38 + era / 165);
+  const score = eff * 0.5 + era * 0.35 + p.rel * 0.15;
+  s.outTo[key] = true;
+  const idBits = [];
+  if (s.discovered.orientation && isQueerO(s)) idBits.push(s.hidden.orientation.toLowerCase());
+  if (s.discovered.gender && isQueerG(s)) idBits.push(s.hidden.gender.toLowerCase());
+  const what = idBits.join(" and ");
+  if (!p.known.includes("acceptance")) p.known.push("acceptance");
+  if (score > 65) {
+    p.rel = clamp(p.rel + 10);
+    s.stats.happiness = clamp(s.stats.happiness + 6);
+    push(s, `🏳️‍🌈 You told ${p.name} you're ${what}. ${p.warmth > 60 ? `They hugged you before you even finished the sentence. "You're you. That's all I ever wanted."` : `A pause, a nod, and then: "Okay. Thank you for telling me." From ${p.name}, that's an embrace.`}`);
+  } else if (score > 40) {
+    p.rel = clamp(p.rel - 5);
+    push(s, `🏳️‍🌈 You told ${p.name} you're ${what}. They went quiet. "I... need some time with this." It wasn't a door slamming. It wasn't open arms either.`);
+    s.flags["thaw_" + key] = s.ageDays;
+  } else {
+    p.rel = clamp(p.rel - 25);
+    s.stats.happiness = clamp(s.stats.happiness - 8);
+    push(s, `🏳️‍🌈 You told ${p.name} you're ${what}. It went badly. ${p.kindness > 55 ? "They didn't shout — worse, they looked away and changed the subject. A wall went up." : `"Not in this house." The words landed like furniture being rearranged forever.`}`);
+    // in a hostile place and time, a bad reaction from a parent can cost you the roof
+    if (group === "family" && score < 26 && ageYears(s) >= 13 && hreAtParents(s)) {
+      const risk = 0.9 - (p.kindness / 300) - (era / 150);
+      if (Math.random() < risk) {
+        /* WRITER INVERSION (Phase 7 step 4). Authority moves to HRE; the raw
+           flag is kept in step because STREET_GROUP's cond, the street POOL
+           events and statusChips still read it directly. Retiring the flag is
+           a later step and must not happen until those readers invert. */
+        hreSetTenure(s, "homeless", null);
+        s.flags.homeless = s.ageDays;
+        s.stats.happiness = clamp(s.stats.happiness - 18);
+        s.stats.health = clamp(s.stats.health - 8);
+        p.rel = clamp(p.rel - 25);
+        const other = key === "mom" ? s.family.dad : s.family.mom;
+        push(s, `🚪 ${p.name} told you to get out. ${other && other.acceptance > 55 ? `${other.name} argued, then cried, then packed you a bag with shaking hands.` : "Nobody argued for you."} You left with what you could carry. ${criminalized(s) ? `In ${s.profile.country} in ${yearOf(s)}, there is nowhere official to turn — no shelter that would take you for this reason, and going to the police would be worse than the street.` : "The shelter list is short and the waiting lists are long."}`);
+      }
+    }
+    s.flags["rift_" + key] = s.ageDays;
+  }
+  return s;
+}
+
+function comeOutWork(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  s.outTo.work = true;
+  const era = eraAcceptance(yearOf(s));
+  const vibe = s.career.job ? (INDUSTRIES[s.career.job.industry]?.vibe || 0) : 0;
+  const score = era + vibe + rnd(-10, 10);
+  if (score > 60) push(s, `🏳️‍🌈 You stopped editing pronouns in the break room. A couple of coworkers went out of their way to be kind. Mostly, work stayed work — which is exactly the point.`);
+  else if (score > 35) push(s, `🏳️‍🌈 You came out at work. Reactions ranged from warm to weird. One person "has questions". HR does not, thankfully.`);
+  else { push(s, `🏳️‍🌈 You came out at work. The temperature dropped a few degrees. Invitations dried up in some corners. You kept your head high and your work excellent.`); s.stats.happiness = clamp(s.stats.happiness - 4); if (s.career.job) s.career.job.perf = clamp(s.career.job.perf - 5); }
+  return s;
+}
+
+function comeOutPublic(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  s.outTo.public = true;
+  const era = eraAcceptance(yearOf(s));
+  if (era > 60) push(s, `🏳️‍🌈 You're simply, publicly you now — no more mental spreadsheets of who knows what. The relief is physical.`);
+  else push(s, `🏳️‍🌈 You decided to live openly, era be damned. It costs something, some days. It pays back in not disappearing.`);
+  s.stats.happiness = clamp(s.stats.happiness + 8);
+  s.emergent.courage = clamp((s.emergent.courage ?? 50) + 10);
+  return s;
+}
+
+/* ═══════════════ MILESTONES ═══════════════ */
+
+function decadeNews(year) {
+  if (year < 1980) return "The newspaper mentions activists marching after Stonewall. The adults change the subject.";
+  if (year < 1992) return "The evening news covers a frightening epidemic. Nobody in the house explains it to you properly.";
+  if (year < 2000) return "A TV character came out this season. Half the neighborhood is scandalized, half quietly moved.";
+  if (year < 2010) return "There's a debate on TV about whether people like some of your neighbors should be allowed to marry.";
+  if (year < 2016) return "Country after country is legalizing same-sex marriage. Something is shifting.";
+  if (year < 2026) return "Pride month ads are everywhere in June. Opinions online are... loud, in every direction.";
+  return "Identity is discussed at school the way weather is — sometimes stormy, mostly ordinary.";
+}
+
+const ORIENT_DISCOVERY_TEXT = {
+  Straight: `Somewhere between classes and bus rides, you realize the standard script actually fits you. Boys like girls, girls like boys, you like exactly who you're "supposed" to. Lucky roll, honestly.`,
+  Gay: `It stops being deniable on an ordinary afternoon: the way your chest tightens is for boys, has always been for boys, no matter how the script reads.`,
+  Lesbian: `It clicks quietly, like a key you've been holding the whole time: it's girls. It was always girls.`,
+  Bisexual: `The realization isn't "either/or" — it's "both, actually," and the word for that exists, and it's yours.`,
+  Pansexual: `You figure out your compass doesn't point at a gender at all. It points at people.`,
+  Asexual: `While everyone else combusts over crushes, you realize you're... not. Not broken — just wired for a different kind of closeness.`,
+  Fluid: `You stop trying to pin the needle down. Some seasons it moves. That's not confusion, you realize — that's just its shape.`,
+};
+
+const MILESTONES = [
+  { id: "birth", at: 0, run: (s) => ({ auto: [
+    `👶 You were born in ${s.profile.city}, ${s.profile.country}, into a ${s.profile.cls.toLowerCase()}-class family.`,
+    `Your mom, ${s.family.mom.name}, is ${s.family.mom.warmth > 65 ? "warm and attentive" : s.family.mom.warmth > 40 ? "caring but reserved" : "distant, often tired"}. ${s.family.mom.kindness > 60 ? "People say she's kind to a fault." : "She has a sharp edge people tiptoe around."}`,
+    `Your dad, ${s.family.dad.name}, is ${s.family.dad.warmth > 65 ? "affectionate in his own loud way" : s.family.dad.warmth > 40 ? "steady, a man of routines" : "hard to read, hard to reach"}. ${s.family.dad.kindness > 60 ? "He's generous with neighbors and strangers." : "He keeps score of favors."}`,
+  ] }) },
+  { id: "steps", at: 380, run: () => ({ auto: ["🚼 You took your first steps. Your parents argued happily about who saw it first."] }) },
+  { id: "word", at: 540, run: (s) => ({ event: { emoji: "🗣️", title: "First word", text: "Everyone leans in. What comes out of your mouth first?", options: [
+    { label: `"Mama"`, fx: { rel: { mom: +6 }, feed: `Your first word was "mama". ${s.family.mom.name} cried a little.` } },
+    { label: `"Dada"`, fx: { rel: { dad: +6 }, feed: `Your first word was "dada". ${s.family.dad.name} told everyone for weeks.` } },
+    { label: `"No."`, fx: { stats: { smarts: +2 }, feed: `Your first word was a firm "no". A personality announcement.` } },
+  ] } }) },
+  { id: "school", at: 2100, run: (s) => { s.education.stage = "primary"; enrollSchool(s, "primary"); return { event: { emoji: "🏫", title: "First day of school", text: "A classroom full of strangers. How do you walk in?", options: [
+    { label: "Find one kid who looks as nervous as you", fx: { run: (st) => { const nm = candidateName(st, "NB"); st.friends.bff = makePerson(nm, "Best friend", { rel: 70 }); push(st, `🎒 You sat next to a nervous kid named ${nm}. Instant, wordless alliance.`); }, stats: { happiness: +4 }, feed: "" } },
+    { label: "Talk to everyone", fx: { run: (st) => { const nm = candidateName(st, "NB"); st.friends.bff = makePerson(nm, "Friend", { rel: 55 }); push(st, `🎒 You introduced yourself to the entire class. A kid named ${nm} laughed the hardest. The teacher did not.`); }, stats: { happiness: +3, looks: +1 }, feed: "" } },
+    { label: "Keep to yourself and observe", fx: { stats: { smarts: +3 }, feed: "You spent the day watching how everything worked. You learned a lot." } },
+  ] } }; } },
+  { id: "hobby", at: 2700, run: (s) => { const y = yearOf(s); const gameLabel = y < 1985 ? "🕹 Arcade games" : "🎮 Video games"; return { event: { emoji: "🌟", title: "Something of your own", text: "Everyone at school seems to be 'the kid who does X'. What pulls at you?", options: [
+    { label: "🎵 Music (an old instrument at home)", fx: { flags: { hobby: "music" }, emergent: { music: +8 }, feed: "You started plinking away at music. Terribly, at first. That's how everyone starts." } },
+    { label: "⚽ Sports (the neighborhood team)", fx: { flags: { hobby: "sport" }, emergent: { athletics: +8 }, stats: { health: +2 }, feed: "You joined the neighborhood team. You mostly warmed the bench. The bench had a great view." } },
+    { label: "🎨 Drawing (the back pages of every notebook)", fx: { flags: { hobby: "art" }, emergent: { art: +8 }, feed: "Your notebooks filled with doodles. Some of them were actually good." } },
+    { label: gameLabel, fx: { flags: { hobby: "games" }, emergent: { gaming: +8 }, feed: "You found your machine. High scores became a personality trait." } },
+  ] } }; } },
+  { id: "playground", at: 2950, run: () => ({ event: { emoji: "🛝", title: "Playground", text: "A bigger kid is mocking a classmate until they cry. Others are laughing along.", options: [
+    { label: "Step in and tell him to stop", fx: { emergent: { kindness: +8, courage: +6 }, stats: { happiness: +2 }, feed: "You stepped between them. Your voice shook but held. The classmate never forgot it." } },
+    { label: "Quietly sit with the crying kid after", fx: { emergent: { kindness: +6 }, feed: "You didn't fight anyone. You just sat with them afterward. It mattered." } },
+    { label: "Laugh with the crowd", fx: { emergent: { kindness: -6 }, stats: { happiness: +1 }, feed: "You laughed along. It felt safe. It didn't feel good." } },
+  ] } }) },
+  { id: "crushSeed", at: 3800, run: (s) => ({ event: { emoji: "💭", title: "A strange flutter",
+    text: s.hidden.orientation === "Straight"
+      ? "There's a kid in class everyone teases you about. Your ears go red when they talk to you."
+      : "Everyone teases boys about girls and girls about boys. Your flutter doesn't quite follow the script, and you don't have words for that yet.",
+    options: [
+      { label: "Ignore it, feelings are embarrassing", fx: { feed: "You shoved the feeling in a drawer. Drawers don't stay shut forever." } },
+      { label: "Sit with it privately", fx: { emergent: { selfAwareness: +6 }, flags: { seedOrientation: true }, feed: "You didn't tell anyone. But you noticed. Noticing is the first step of everything." } },
+      { label: "Tell your best friend", fx: { stats: { happiness: +3 }, flags: { seedOrientation: true }, feed: "You whispered it at recess. They shrugged: 'okay.' The sky did not fall." } },
+    ] } }) },
+  { id: "middleSchool", at: 4020, run: (s) => { s.education.stage = "middle"; enrollSchool(s, "middle"); return { auto: [`🏫 Middle school: ${s.school.name}. New building, new cliques, same cafeteria smell.`] }; } },
+  { id: "mirror", at: 4400, cond: (s) => isQueerG(s), run: () => ({ event: { emoji: "🪞", title: "The mirror", text: "Getting dressed for a family photo, you catch your reflection and feel an odd dissonance you can't name — like wearing a costume everyone insists is just you.", options: [
+    { label: "Ask to wear something different", fx: { emergent: { selfAwareness: +8 }, flags: { seedGender: true }, feed: "You asked to change clothes. Your mom frowned but allowed it. The photo felt slightly more like you." } },
+    { label: "Say nothing, smile for the photo", fx: { stats: { happiness: -3 }, flags: { seedGender: true }, feed: "You smiled on cue. The photo went on the wall. You avoided looking at it." } },
+  ] } }) },
+  { id: "firstPhone", at: 4380, cond: (s) => yearOf(s) >= 1996, run: (s) => { const y = yearOf(s); const kind = y < 2003 ? "a chunky hand-me-down brick phone" : y < 2011 ? "a flip phone with real buttons" : "a (slightly cracked) smartphone"; return { auto: [`📱 You got your first phone — ${kind}. The world got bigger and smaller at the same time.`], fx: { stats: { happiness: +3 } } }; } },
+  { id: "sleepover", at: 4600, cond: (s) => !!s.friends.bff, run: (s) => { const era = eraAcceptance(yearOf(s)); return { event: { emoji: "🔦", title: "Sleepover confession",
+    text: `Flashlight under the blanket, way past midnight, your oldest friend goes quiet and then says it: "I think I like someone I'm... not supposed to like." ${era < 40 ? "You both know exactly how dangerous that sentence is around here." : era < 70 ? "You've heard how some people at school talk. This is a real secret." : "It's mostly fine these days — but a secret is still a secret."}`,
+    options: [
+      { label: `"Okay. Tell me about them."`, fx: { relF: { bff: +12 }, emergent: { kindness: +5 }, feed: "You just listened. your oldest friend talked for an hour, lighter with every minute.", next: { emoji: "🤝", title: "Keep it safe", text: `In the morning your oldest friend grabs your arm: "You can't tell anyone. Especially not your parents. Promise?"`, options: [
+        { label: "Promise, and mean it", fx: { relF: { bff: +8 }, emergent: { loyalty: +8 }, feed: "You promised. Some promises are load-bearing. This was one." } },
+        { label: `"Maybe an adult could actually help?"`, fx: { relF: { bff: -5 }, emergent: { prudence: +4 }, feed: "your oldest friend's face closed like a door. 'Forget I said anything.' It took weeks to reopen." } },
+      ] } } },
+      { label: "Change the subject, it's awkward", fx: { relF: { bff: -8 }, feed: "You laughed it off and put on a movie. your oldest friend didn't bring it up again. Something between you got thinner." } },
+      { label: `"...me too, maybe."`, cond: (st) => st.flags.seedOrientation, fx: { relF: { bff: +15 }, emergent: { selfAwareness: +8, courage: +5 }, stats: { happiness: +4 }, feed: "The words were out before you decided to say them. your oldest friend stared, then grinned. Suddenly neither of you was alone in it." } },
+    ] } }; } },
+  { id: "puberty", at: 4750, run: (s) => ({ auto: [`🌱 Adolescence has arrived. Your body, your feelings, and your questions are all getting louder. (${decadeNews(yearOf(s))})`] }) },
+  { id: "highSchool", at: 5150, run: (s) => { s.education.stage = "high"; enrollSchool(s, "high"); return { event: { emoji: "🎓", title: "High school begins", text: `${s.school.name}. Bigger school, real grades, and clubs that actually go on a record somewhere.`, options: [
+    { label: "Look at the clubs on offer", fx: { run: (st) => { st.pending = clubsMenu(st).pending; } } },
+    { label: "Nothing — school ends at the bell", fx: { flags: { extraChosen: true }, stats: { happiness: +2 }, feed: "You kept your afternoons free. Freedom has its own curriculum." } },
+  ] } }; } },
+  { id: "discoverO", at: 5480, run: (s) => {
+    s.discovered.orientation = true;
+    const flip = syncOrientationToGender(s); // covers the rare case gender was already known first
+    const o = s.hidden.orientation;
+    const lines = [`💡 ${ORIENT_DISCOVERY_TEXT[o]}${o !== "Straight" ? " (You can now come out to people — your pace, your order, or never. It's in the People tab.)" : ""}`];
+    if (flip) lines.push(`🏳️‍🌈 Paired with what you already know about your gender, it lands as: ${o.toLowerCase()}. The label finally matches the person.`);
+    return { auto: lines, fx: { emergent: { selfAwareness: +8 } } };
+  } },
+  { id: "discoverG", at: 5850, cond: (s) => isQueerG(s), run: (s) => {
+    const g = s.hidden.gender;
+    const ctry = s.profile.country;
+    const targetPool = g === "Trans woman" ? nameList(ctry, "f") : g === "Trans man" ? nameList(ctry, "m") : nameList(ctry, "n");
+    const opts = [pick(targetPool), pick(targetPool), pick(nameList(ctry, "n"))].filter((v, i, a) => a.indexOf(v) === i).slice(0, 3);
+    return { event: { emoji: "🦋", title: "The word for it",
+      text: `The dissonance finally has a name. You are ${g.toLowerCase()}. Saying it — even silently, even just to the mirror — rearranges everything and confirms what you've somehow always known. What do you do with it?`,
+      options: [
+        ...opts.map((n) => ({ label: `Start becoming "${n}" — try the name on`, fx: { run: (st) => { st.discovered.gender = true; st.profile.usedName = n; const flip = syncOrientationToGender(st); if (flip) push(st, `🏳️‍🌈 Something else rearranges with it: you're ${flip.toLowerCase()}. Not who you thought you'd be attracted to — exactly who you are.`); }, emergent: { selfAwareness: +10, courage: +8 }, stats: { happiness: +6 }, feed: `🦋 In your head, and then in your journal, and then out loud alone in your room: ${n}. It fits like your own skin. (Coming out to people is in the People tab — your pace.)` } })),
+        { label: "Keep your name, live the truth quietly for now", fx: { run: (st) => { st.discovered.gender = true; const flip = syncOrientationToGender(st); if (flip) push(st, `🏳️‍🌈 Something else rearranges with it: you're ${flip.toLowerCase()}.`); }, emergent: { selfAwareness: +8 }, feed: "🦋 You know who you are now. The world can catch up on your schedule. (Coming out options are in the People tab.)" } },
+        { label: "Bury it. It's too much.", fx: { run: (st) => { st.discovered.gender = true; const flip = syncOrientationToGender(st); if (flip) push(st, `🏳️‍🌈 Something else rearranges with it too: ${flip.toLowerCase()}. One truth at a time is already a lot.`); }, stats: { happiness: -6 }, flags: { buried: true }, feed: "🦋 You pushed the knowledge down where it hums like a fridge at night. It will keep." } },
+      ] } };
+  } },
+  { id: "graduation", at: 6570, run: (s) => {
+    const gpa = Object.values(s.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length;
+    const bonus = (s.education.extra ? 8 : 0) + ({ Poor: 0, Working: 2, Middle: 5, Wealthy: 12 }[s.profile.cls]);
+    const score = gpa + bonus;
+    const opts = [];
+    if (score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${s.profile.curSym}${collegeFee(s, "prestige")}/yr)`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
+    if (score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${s.profile.curSym}${collegeFee(s, "uni")}/yr)`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
+    opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${s.profile.curSym}${collegeFee(s, "state")}/yr)`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
+    opts.push({ label: "💼 Skip college — straight to work", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 High school done, diploma in hand. You chose the world over the lecture hall. The job board awaits (🎯 Act → Look for work)." } });
+    return { event: { emoji: "🎓", title: "Graduation day",
+      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${score > 82 ? "The letters that came back include a thick envelope from a prestigious university." : score > 62 ? "Solid options on the table." : "Your options are modest but real."} What's next?`,
+      options: opts } };
+  } },
+];
+
+function startCollege(st, tier) {
+  const y = yearOf(st);
+  const majors = MAJORS.filter((m) => m !== "Computer Science" || y >= 1978);
+  st.pending = {
+    emoji: "📚", title: "Choose your major",
+    text: `${COLLEGE_TIERS[tier].name}. Four years (six for Medicine). What do you study?`,
+    options: majors.map((m) => ({ label: m, fx: { run: (s2) => {
+      const help = { Wealthy: 1, Middle: 0.5, Working: 0.25, Poor: 0 }[s2.profile.cls];
+      s2.education.college = { tier, major: m, startDay: s2.ageDays, gpa: 65, help };
+      s2.education.stage = "college";
+      push(s2, `🏫 You enrolled: ${m} at ${COLLEGE_TIERS[tier].name}. ${help >= 1 ? "Family's covering tuition." : help > 0 ? "Family covers part; the rest is on you." : "Every cent of tuition is on you."}`);
+    } } })),
+  };
+}
+
+/* ═══════════════ POOL EVENTS ═══════════════ */
+
+function inSchool(s) { return ["primary", "middle", "high"].includes(s.education.stage); }
+function partnerPick(s, filter) { const list = Object.entries(s.romance).filter(([, p]) => filter(p)); return list.length ? pick(list) : null; }
+
+const POOL = [
+  /* ——— life texture ——— */
+  { id: "fever", w: 2, minAge: 1, maxAge: 90, cd: 900, run: () => ({ auto: ["🤒 You caught a nasty fever. A week of soup, sweat and boredom — then it passed."], fx: { stats: { health: -2 } } }) },
+  { id: "outing", w: 4, minAge: 3, maxAge: 14, cd: 90, run: (s) => ({ auto: [pick([
+      `🌳 ${s.family.dad.name} took you to the park. He ${s.family.dad.warmth > 55 ? "actually played, tie loosened, laughing" : "sat on a bench and checked his watch"}.`,
+      `🍰 ${s.family.mom.name} baked with you all afternoon. Flour everywhere. Worth it.`,
+      `📻 A long car ride with the whole family, everyone singing badly to the radio.`,
+    ])], fx: { stats: { happiness: +3 } } }) },
+  { id: "allowance", w: 3, minAge: 6, maxAge: 15, cd: 45, cond: (s) => !s.flags.job, run: (s) => { const amt = { Poor: rnd(1, 3), Working: rnd(2, 6), Middle: rnd(5, 12), Wealthy: rnd(15, 40) }[s.profile.cls]; return { auto: [`💰 Allowance day: +${s.profile.curSym}${amt}.`], fx: { money: amt } }; } },
+  { id: "news", w: 2, minAge: 9, maxAge: 90, cd: 400, run: (s) => ({ auto: [`📰 ${decadeNews(yearOf(s))}`], fx: { stats: { smarts: +1 } } }) },
+  { id: "reportCard", w: 3, minAge: 6, maxAge: 17, cd: 330, cond: inSchool, run: (s) => {
+    const g = (v) => v > 80 ? "A" : v > 65 ? "B" : v > 45 ? "C" : v > 30 ? "D" : "F";
+    const line = Object.entries(SUBJECTS).map(([k, n]) => `${n} ${g(s.education.subjects[k])}`).join(" · ");
+    const gpa = Object.values(s.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length;
+    return { auto: [`🧾 Report card — ${line}. ${gpa > 75 ? s.family.mom.name + " put it on the fridge." : gpa < 40 ? "Dinner was very quiet that night." : "Nobody cheered, nobody yelled."}`], fx: gpa > 75 ? { stats: { happiness: +2 } } : gpa < 40 ? { stats: { happiness: -3 } } : {} };
+  } },
+  { id: "exam", i: 1, w: 3, minAge: 6, maxAge: 17, cd: 300, cond: inSchool, run: () => { const k = pick(Object.keys(SUBJECTS)); return { event: { emoji: "📝", title: `${SUBJECTS[k]} exam looming`, text: `A big ${SUBJECTS[k]} test was just announced. It goes on the record.`, options: [
+    { label: "Study hard all week", fx: { subj: { [k]: +5 }, stats: { happiness: -1 }, feed: `You ground through ${SUBJECTS[k]} till it hurt. Top marks.` } },
+    { label: "Study a bit, live a bit", fx: { subj: { [k]: +2 }, stats: { happiness: +2 }, feed: `Balanced week, decent ${SUBJECTS[k]} grade. No regrets.` } },
+    { label: "Wing it", fx: { subj: { [k]: -2 }, stats: { happiness: +2 }, feed: `You winged the ${SUBJECTS[k]} test. It showed. The afternoon at the creek was legendary though.` } },
+  ] } }; } },
+  { id: "scrape", i: 1, w: 2, minAge: 4, maxAge: 12, cd: 700, run: () => ({ event: { emoji: "🚲", title: "The big hill", text: "The neighborhood kids dare you to ride your bike down the steep hill.", options: [
+    { label: "Send it", fx: { stats: { health: -3, happiness: +5 }, emergent: { courage: +5 }, feed: "You flew. You crashed. You bled. You became briefly famous on the block." } },
+    { label: "Walk the bike down", fx: { emergent: { prudence: +5 }, feed: "You walked it down. Someone called you chicken. Your knees remained intact." } },
+  ] } }) },
+  { id: "stray", i: 1, w: 2, minAge: 5, maxAge: 13, once: true, cond: (s) => !s.friends.pet, run: (s) => {
+    const isDog = Math.random() < 0.6; const name = isDog ? pick(PET_DOG) : pick(PET_CAT);
+    const parentsOk = (s.family.mom.warmth + s.family.dad.warmth) / 2 > 45;
+    return { event: { emoji: isDog ? "🐕" : "🐈", title: "It followed you home", text: `A scruffy stray ${isDog ? "dog" : "cat"} has decided you are its person. It's sitting on the doorstep looking hopeful.`, options: [
+      { label: "Beg your parents to keep it", fx: parentsOk
+        ? { addFriend: { key: "pet", name, role: isDog ? "Dog 🐕" : "Cat 🐈", rel: 80, pet: true }, stats: { happiness: +6 }, feed: `After a family council, the verdict came in: ${name} stays. Best day of the year.` }
+        : { stats: { happiness: -4 }, feed: `Your parents said no. Firmly. You left food out on the porch for a week anyway.` } },
+      { label: "Find it another home", fx: { stats: { happiness: +2 }, emergent: { kindness: +4 }, feed: `You knocked on doors until the ${isDog ? "dog" : "cat"} had a family. Not yours. Still counts.` } },
+      { label: "Shoo it away", fx: { stats: { happiness: -2 }, emergent: { kindness: -3 }, feed: "You shooed it off. It looked back twice. You thought about it more than you'd admit." } },
+    ] } }; } },
+  { id: "petLife", w: 3, minAge: 5, maxAge: 90, cd: 120, cond: (s) => !!s.friends.pet, run: (s) => { const p = s.friends.pet; const dog = p.role.includes("Dog"); return { auto: [pick(dog ? [
+      `🐕 ${p.name} destroyed a shoe and showed zero remorse. Impossible to stay mad.`,
+      `🐕 ${p.name} learned to catch. The whole street applauded.`,
+      `🐕 Rainy day. ${p.name} smelled terrible and insisted on cuddling anyway.`,
+    ] : [
+      `🐈 ${p.name} brought you a "gift". You screamed. ${p.name} was proud.`,
+      `🐈 ${p.name} slept on your homework. The homework was late. Worth it.`,
+      `🐈 ${p.name} knocked a glass off the table while maintaining eye contact.`,
+    ])], fx: { stats: { happiness: +2 }, relF: { pet: +2 } } }; } },
+  { id: "hobbyBeat", i: 1, w: 2, minAge: 8, maxAge: 17, cd: 300, cond: (s) => !!s.flags.hobby, run: (s) => {
+    const h = s.flags.hobby;
+    const skillKey = { music: "music", sport: "athletics", art: "art", games: "gaming" }[h];
+    const skill = s.emergent[skillKey] || 50; const good = skill > 62;
+    const st = { music: { emoji: "🎤", title: "The school recital", text: "Your name is on the recital program. The gym will be full.", win: "You played it clean. Actual applause, not polite applause.", lose: "You fumbled the middle section. The floor declined to swallow you. You survived." },
+      sport: { emoji: "🏆", title: "The big match", text: "Coach is finally putting you in — and the score is tied.", win: "You made the play. Your teammates carried the celebration for a week.", lose: "You missed the moment. Coach clapped your shoulder anyway: 'Next one's yours.'" },
+      art: { emoji: "🖼️", title: "The art contest", text: "The city youth art contest is taking submissions.", win: "Your piece took second place. It hung in the library for a month.", lose: "No ribbon this time. An old lady stared at your piece for five whole minutes though." },
+      games: { emoji: "👾", title: "The tournament", text: "There's a local tournament with your game in it.", win: "You made the finals. Somewhere, a rival typed 'gg' through tears.", lose: "Knocked out early by a kid half your size. You took notes." } }[h];
+    return { event: { emoji: st.emoji, title: st.title, text: st.text, options: [
+      { label: "Give it everything", fx: good ? { emergent: { [skillKey]: +5 }, stats: { happiness: +6 }, feed: `${st.emoji} ${st.win}` } : { emergent: { [skillKey]: +6, courage: +3 }, stats: { happiness: -2 }, feed: `${st.emoji} ${st.lose}` } },
+      { label: "Skip it — not ready", fx: { emergent: { prudence: +2 }, stats: { happiness: -1 }, feed: "You sat this one out. The itch to compete didn't go away." } },
+    ] } }; } },
+  { id: "teenJobOffer", i: 1, w: 3, minAge: 14, maxAge: 17, once: true, cond: (s) => !s.flags.job && !s.career.job, run: (s) => { const y = yearOf(s); const j1 = y < 2005 ? { k: "paper", label: "🗞 Paper route (early mornings)" } : { k: "delivery", label: "🛵 Delivery gigs (weekends)" }; return { event: { emoji: "💼", title: "First real money", text: "You're old enough to earn now. A few doors are open — each shapes your weeks differently.", options: [
+    { label: j1.label, fx: { flags: { job: j1.k }, emergent: { discipline: +6 }, feed: "You took the job. Your alarm clock became your nemesis. Your wallet became your friend." } },
+    { label: "🛒 Grocery store shifts", fx: { stats: { health: -1, smarts: +1 }, flags: { job: "store" }, feed: "You got the apron and the name tag. You now know exactly where everything is, forever." } },
+    { label: "🧒 Babysitting the neighbors' kid", fx: { flags: { job: "sitter" }, emergent: { kindness: +4 }, feed: "You're officially in charge of a small chaotic human on Fridays. Pays surprisingly well." } },
+    { label: "Not yet — school and life first", fx: { stats: { happiness: +2, smarts: +1 }, feed: "You passed for now. Money can wait; the creek and your friends cannot." } },
+  ] } }; } },
+  { id: "teenPayday", w: 4, minAge: 14, maxAge: 19, cd: 30, cond: (s) => !!s.flags.job && !s.career.job, run: (s) => { const amt = rnd(25, 70); const flavor = { paper: "🗞 Dawn route done all month.", delivery: "🛵 A month of weekend deliveries.", store: "🛒 Four weeks of register duty.", sitter: "🧒 Four Fridays of glitter, tantrums and cartoons." }[s.flags.job] || "💼 Payday."; return { auto: [`${flavor} +${s.profile.curSym}${amt}.`], fx: { money: amt } }; } },
+  { id: "dance", i: 1, w: 2, minAge: 12, maxAge: 15, once: true, run: (s) => {
+    const era = eraAcceptance(yearOf(s));
+    const queer = isQueerO(s) && s.flags.seedOrientation;
+    return { event: { emoji: "🪩", title: "The school dance",
+      text: queer ? `The school dance is coming. Everyone's pairing off along the expected lines. There's someone you'd actually like to go with — and it's not who anyone expects.` : "The school dance is coming. Posters everywhere. Panic levels rising.",
+      options: [
+        queer ? { label: "Ask the person you actually want to ask", fx: era > 60
+          ? { emergent: { courage: +8 }, stats: { happiness: +5 }, feed: "You asked. They said yes. A few heads turned; most people just danced. It was a good night." }
+          : { emergent: { courage: +8 }, feed: "You asked, heart hammering.", next: { emoji: "🫀", title: "The answer", text: `"I want to," they whisper, "but people would talk. You know how it is here." They suggest going 'as friends' in the group.`, options: [
+              { label: "Go as 'friends' — close is close", fx: { stats: { happiness: +3 }, emergent: { selfAwareness: +4 }, feed: "You danced in the group, two feet apart, grinning at a shared secret. Not everything, but not nothing." } },
+              { label: "Skip the dance together instead", fx: { stats: { happiness: +5 }, emergent: { courage: +3 }, feed: "You skipped it and split a milkshake where nobody knew you. Best dance you never attended." } },
+            ] } } }
+        : { label: "Ask your crush to go", fx: Math.random() < 0.55
+          ? { stats: { happiness: +6 }, emergent: { courage: +6 }, feed: "They said yes. You practiced exactly one dance move. It was enough." }
+          : { stats: { happiness: -3 }, emergent: { courage: +6 }, feed: "They already had a date. Brutal. You went with friends and had a suspiciously great time anyway." } },
+        { label: "Go with your friends as a pack", fx: { stats: { happiness: +4 }, feed: "The friend group went as a unit, ruled the snack table, and invented a dance that got banned." } },
+        { label: "Dances are not your scene", fx: { stats: { happiness: -1, smarts: +1 }, feed: "You stayed home. By all reports, the punch was warm and the DJ was somebody's uncle. No regrets." } },
+      ] } }; } },
+  { id: "rumor", i: 1, w: 2, minAge: 11, maxAge: 16, once: true, cond: (s) => s.flags.seedOrientation || s.flags.seedGender, run: (s) => {
+    const era = eraAcceptance(yearOf(s));
+    return { event: { emoji: "🗣️", title: "The rumor", text: `Someone at school has started whispering about you being "different". ${era < 40 ? "In this era, that kind of talk can turn dangerous fast." : era < 70 ? "Most kids don't care much — but the loud ones are loud." : "It's mostly a non-issue these days, but it still stings to be talked about."}`, options: [
+      { label: "Confront the whisperer directly", fx: { emergent: { courage: +7 }, feed: "You walked straight up to them at lunch.", next: { emoji: "⚖️", title: "Face to face", text: `Caught off guard, they scoff: "It's just a joke, relax." Half the cafeteria is watching.`, options: [
+        { label: `"Say it again. Louder."`, fx: { emergent: { courage: +6 }, stats: { happiness: +3 }, feed: "They didn't say it again. The whispering dried up. Some quiet kids started nodding at you in the halls." } },
+        { label: `"Whatever you need to feel big."`, fx: { emergent: { selfAwareness: +5 }, feed: "You walked away on your terms. Somehow that landed harder than shouting." } },
+      ] } } },
+      { label: "Let your oldest friend run interference", cond: (st) => !!st.friends.bff, fx: { stats: { happiness: +2 }, relF: { bff: +6 }, feed: "your oldest friend, terrifyingly efficient, dismantled the rumor in two days flat. You owe them a lifetime of snacks." } },
+      { label: "Ignore it until it dies", fx: { emergent: { prudence: +4 }, stats: { happiness: -3 }, feed: "You waited it out. Rumors starve without reactions — but the waiting cost you some sleep." } },
+    ] } }; } },
+  { id: "thaw", w: 2, minAge: 13, maxAge: 90, cd: 200, cond: (s) => Object.keys(s.flags).some((k) => k.startsWith("thaw_") && s.ageDays - s.flags[k] > 180), run: (s) => {
+    const k = Object.keys(s.flags).find((k2) => k2.startsWith("thaw_") && s.ageDays - s.flags[k2] > 180);
+    const key = k.replace("thaw_", ""); const p = s.family[key] || s.friends[key]; if (!p) { delete s.flags[k]; return { auto: [] }; }
+    delete s.flags[k];
+    return { auto: [`🌤 ${p.name} knocked on your door with ${p.warmth > 50 ? "your favorite food and watery eyes" : "an awkward cough and a genuine question"}. "I've been reading. Asking around. I want to understand." The ice is melting, slowly, the way real ice does.`], fx: key in s.family ? { rel: { [key]: +12 } } : { relF: { [key]: +12 } } }; } },
+  { id: "rift", w: 1, minAge: 13, maxAge: 90, cd: 400, cond: (s) => Object.keys(s.flags).some((k) => k.startsWith("rift_") && s.ageDays - s.flags[k] > 365), run: (s) => {
+    const k = Object.keys(s.flags).find((k2) => k2.startsWith("rift_") && s.ageDays - s.flags[k2] > 365);
+    const key = k.replace("rift_", ""); const p = s.family[key] || s.friends[key]; if (!p) { delete s.flags[k]; return { auto: [] }; }
+    delete s.flags[k];
+    if (p.kindness > 55) return { event: { emoji: "🕊", title: "An olive branch", text: `${p.name} calls, voice unsteady. "I said things I keep hearing at night. I don't want to lose you over my own smallness." A year of silence hangs on your answer.`, options: [
+      { label: "Meet them halfway", fx: key in s.family ? { rel: { [key]: +20 }, stats: { happiness: +6 }, feed: `You met for coffee. It was stilted, then it wasn't. Repair is slower than rupture — but it's real.` } : { relF: { [key]: +20 }, stats: { happiness: +6 }, feed: `You met for coffee. Repair is slower than rupture — but it's real.` } },
+      { label: "Not yet. The wound is still open.", fx: { emergent: { selfAwareness: +4 }, feed: `"Not yet," you said, and meant the 'yet'. Boundaries are also a kind of love — for yourself.` } },
+    ] } };
+    return { auto: [`🧊 The silence with ${p.name} has become geography — a country neither of you visits.`] }; } },
+
+  /* ——— ROMANCE ——— */
+  { id: "meet", i: 1, w: 3, minAge: 15, maxAge: 75, cd: 520, cond: (s) => s.discovered.orientation && activePartners(s).length < 3, run: (s) => {
+    const g = candidateGender(s); const name = candidateName(s, g); const y = yearOf(s); const age = ageYears(s);
+    const ace = s.hidden.orientation === "Asexual";
+    const venue = age < 18 ? pick(["in study hall", "through your oldest friend's chaotic friend circle", "at the record store", "in the library, reaching for the same book"]) :
+      y < 1995 ? pick(["at a friend's party", "at work", "at the laundromat, of all places", isOutQueer(s) && eraAcceptance(y) < 50 ? "at a bar you had to know someone to find" : "at a neighborhood bar"]) :
+      y < 2013 ? pick(["in an internet chatroom that got surprisingly sincere", "through a dating site with terrible photos", "at a friend's barbecue"]) :
+      pick(["on a dating app (their bio was actually funny)", "at a friend's game night", "in the comments of the same niche forum"]);
+    const desc = ace ? `Someone whose company feels like a warm room: ${name}. No fireworks — something steadier and rarer.` : `Someone with a laugh you keep replaying: ${name}.`;
+    const spark = pick([
+      `You met ${name} ${venue}. ${desc}`,
+      `${name}, ${venue}. You talked for two hours and it felt like twenty minutes, which is the oldest warning sign there is.`,
+      `You met ${name} ${venue} and said something stupid immediately. ${name} laughed at it — with you, not at you. Dangerous.`,
+      `${name}. Met ${venue}. You've already told two people about them, which you noticed while telling the second one.`,
+      `You met ${name} ${venue}. Nothing dramatic happened. You just kept finding reasons to stay in the conversation.`,
+    ]);
+    return { event: { emoji: "💘", title: pick(["Someone new", "A person appears", "Unexpected", "Worth noticing"]), text: spark, options: [
+      { label: "Pursue it", fx: { addRomance: { name, g }, stats: { happiness: +4 }, feed: `💘 You and ${name} are seeing each other. The days got a little brighter and a little more terrifying.` } },
+      { label: "Friends is enough", fx: { stats: { happiness: +1 }, run: (st) => { const key = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1); st.friends[key] = makePerson(name, "Friend", { rel: 55 }); }, feed: `You kept ${name} as a friend. Good friends are also rare.` } },
+      { label: "Not right now", fx: { feed: `You let the moment pass. It waved politely on its way out.` } },
+    ] } }; } },
+  { id: "dtr", i: 1, w: 3, minAge: 15, maxAge: 90, cd: 200, cond: (s) => !!partnerPick(s, (p) => p.status === "dating" && p.rel > 60), run: (s) => {
+    const [key, p] = partnerPick(s, (q) => q.status === "dating" && q.rel > 60);
+    const others = activePartners(s).filter(([k2]) => k2 !== key);
+    return { event: { emoji: "🫀", title: pick(["The talk", "Defining it", "The question", "Where is this going?"]), text: `${pick([
+      `${p.name} sets down their cup: "What are we, exactly?" The room holds its breath.`,
+      `It comes out sideways, on a walk home: "I don't know what to call you when I talk about you." ${p.name} won't look at you.`,
+      `"So." ${p.name} does the thing with their hands. "Are we... doing this properly, or are we pretending we're not?"`,
+      `${p.name} asks it at the worst possible moment — in a car park, engine running — because the good moments kept not happening.`,
+    ])}${others.length ? ` (You're also seeing ${others.map(([, o]) => o.name).join(" and ")}.)` : ""}`, options: [
+      { label: "Exclusive. Just us.", fx: { setR: { [key]: { status: "serious", role: "Partner" } }, relR: { [key]: +10 }, stats: { happiness: +4 }, run: (st) => { activePartners(st).filter(([k2]) => k2 !== key).forEach(([k2, o]) => { push(st, `💔 You ended things with ${o.name} to be all-in. It stung more than expected.`); doBreakup(st, k2); }); }, feed: `🫀 "Just us," you said, and meant it. ${p.name} smiled like a lamp turning on.` } },
+      { label: "Propose an open relationship", fx: { run: (st) => {
+          const q = st.romance[key]; const ok = q.politics > 55 || q.loyalty < 45;
+          if (ok) { q.status = "serious"; q.role = "Partner"; q.openOk = true; activePartners(st).forEach(([, o]) => { o.openOk = true; }); push(st, `🫀 ${q.name} considered it honestly and agreed: committed and open, with rules you wrote together. Radical honesty as a love language.`); }
+          else { q.rel = clamp(q.rel - 12); push(st, `🫀 ${q.name} went quiet. "That's not what I want." The word 'open' now sits between you like a third chair.`); }
+        }, feed: "" } },
+      { label: "Keep it casual", fx: { relR: { [key]: -8 }, feed: `"Let's not label it," you said. ${p.name} nodded in a way that wasn't quite a nod.` } },
+    ] } }; } },
+  { id: "jealousy", i: 1, w: 3, minAge: 15, maxAge: 90, cd: 1200, cond: (s) => { const a = activePartners(s); return a.length >= 2 && a.some(([, p]) => !p.openOk) && s.ageDays - (s.flags.jealousyDay || 0) > 1400; }, run: (s) => { s.flags.jealousyDay = s.ageDays;
+    const a = activePartners(s); const [k1, p1] = a[0]; const [k2, p2] = a[1];
+    return { event: { emoji: "🔥", title: "Busted", text: `${p1.name} saw you with ${p2.name}. There is no version of this where you weren't holding hands. The call comes that night, voice flat: "Explain."`, options: [
+      { label: `Choose ${p1.name} — end it with ${p2.name}`, fx: { breakup: { key: k2, hard: true }, relR: { [k1]: -15 }, feed: `You ended it with ${p2.name} and begged ${p1.name} for a second chance. You got one — on probation. Trust rebuilds at the speed of stone.` } },
+      { label: `Choose ${p2.name} — end it with ${p1.name}`, fx: { breakup: { key: k1, hard: true }, feed: `You chose ${p2.name}. ${p1.name}'s last message was short enough to memorize.` } },
+      { label: "Come clean and ask them both for openness", fx: { run: (st) => {
+          const q1 = st.romance[k1], q2 = st.romance[k2];
+          const ok1 = q1.politics > 60, ok2 = q2.politics > 60;
+          if (ok1 && ok2) { q1.openOk = q2.openOk = true; q1.rel = clamp(q1.rel - 8); q2.rel = clamp(q2.rel - 8); push(st, `🔥 Somehow, brutal honesty landed. New rules, written down, everyone bruised but standing. You will not get this lucky twice.`); }
+          else { push(st, `🔥 It went as well as juggling knives. You lost them both in one conversation.`); doBreakup(st, k1, true); doBreakup(st, k2, true); }
+        }, feed: "" } },
+    ] } }; } },
+  { id: "partnerCheats", i: 1, w: 1, minAge: 16, maxAge: 90, cd: 600, cond: (s) => !!partnerPick(s, (p) => ["serious", "engaged", "married"].includes(p.status) && p.loyalty < 40 && !p.openOk), run: (s) => {
+    const [key, p] = partnerPick(s, (q) => ["serious", "engaged", "married"].includes(q.status) && q.loyalty < 40 && !q.openOk);
+    return { event: { emoji: "💔", title: "The lipstick-on-collar moment", text: `The evidence isn't ambiguous. ${p.name} has been seeing someone else. When you confront them, they don't even deny it — they just deflate.`, options: [
+      { label: "End it. Now.", fx: { breakup: { key, hard: true }, emergent: { selfAwareness: +5 }, feed: `💔 You ended it standing up. It hurt like surgery — the kind that saves you.` } },
+      { label: "Try to rebuild", fx: { relR: { [key]: -20 }, stats: { happiness: -5 }, feed: `You stayed. Some days that feels brave; other days it feels like holding your breath. Time will vote.` } },
+    ] } }; } },
+  { id: "coupleBeat", w: 4, minAge: 15, maxAge: 90, cd: 90, cond: (s) => activePartners(s).length > 0, run: (s) => {
+    const [key, p] = pick(activePartners(s));
+    return { auto: [pick([
+      `🌆 ${p.name} showed up unannounced with takeout exactly when you needed it. How do they always know?`,
+      `😂 You and ${p.name} laughed so hard at nothing that a stranger asked what was funny. Impossible to explain.`,
+      `🌧 A whole rainy Sunday with ${p.name}: records, blankets, zero productivity. Perfect.`,
+      `💬 A tiny argument with ${p.name} about dishes that was secretly about feeling seen. You figured that out together. Growth.`,
+    ])], fx: { relR: { [key]: +3 }, stats: { happiness: +2 } } }; } },
+  { id: "proposal", i: 1, w: 2, minAge: 20, maxAge: 80, cd: 400, cond: (s) => !s.spouse && !!partnerPick(s, (p) => p.status === "serious" && p.rel > 78), run: (s) => {
+    const [key, p] = partnerPick(s, (q) => q.status === "serious" && q.rel > 78);
+    const legal = marriageLegal(s, p);
+    const lawYear = COUNTRIES[s.profile.country].ssm;
+    if (legal) return { event: { emoji: "💍", title: "The question", text: `You've been carrying the thought around like a ring box. It's ${p.name}. It's been ${p.name} for a while.`, options: [
+      { label: "Propose", fx: { run: (st) => {
+          const q = st.romance[key];
+          if (q.rel > 82 || Math.random() < 0.8) { q.status = "engaged"; q.role = "Fiancé(e)"; push(st, `💍 You asked. ${q.name} said yes before you finished the sentence, then made you finish it anyway.`); st.stats.happiness = clamp(st.stats.happiness + 10); }
+          else { q.rel = clamp(q.rel - 10); push(st, `💍 You asked. ${q.name} loves you — and isn't ready. The ring went back in the drawer, heavier than before.`); st.stats.happiness = clamp(st.stats.happiness - 6); }
+        }, feed: "" } },
+      { label: "Not yet", fx: { feed: `The ring box stays hidden a while longer. No rush — you're building something that doesn't need a deadline.` } },
+    ] } };
+    return { event: { emoji: "💍", title: "The question (that the law won't hear)", text: `You want forever with ${p.name}. But it's ${yearOf(s)} in ${s.profile.country} — marriage between you two doesn't legally exist here yet.`, options: [
+      { label: "Hold a commitment ceremony anyway", fx: { setR: { [key]: { status: "engaged", role: "Committed partner" } }, relR: { [key]: +12 }, stats: { happiness: +8 }, feed: `🕯 Rings, vows, your realest people in a living room. No paperwork — but nobody in that room doubted what they witnessed. (If the law ever changes, you can make it official.)` } },
+      { label: "Wait for the law", fx: { emergent: { prudence: +3 }, feed: `You decided to wait for a wedding with legal weight. ${lawYear <= 2045 ? "History is moving — you can feel it." : "However long it takes."}` } },
+    ] } }; } },
+  { id: "wedding", i: 1, w: 3, minAge: 20, maxAge: 85, cd: 200, cond: (s) => !s.spouse && !!partnerPick(s, (p) => p.status === "engaged" && marriageLegal(s, p)), run: (s) => {
+    const [key, p] = partnerPick(s, (q) => q.status === "engaged" && marriageLegal(s, q));
+    const same = sameSexCouple(s, p);
+    const momIn = s.family.mom.deceased ? null : (s.family.mom.acceptance > 45 || !same || !isOutQueer(s));
+    const dadIn = s.family.dad.deceased ? null : (s.family.dad.acceptance > 45 || !same || !isOutQueer(s));
+    const guests = momIn && dadIn ? "Both your parents were there — your dad even cried, badly disguised as allergies." : momIn ? `Your mom came. ${s.family.dad.deceased ? "Your dad's chair sat empty, and everyone understood why." : "Your dad's chair sat empty, and you decided the day was too full to stare at it."}` : dadIn ? `Your dad showed up stiff but present. ${s.family.mom.deceased ? "Your mom's chair sat empty, and everyone understood why." : "Your mom's absence was its own guest."}` : `Your parents didn't come. Your real family — the chosen kind — filled every seat that mattered.`;
+    return { event: { emoji: "👰", title: "The wedding", text: `The date is set. You and ${p.name}. ${same ? `A marriage that people fought decades for — and now it's just... yours.` : "Everything is flowers and logistics."} How do you do it?`, options: [
+      { label: "Big celebration", fx: { money: -Math.min(s.money, 3000), run: (st) => { marry(st, key); push(st, `👰 A loud, glowing wedding. ${guests} You danced until your feet filed complaints.`); }, feed: "" } },
+      { label: "Small and intimate", fx: { money: -Math.min(s.money, 500), run: (st) => { marry(st, key); push(st, `👰 Twelve people, one backyard, infinite fairy lights. ${guests}`); }, feed: "" } },
+      { label: "Courthouse + diner breakfast", fx: { run: (st) => { marry(st, key); push(st, `👰 Ten minutes of paperwork, then pancakes. Married is married. ${guests}`); }, feed: "" } },
+    ] } }; } },
+  { id: "lawChanged", w: 5, minAge: 18, maxAge: 90, cd: 100, cond: (s) => { const lp = partnerPick(s, (p) => p.status === "engaged" && p.role === "Committed partner"); return lp && marriageLegal(s, lp[1]) && !s.flags.lawNoted; }, run: (s) => { s.flags.lawNoted = true; const [, p] = partnerPick(s, (q) => q.status === "engaged" && q.role === "Committed partner"); return { auto: [`⚖️ The law finally caught up with your life. Marriage with ${p.name} is now legal in ${s.profile.country}. The certificate was always just paper — and yet you both cried at the news.`] }; } },
+  { id: "anniversary", w: 2, minAge: 20, maxAge: 95, cd: 365, cond: (s) => !!s.spouse, run: (s) => { const p = s.romance[s.spouse]; return { auto: [`💞 Anniversary with ${p.name}. ${p.rel > 70 ? "You recreated your first date, badly, and laughed about everything that's changed." : "Dinner was nice. Quieter than it used to be."}`], fx: { relR: { [s.spouse]: +4 } } }; } },
+  { id: "rocky", i: 1, w: 2, minAge: 20, maxAge: 95, cd: 250, cond: (s) => !!s.spouse && s.romance[s.spouse].rel < 45, run: (s) => { const key = s.spouse; const p = s.romance[key]; return { event: { emoji: "🌫", title: "The distance", text: `The silences with ${p.name} have gotten furnished — you both live in them now. Something has to move.`, options: [
+    { label: "Counseling / real work", fx: { relR: { [key]: +15 }, money: -200, stats: { happiness: +2 }, feed: `You both showed up, week after week. Slowly, the furniture got moved out of the silences.` } },
+    { label: "A grand gesture", fx: { run: (st) => { const q = st.romance[key]; if (Math.random() < 0.5) { q.rel = clamp(q.rel + 12); push(st, `You planned the trip you'd always postponed. Somewhere on day three, you found each other again.`); } else { push(st, `The gesture landed like a firework in the rain. Pretty, brief, then dark again.`); } }, money: -400, feed: "" } },
+    { label: "File for divorce", fx: { run: (st) => { const nm = st.romance[key].name; doBreakup(st, key, false); push(st, `⚖️ You and ${nm} divorced. The paperwork split the assets; nothing could split the years. You kept the record player and the lessons.`); }, feed: "" } },
+  ] } }; } },
+  { id: "exRunIn", w: 1, minAge: 16, maxAge: 90, cd: 500, cond: (s) => Object.values(s.romance).some((p) => p.status === "ex"), run: (s) => { const [, p] = pick(Object.entries(s.romance).filter(([, q]) => q.status === "ex")); return { auto: [`🫥 You ran into ${p.name} at the store. Two shopping carts, four seconds of eye contact, entire novels unspoken. You both chose the polite nod.`] }; } },
+
+  /* ——— COLLEGE ——— */
+  { id: "tuition", i: 1, w: 4, minAge: 17, maxAge: 30, cd: 360, cond: (s) => !!s.education.college, run: (s) => {
+    const c = s.education.college; const fee = collegeFee(s, c.tier); const owed = Math.round(fee * (1 - c.help));
+    if (owed <= 0) return { auto: [`🏛 Tuition came due. Family covered it. You sent a thank-you that didn't feel big enough.`] };
+    if (s.money >= owed) return { event: { emoji: "🧾", title: "Tuition due", text: `${s.profile.curSym}${owed} due for the year. You have it — barely.`, options: [
+      { label: "Pay cash", fx: { money: -owed, feed: `🧾 Tuition paid in full. Your wallet echoes.` } },
+      { label: "Take a loan, keep the cash", fx: { run: (st) => { st.education.debt += owed; }, feed: `🧾 You took the loan. Future-you waves back with mild resentment. Debt: growing.` } },
+    ] } };
+    return { auto: [`🧾 Tuition ${s.profile.curSym}${owed} — straight onto the loan pile. Total debt now ${s.profile.curSym}${s.education.debt + owed}.`], fx: { run: (st) => { st.education.debt += owed; } } };
+  } },
+  { id: "collegeLife", i: 1, w: 4, minAge: 17, maxAge: 30, cd: 150, cond: (s) => !!s.education.college, run: (s) => { const c = s.education.college; return { event: { emoji: "🎒", title: pick(["Midterm crunch", "The famous party", "All-nighter season"]), text: `College is a machine that runs on coffee and choices. The week is overbooked: a wall of coursework and the social event of the semester.`, options: [
+    { label: "Grind the coursework", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 5); }, stats: { happiness: -2 }, feed: `You chose the library. GPA now ${(Math.round(clamp(c.gpa + 5) / 2.5) / 10).toFixed(1)}. The party, by all accounts, peaked at 1 a.m. without you.` } },
+    { label: "Balance both, sleep neither", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 2); }, stats: { health: -2, happiness: +3 }, feed: `You did both and slept four hours. Legendary week. Your body has filed a complaint for later.` } },
+    { label: "The party. Obviously.", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa - 4); }, stats: { happiness: +5 }, feed: `The party entered campus folklore and you were in the middle of it. The midterm... also happened.` } },
+  ] } }; } },
+  { id: "dropoutRisk", i: 1, w: 3, minAge: 17, maxAge: 30, cd: 300, cond: (s) => !!s.education.college && (s.education.college.gpa < 40 || s.stats.happiness < 25), run: (s) => ({ event: { emoji: "🕳", title: "The edge", text: `${s.education.college.gpa < 40 ? "Academic probation letter, thin envelope, heavy words." : "You've stopped going to lectures. Getting out of bed is the whole syllabus."} Everything says quit.`, options: [
+    { label: "Dig in — ask for help, restructure everything", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 12); }, stats: { happiness: +4 }, emergent: { discipline: +8 }, feed: `You asked for help — advisors, friends, extensions. Turns out that's not weakness; it's the actual skill.` } },
+    { label: "Drop out", fx: { run: (st) => { st.education.college = null; st.education.stage = "done"; }, stats: { happiness: +3 }, feed: `🕳 You walked away from college. Relief first, questions later. The debt, sadly, graduated with honors.` } },
+  ] } }) },
+  { id: "collegeGrad", w: 1, minAge: 19, maxAge: 40, cd: 60, cond: (s) => !!s.education.college && s.ageDays - s.education.college.startDay >= (s.education.college.major === "Medicine" ? 2190 : 1460), run: (s) => { gainDegree(s); return { auto: [] }; } },
+
+  /* ——— CAREER ——— */
+  { id: "salary", w: 6, minAge: 16, maxAge: 80, cd: 30, cond: (s) => !!s.career.job, run: (s) => {
+    const j = s.career.job; let net = j.salary; let note = "";
+    if (s.education.debt > 0) { const pay = Math.min(s.education.debt, Math.round(j.salary * 0.15)); s.education.debt -= pay; net -= pay; note = ` (−${s.profile.curSym}${pay} to loans${s.education.debt === 0 ? " — DEBT CLEARED 🎉" : ""})`; }
+    return { auto: [`💵 Payday: +${s.profile.curSym}${net} — ${j.title}, ${INDUSTRIES[j.industry].name}.${note}`], fx: { money: net } };
+  } },
+  { id: "hustleIncome", w: 3, minAge: 18, maxAge: 85, cd: 45, cond: (s) => !!s.career.sideHustle, run: (s) => { const h = s.career.sideHustle; const amt = rnd(50, 120) * h.level; return { auto: [`🚀 Side hustle (${h.type}) brought in +${s.profile.curSym}${amt}.`], fx: { money: amt } }; } },
+  { id: "hustleGrow", i: 1, w: 2, minAge: 18, maxAge: 85, cd: 400, cond: (s) => !!s.career.sideHustle && s.career.sideHustle.level < 4, run: (s) => { const h = s.career.sideHustle; return { event: { emoji: "📈", title: "The hustle wants more", text: `Your ${h.type} operation is at capacity. Growth means investment — ${s.profile.curSym}${h.level * 400} and real hours.`, options: [
+    { label: `Invest ${s.profile.curSym}${h.level * 400}`, cond: (st) => st.money >= h.level * 400, fx: { money: -(h.level * 400), run: (st) => { st.career.sideHustle.level += 1; }, stats: { happiness: +3 }, feed: `📈 You leveled up the ${h.type} hustle. It's starting to look suspiciously like a real business.` } },
+    { label: "Keep it small and sane", fx: { feed: `You kept the hustle cozy. Not everything needs to scale.` } },
+    ...(h.level >= 3 && s.career.job ? [{ label: "Quit the day job — go all in", fx: { run: (st) => { push(st, `🚀 You handed in your notice and went full-time on the ${h.type} business. Terrifying. Correct? Time will tell.`); st.career.job = null; st.career.sideHustle.level += 1; }, feed: "" } }] : []),
+  ] } }; } },
+  { id: "politics1", i: 1, w: 3, minAge: 16, maxAge: 80, cd: 250, cond: (s) => !!s.career.job, run: (s) => { const j = s.career.job; return { event: { emoji: "🏢", title: "Credit where credit isn't due", text: `In the all-hands, a colleague presents your work — your late nights, your idea — under their name. ${j.boss} nods along, impressed at the wrong person.`, options: [
+    { label: "Correct the record, publicly and calmly", fx: { run: (st) => { st.career.job.perf = clamp(st.career.job.perf + 8); }, emergent: { courage: +6 }, feed: `"Happy to walk through the details — I built it." Two sentences, zero drama, permanent respect. ${j.boss} took note.` } },
+    { label: "Talk to the boss privately after", fx: { run: (st) => { st.career.job.perf = clamp(st.career.job.perf + 4); }, emergent: { prudence: +4 }, feed: `You laid it out privately with receipts. ${j.boss} fixed it quietly. The colleague avoids the coffee machine when you're there.` } },
+    { label: "Let it slide", fx: { stats: { happiness: -4 }, feed: `You said nothing. The resentment took a desk next to yours and started attending all your meetings.` } },
+  ] } }; } },
+  { id: "promotion", i: 1, w: 3, minAge: 17, maxAge: 75, cd: 400, cond: (s) => !!s.career.job && s.career.job.perf > 66 && s.career.job.tier < 4, run: (s) => { const j = s.career.job; const nt = INDUSTRIES[j.industry].titles[j.tier]; const ns = rnd(...TIER_SALARY[j.tier + 1]); return { event: { emoji: "🪜", title: "The opening upstairs", text: `${j.boss} closes the door. "The ${nt} position is open. Your name keeps coming up. Interview's Thursday."`, options: [
+    { label: "Go for it", fx: { run: (st) => { const jj = st.career.job; if (jj.perf > 78 || Math.random() < 0.7) { jj.tier += 1; jj.title = nt; jj.salary = ns; jj.perf = 55; push(st, `🪜 You got it. ${nt}, ${st.profile.curSym}${ns}/mo. New title, new problems, better coffee.`); st.stats.happiness = clamp(st.stats.happiness + 6); } else { jj.perf = clamp(jj.perf + 5); push(st, `🪜 They went with someone else. ${jj.boss} was honest about why, which somehow helped. Next opening has your name pencilled in.`); } }, feed: "" } },
+    { label: "Pass — protect your life balance", fx: { stats: { happiness: +2 }, feed: `You passed on the ladder rung. The evenings you kept are their own promotion.` } },
+  ] } }; } },
+  { id: "layoff", w: 6, minAge: 18, maxAge: 75, cd: 100, cond: (s) => !!s.career.job && [2008, 2020].includes(yearOf(s)) && !s.flags["laid" + yearOf(s)], run: (s) => { s.flags["laid" + yearOf(s)] = true; const j = s.career.job; if (Math.random() < 0.5) return { auto: [`📉 Layoffs swept through ${INDUSTRIES[j.industry].name}. Your row of desks emptied — yours survived. Survivor's guilt comes with extra workload.`] }; const sev = j.salary * 2; return { auto: [`📉 The ${yearOf(s)} crisis reached your desk. Laid off — ${s.profile.curSym}${sev} severance and a cardboard box. (🎯 Act → Look for work when ready.)`], fx: { money: sev, run: (st) => { st.career.job = null; }, stats: { happiness: -8 } } }; } },
+  { id: "workCloset", i: 1, w: 2, minAge: 18, maxAge: 75, cd: 400, cond: (s) => !!s.career.job && !s.outTo.work && isOutQueer(s) && activePartners(s).length > 0 && eraAcceptance(yearOf(s)) < 65, run: (s) => { const [, p] = pick(activePartners(s)); return { event: { emoji: "🚪", title: "Watercooler assumptions", text: `Office smalltalk turns to weekend plans. "You and the missus?" a coworker asks — wrong on every count. ${p.name}'s name sits behind your teeth.`, options: [
+    { label: `Correct them: "${p.name}, actually."`, fx: { run: (st) => comeOutWorkInline(st) , feed: "" } },
+    { label: "Vague it away — 'just family stuff'", fx: { stats: { happiness: -3 }, emergent: { prudence: +2 }, feed: `You blurred yourself again. It's getting heavier, this editing.` } },
+  ] } }; } },
+  { id: "workAlly", w: 1, minAge: 18, maxAge: 75, cd: 500, cond: (s) => !!s.career.job && s.outTo.work, run: (s) => { const era = eraAcceptance(yearOf(s)); return era > 55
+    ? { auto: [`🌈 A junior coworker stopped by your desk: "Seeing you just... exist openly here made it easier for me." You remember being on the other side of that sentence.`], fx: { stats: { happiness: +5 } } }
+    : { auto: [`🧱 A "joke" in the break room, aimed vaguely your way. You logged it, finished your coffee, and did excellent work all afternoon out of spite.`], fx: { emergent: { courage: +3 }, stats: { happiness: -2 } } }; } },
+
+  /* ——— HEALTH/AGE ——— */
+  { id: "healthCrisis", i: 1, w: 5, minAge: 10, maxAge: 100, cd: 300, cond: (s) => s.stats.health < 15, run: (s) => ({ event: { emoji: "🏥", title: "Your body pulls the alarm", text: `You collapsed — dizziness, a blur of fluorescent hospital light. The doctor is kind and blunt: "This is the warning shot. There isn't usually a second."`, options: [
+    { label: `Full treatment & real rest (${s.profile.curSym}500)`, cond: (st) => st.money >= 500, fx: { money: -500, stats: { health: +25 }, feed: `🏥 Treatment, rest, an actual recovery plan. You listened to your body for once. It noticed.` } },
+    { label: "Minimal care, back on your feet fast", fx: { stats: { health: +10 }, feed: `🏥 Patched up and discharged early against advice. The warning light is still blinking on the dashboard.` } },
+  ] } }) },
+  { id: "aging", w: 2, minAge: 62, maxAge: 100, cd: 350, run: (s) => ({ auto: [pick([
+      `🕰 Your knees now forecast the weather more reliably than the news.`,
+      `🕰 You caught yourself telling a story that started with "back in ${yearOf(s) - 40}..." — and finished it anyway, with pride.`,
+      `🕰 A kid asked what music was like "in the old days". You played them the good stuff. They were, correctly, amazed.`,
+    ])] }) },
+];
+
+function comeOutWorkInline(st) {
+  const withOut = comeOutWork(st);
+  Object.assign(st, JSON.parse(JSON.stringify(withOut)));
+}
+
+function marry(st, key) {
+  const q = st.romance[key];
+  q.status = "married"; q.role = "Spouse"; q.rel = clamp(q.rel + 10);
+  st.spouse = key;
+  st.stats.happiness = clamp(st.stats.happiness + 10);
+  Object.entries(st.romance).forEach(([k2, o]) => { if (k2 !== key && ["dating", "serious"].includes(o.status) && !o.openOk) doBreakup(st, k2); });
+}
+
+
+/* ═══════════════ EXPANSION: MICRO FLAVOR + DILEMMAS ═══════════════ */
+
+const MICRO = {
+  child: [
+    "🪁 You spent an entire afternoon trying to make a kite out of a bin bag. It flew for four seconds. Four glorious seconds.",
+    "🐛 You found a caterpillar and named it and checked on it daily until it was gone, which nobody explained properly.",
+    "🧦 You wore mismatched socks on purpose for a whole month as a statement. Nobody asked. The statement stood.",
+    "📺 Saturday morning, cereal, cartoons, the specific quality of light. You'd recognise it instantly forty years later.",
+    "🥾 A puddle of genuinely impressive depth was located and thoroughly investigated. Boots were a casualty.",
+    "🎈 A balloon escaped and you watched it until it was a dot, then a memory of a dot.",
+    "🍦 The ice cream fell off the cone. The world ended. It was rebuilt, with sprinkles, within ten minutes.",
+    "🐦 You tried to teach a bird to trust you using bread and enormous patience. Progress: minimal. Commitment: total.",
+    "🍦 You heard the ice-cream truck from three streets away and made it in time. Athletic peak.",
+    "🌧 You jumped in every single puddle on the way home. Every one.",
+    "🛏 You built a blanket fort of unprecedented structural ambition.",
+    "🐛 You found a caterpillar and named it. It's your coworker now.",
+    "🎈 A balloon escaped your hand and you watched it go for a long, philosophical minute.",
+    "📺 Saturday cartoons with cereal. Civilization has peaked.",
+    "🧦 You slid down the hallway in socks and stuck the landing. Nobody saw. Legendary anyway.",
+    "🖍 You drew on the wall. It was art. The jury (mom) disagreed.",
+    "🌟 You stayed up past bedtime and touched the forbidden hour of nine p.m.",
+    "🐜 You spent forty minutes watching an ant carry something enormous. Respect.",
+    "🎂 You got the corner piece with the frosting flower. Justice exists.",
+    "🧢 You wore your cap backwards and felt 40% cooler. Science.",
+    "📚 The teacher read aloud and did all the voices. Best class ever.",
+    "🍪 You negotiated a second cookie through sheer persistence. Future lawyer.",
+    "🚿 You discovered the bathroom has incredible echo acoustics. Concert held.",
+    "🌈 A double rainbow. You reported it door to door.",
+    "🦷 You wiggled a loose tooth all day. Gross and fascinating.",
+    "⚡ Thunderstorm blackout — candles, shadows, family weirdly close and cozy.",
+  ],
+  teen: [
+    "🎧 You listened to the same song forty times because it was saying the thing you couldn't.",
+    "📱 A conversation that went on until 2 a.m. about nothing, which was somehow the most important nothing.",
+    "🚪 You slammed a door and then felt stupid about it while still committed to the position.",
+    "🪞 You practised a facial expression in the mirror for use in public. It never once got deployed correctly.",
+    "🛹 You fell off something you shouldn't have been on, in front of people whose opinion mattered enormously.",
+    "📚 A teacher said one offhand encouraging thing that you have not forgotten and they do not remember.",
+    "🧃 A group of you sat on a wall for three hours doing nothing. The best three hours of that month.",
+    "🕶 You developed a personality based largely on one film you'd seen once. It suited you, briefly.",
+    "🎧 You found a song so good you listened to it eleven times in a row.",
+    "🪞 You practiced comebacks in the mirror for arguments that already happened.",
+    "📝 You wrote something in the margins of your notebook you'd die before showing anyone.",
+    "🍕 The group split one pizza five ways and solved zero of the world's problems, loudly.",
+    "😴 You fell asleep at 4 p.m. 'for ten minutes' and woke up in a different day, confused.",
+    "👟 New shoes. You checked how they looked while walking at least thirty times.",
+    "📖 A book wrecked you a little, in a good way. You told no one.",
+    "🌙 You climbed onto the roof to think. Mostly you just got cold, but importantly.",
+    "🤳 Someone took a photo of you that you actually liked. Rare artifact, archived.",
+    "🧪 Chemistry class: something briefly caught fire. Best lesson of the semester.",
+    "🚌 You and a stranger on the bus both laughed at the same overheard nonsense.",
+    "💬 A three-hour conversation about absolutely nothing. Necessary.",
+    "🥇 You beat your own tiny record at your own tiny game. Undefeated champion.",
+    "🌃 The city/town looked different at dusk somehow. You noticed. That's new.",
+    "😤 You slammed your door, felt powerful, then quietly opened it for the cat/snacks.",
+    "🎬 A movie became your entire personality for a week.",
+  ],
+  adult: [
+    "☕ You bought the expensive coffee on a bad morning and it worked, which felt like cheating.",
+    "🧾 An hour lost to admin that could not be delegated, celebrated, or remembered.",
+    "🌆 You walked home the long way for no reason and the city looked like it was auditioning for something.",
+    "🛁 The specific medicinal quality of a bath after a genuinely terrible week.",
+    "📞 You let it ring out, then felt guilty, then called back, then it was fine.",
+    "🧺 You did all the laundry, all of it, and stood looking at the empty basket like a monument.",
+    "🚉 A stranger on a train said something unexpectedly kind and you thought about it for days.",
+    "🍜 You ate the same meal four nights running because deciding was beyond you. It was a good meal.",
+    "🧺 You folded all the laundry the same day you washed it. Historians will speak of this.",
+    "🍳 You cooked a real dinner from an actual recipe. Only one substitution panic.",
+    "☕ The first sip of coffee on a quiet morning did more than any philosophy.",
+    "🧾 You did paperwork like an adult and rewarded yourself like a child. Balanced.",
+    "🛋 You cancelled plans and felt guilty for exactly eleven minutes, then great.",
+    "🪴 You bought a plant, promising this one will be different. It believes you.",
+    "🎶 An old song ambushed you in a store and took you straight back a decade.",
+    "🚶 A long walk with no destination fixed a problem you couldn't name.",
+    "🧹 You cleaned one drawer and felt like you'd reorganized your whole life.",
+    "📞 A phone call you'd dreaded turned out fine. They always do. You'll dread the next one anyway.",
+    "🍜 You perfected your comfort-food order. It knows things about you.",
+    "🛠 You fixed a thing yourself. You will mention this, casually, for months.",
+    "🌅 You were up early enough to see the street empty and gold. Worth it, once.",
+    "💡 You had a shower thought so good you told someone. They were polite about it.",
+    "🧦 One sock remains missing. The investigation continues.",
+    "📦 You finally returned the thing. Freedom.",
+    "🫙 The jar opened on YOUR first try in front of witnesses.",
+    "🗺 You daydreamed a whole alternate life during one commute. Nice place, that life.",
+  ],
+  elder: [
+    "🪑 You have a chair now. It is yours. Everyone knows it is yours.",
+    "📻 You heard a song from a decade you lived through and every detail came back uninvited.",
+    "🌳 A tree you remember being planted is now taller than the house. That one landed oddly.",
+    "🥾 A walk that used to take twenty minutes takes thirty-five, and you notice more things.",
+    "📖 You reread a book you loved at twenty and it was a completely different book.",
+    "🫖 Someone younger asked your advice and actually listened. You floated for the rest of the week.",
+    "🫖 The good teapot came out. It's always the good teapot now — that's the wisdom.",
+    "📻 The station played 'the classics' and you knew every word before the singer did.",
+    "🧶 Your hands remembered a craft your head forgot you knew.",
+    "🐦 You've begun greeting specific neighborhood birds. They expect it now.",
+    "📸 An old photo fell out of a book and stopped time for a while.",
+    "🌻 The garden did something spectacular and you told everyone within range.",
+    "🍲 You made the recipe from memory. It tasted like a kitchen from 50 years ago.",
+    "🧓 A young person held the door and called you 'sir/ma'am'. You allowed it, regally.",
+    "🕰 You woke at dawn without an alarm, out of pure habit and mild spite.",
+    "📬 You wrote someone an actual letter. On paper. It felt like casting a spell.",
+  ],
+};
+
+const EXTRA_POOL = [
+  { id: "microChild", w: 9, minAge: 3, maxAge: 11, cd: 40, run: () => ({ auto: [pick(MICRO.child)], fx: { stats: { happiness: rnd(1, 3), health: rnd(0, 1) } } }) },
+  { id: "microTeen", w: 9, minAge: 12, maxAge: 17, cd: 40, run: () => ({ auto: [pick(MICRO.teen)], fx: { stats: { happiness: rnd(1, 3), smarts: rnd(0, 1) } } }) },
+  { id: "microAdult", w: 9, minAge: 18, maxAge: 59, cd: 40, run: () => ({ auto: [pick(MICRO.adult)], fx: { stats: { happiness: rnd(1, 3), health: rnd(0, 1) } } }) },
+  { id: "microElder", w: 9, minAge: 60, maxAge: 105, cd: 40, run: () => ({ auto: [pick(MICRO.elder)], fx: { stats: { happiness: rnd(1, 3), health: rnd(0, 1) } } }) },
+
+  /* — childhood dilemmas — */
+  { id: "toothFairy", i: 1, w: 2, minAge: 5, maxAge: 8, once: true, run: () => ({ event: { emoji: "🦷", title: "The tooth", text: "Your first tooth is out. Family protocol says under the pillow.", options: [
+    { label: "Under the pillow, by the book", fx: { stats: { happiness: +3 }, money: +3, feed: "🦷 Morning delivered a coin. The system works." } },
+    { label: "Stay up to catch the tooth fairy", fx: { stats: { smarts: +2 }, feed: "🦷 You lasted until 11:04 p.m. Woke to a coin and deep suspicion. First scientific inquiry: inconclusive." } },
+  ] } }) },
+  { id: "schoolPlay", i: 1, w: 2, minAge: 6, maxAge: 11, once: true, run: () => ({ event: { emoji: "🎭", title: "The school play", text: "The class is staging a play. The teacher looks around for volunteers.", options: [
+    { label: "Raise your hand for the lead", fx: { emergent: { courage: +6 }, stats: { happiness: +3 }, feed: "🎭 You got the lead, forgot one line, improvised, got the biggest laugh of the night." } },
+    { label: "Backstage crew — power behind the curtain", fx: { emergent: { prudence: +3 }, stats: { smarts: +2 }, feed: "🎭 You ran the curtain and the lights. Nothing worked without you. Nobody clapped for you. Both facts are true." } },
+    { label: "Be a tree. Literally.", fx: { stats: { happiness: +2 }, feed: "🎭 You were Tree #2. You committed to the role. A star is born, slowly, like a tree." } },
+  ] } }) },
+  { id: "lieCaught", i: 1, w: 2, minAge: 5, maxAge: 10, once: true, run: (s) => ({ event: { emoji: "🍪", title: "The crumb evidence", text: `The last cookies are gone. ${s.family.mom.name} asks, calmly, if you know anything about it. There are crumbs on your shirt.`, options: [
+    { label: "Confess everything", fx: { stats: { happiness: -1 }, emergent: { kindness: +4 }, rel: { mom: +3 }, feed: "🍪 You cracked in four seconds flat. She tried very hard not to laugh while assigning dish duty." } },
+    { label: "Blame the dog / a mysterious stranger", fx: { emergent: { kindness: -3 }, stats: { happiness: +1 }, feed: "🍪 You constructed an alibi. It did not survive the crumb evidence. Sentence: dish duty, doubled, plus The Look." } },
+  ] } }) },
+  { id: "scienceFair", i: 1, w: 2, minAge: 8, maxAge: 12, once: true, run: () => ({ event: { emoji: "🌋", title: "Science fair", text: "Project due in two weeks. The eternal question:", options: [
+    { label: "Volcano. It's a classic for a reason.", fx: { stats: { happiness: +4 }, subj: { science: +2 }, feed: "🌋 Your volcano over-erupted onto the judges' table. Third place, first in hearts." } },
+    { label: "Something actually rigorous", fx: { subj: { science: +5 }, stats: { smarts: +2 }, feed: "🔬 You measured plant growth for two weeks with lab-notebook discipline. Second place and a judge said 'promising'. You'll remember that word." } },
+    { label: "Finish it on the bus, morning of", fx: { subj: { science: -1 }, stats: { happiness: +2 }, feed: "📉 A poster drawn on a moving bus has a certain energy. Participation ribbon energy." } },
+  ] } }) },
+  { id: "fieldTrip", i: 1, w: 2, minAge: 7, maxAge: 12, cd: 700, run: () => ({ event: { emoji: "🚌", title: "Field trip", text: "Museum day. The guide's voice could preserve fossils. A side corridor beckons.", options: [
+    { label: "Slip away and explore", fx: { stats: { smarts: +2, happiness: +3 }, emergent: { courage: +3 }, feed: "🚌 You found the dinosaur hall alone — five unsupervised minutes of pure wonder, one teacher heart attack." } },
+    { label: "Stay with the group", fx: { stats: { smarts: +2, happiness: +1 }, emergent: { prudence: +3 }, feed: "🚌 You stayed put and got picked to hold the real meteorite. Patience pays in space rocks." } },
+  ] } }) },
+  { id: "scaryMovie", i: 1, w: 2, minAge: 7, maxAge: 11, once: true, run: () => ({ event: { emoji: "👻", title: "The forbidden movie", text: "At a sleepover, someone produces the scary movie everyone's parents banned.", options: [
+    { label: "Watch it. You're basically grown.", fx: { emergent: { courage: +5 }, stats: { happiness: +2, health: -1 }, feed: "👻 You watched the whole thing with a pillow shield. Slept with the light on for a week. Told everyone it was nothing." } },
+    { label: "'I'll just... get snacks' (hide in kitchen)", fx: { stats: { happiness: +1, health: +1 }, emergent: { prudence: +3 }, feed: "👻 You executed a tactical snack retreat during every scary part. Nobody noticed. Everybody noticed. Nobody cared." } },
+  ] } }) },
+  { id: "birthdayParty", i: 1, w: 2, minAge: 5, maxAge: 10, cd: 900, run: (s) => ({ event: { emoji: "🎪", title: "Your birthday party", text: `Party planning time. ${s.profile.cls === "Poor" || s.profile.cls === "Working" ? "Budget's tight, but your parents are determined." : "Your parents ask what you want."}`, options: [
+    { label: "Big party, invite the whole class", fx: { stats: { happiness: +5 }, money: +10, feed: "🎪 Controlled chaos, cake casualties, a pile of presents. One kid cried (unrelated). Triumph." } },
+    { label: "Just your favorite people", fx: { stats: { happiness: +4 }, relF: { bff: +5 }, feed: "🎪 A small party with the ones who matter. The inside jokes got new chapters." } },
+  ] } }) },
+
+  /* — teen dilemmas — */
+  { id: "license", i: 1, w: 3, minAge: 16, maxAge: 19, once: true, run: (s) => ({ event: { emoji: "🚗", title: "Driving test", text: "The examiner has a clipboard and no visible soul. Parallel parking awaits.", options: [
+    { label: "Take the test", fx: s.stats.smarts > 45 || Math.random() < 0.6
+      ? { flags: { license: true }, stats: { happiness: +6 }, feed: "🚗 PASSED. You drove home at exactly the speed limit, window down, king/queen of the road." }
+      : { stats: { happiness: -3 }, feed: "🚗 The cone didn't survive. Neither did your pride. Retake scheduled; the cone's family has been notified." } },
+    { label: "Postpone — buses are fine", fx: { stats: { happiness: -2 }, emergent: { prudence: +2 }, feed: "🚗 You postponed. The bus driver nods at you now. That's basically a friendship." } },
+  ] } }) },
+  { id: "firstConcert", i: 1, w: 2, minAge: 14, maxAge: 18, once: true, run: () => ({ event: { emoji: "🎸", title: "First real concert", text: "Your ears will ring for two days. Worth it. The crowd surges toward the stage.", options: [
+    { label: "Push to the front row", fx: { stats: { happiness: +7, health: -1 }, emergent: { courage: +3 }, feed: "🎸 Front row. You made eye contact with the bassist. You'll be retelling this for decades, adding detail each time." } },
+    { label: "Hang back where you can breathe", fx: { stats: { happiness: +5 }, feed: "🎸 From the back, the whole thing — lights, crowd, sound — looked like a single living creature. You were in it." } },
+  ] } }) },
+  { id: "curfew", i: 1, w: 2, minAge: 14, maxAge: 17, cd: 600, run: (s) => ({ event: { emoji: "🕐", title: "Way past curfew", text: `It's very late. The kitchen light is on. ${s.family.dad.name} is awake. There's a drainpipe by your window.`, options: [
+    { label: "Front door. Take the hit honestly.", fx: { stats: { happiness: -2 }, rel: { dad: +4 }, emergent: { kindness: +2 }, feed: "🕐 You walked in and owned it. Grounded — but he said 'thanks for not lying', which confusingly felt like winning." } },
+    { label: "The drainpipe route", fx: Math.random() < 0.6 ? { stats: { happiness: +3 }, emergent: { courage: +2 }, feed: "🕐 Ninja-level infiltration. Your shoes in hand, your heart in your throat, your record clean." } : { rel: { dad: -6 }, stats: { happiness: -2 }, feed: "🕐 The drainpipe groaned. The light snapped on. Grounded, plus a lecture with historical references." } },
+  ] } }) },
+  { id: "cheatSheet", i: 1, w: 2, minAge: 13, maxAge: 17, once: true, cond: inSchool, run: () => ({ event: { emoji: "📄", title: "The folded paper", text: "Someone's passing around answers before the big test. A copy lands on your desk.", options: [
+    { label: "Pass it on without looking", fx: { stats: { smarts: +2, happiness: +1 }, emergent: { discipline: +5 }, subj: { math: +1 }, feed: "📄 You passed it along unread and earned your grade the slow way. It felt cleaner than an A." } },
+    { label: "Use it", fx: Math.random() < 0.65 ? { subj: { math: +4 }, stats: { happiness: +1 }, emergent: { kindness: -2 }, feed: "📄 You used it. The grade came in shiny and hollow, like a chocolate trophy." } : { subj: { math: -3 }, stats: { happiness: -4 }, feed: "📄 The teacher's shadow fell over your desk mid-glance. Zero on the test, a call home, and a very long week." } },
+  ] } }) },
+  { id: "mixtape", i: 1, w: 2, minAge: 13, maxAge: 17, once: true, run: (s) => { const y = yearOf(s); const thing = y < 2005 ? "a mixtape, hand-labeled" : y < 2015 ? "a burned CD with marker art" : "a playlist with an unreasonably considered cover image"; return { event: { emoji: "💿", title: "Songs that say it for you", text: `There's someone you can't say things to directly. But you could make them ${thing}.`, options: [
+    { label: "Make it. Give it. Combust internally.", fx: { emergent: { courage: +5 }, stats: { happiness: +4 }, feed: `💿 You handed over ${thing} and speed-walked away. They listened to all of it. Track 7 did the talking.` } },
+    { label: "Make it and keep it forever", fx: { stats: { happiness: -2 }, emergent: { selfAwareness: +4 }, feed: `💿 You made ${thing} and never gave it to them. Some albums are just for the archive of almosts.` } },
+  ] } }; } },
+  { id: "partyInvite", i: 1, w: 2, minAge: 15, maxAge: 18, cd: 500, run: (s) => ({ event: { emoji: "🎉", title: "The party everyone's talking about", text: "An upper-year party. Loud, parent-free, reputation-defining, possibly a terrible idea.", options: [
+    { label: "Go", fx: Math.random() < 0.7 ? { stats: { happiness: +5 }, feed: "🎉 The party delivered: questionable dancing, a legendary group photo, home by a technically-acceptable hour." } : { stats: { happiness: -2, health: -2 }, emergent: { prudence: +4 }, feed: "🎉 The party got shut down loudly and you learned exactly which friends run and which ones wait for you. Valuable data." } },
+    { label: "Skip it — movie night instead", cond: (st) => !!st.friends.bff, fx: { relF: { bff: +6 }, stats: { happiness: +4 }, feed: "🍿 You and your oldest friend heard the party got wild. You were on couch three of a movie marathon, deeply unbothered." } },
+    { label: "Stay home", fx: { stats: { happiness: +1 }, feed: "🏠 You stayed in. Monday's stories were fun secondhand. Cheaper, too." } },
+  ] } }) },
+  { id: "socialMedia", i: 1, w: 2, minAge: 12, maxAge: 17, once: true, cond: (s) => yearOf(s) >= 2008, run: () => ({ event: { emoji: "📱", title: "Your first profile", text: "Everyone at school is suddenly online. Time to exist on the internet. Who do you present?", options: [
+    { label: "Careful curation — best angles only", fx: { stats: { looks: +2 }, emergent: { prudence: +2 }, feed: "📱 Your profile is a small museum of your best moments. Curation is a skill; so is remembering it's a museum." } },
+    { label: "Post whatever, unfiltered chaos", fx: { stats: { happiness: +3 }, emergent: { selfAwareness: +2 }, feed: "📱 Your feed is honest and weird and gets exactly the right seven people. Quality over reach." } },
+    { label: "Lurk only. Never post.", fx: { stats: { smarts: +2 }, feed: "📱 You made an account and posted nothing, ever. The internet's most sustainable lifestyle." } },
+  ] } }) },
+  { id: "argueParents", i: 1, w: 2, minAge: 13, maxAge: 18, cd: 400, run: (s) => { const topic = pick(["your music ('that noise')", "your clothes ('you're not leaving like that')", "your future ('have you thought seriously about it')", "your room ('a health hazard')"]); return { event: { emoji: "🌩", title: "Kitchen-table standoff", text: `Tonight's flashpoint with your parents: ${topic}. Voices are rising.`, options: [
+    { label: "Stand your ground", fx: { emergent: { courage: +4 }, rel: { mom: -3, dad: -3 }, stats: { happiness: +2 }, feed: "🌩 You didn't back down. Doors were involved. But something in you got more solid — and weirdly, they noticed." } },
+    { label: "Find the compromise", fx: { stats: { happiness: +2 }, emergent: { prudence: +4 }, rel: { mom: +3 }, feed: "🌩 You negotiated terms like a small diplomat. Everyone gave ground; nobody slammed anything. Growth, technically." } },
+    { label: "Cave to keep the peace", fx: { stats: { happiness: -3 }, feed: "🌩 You folded. Dinner was peaceful. The unsaid things filed themselves away for later." } },
+  ] } }; } },
+  { id: "gameAllNighter", i: 1, w: 2, minAge: 13, maxAge: 17, cd: 700, cond: (s) => s.flags.hobby === "games", run: () => ({ event: { emoji: "🌒", title: "One more level", text: "It's 1 a.m. There's a test tomorrow. The game has just gotten SO good.", options: [
+    { label: "Push through the night", fx: { emergent: { gaming: +5 }, subj: { math: -2 }, stats: { health: -2, happiness: +4 }, feed: "🌒 You beat the section at 4:40 a.m. The test... happened. Priorities were set and you can live with them." } },
+    { label: "Save and sleep like a responsible legend", fx: { stats: { health: +2, smarts: +1 }, emergent: { discipline: +5 }, subj: { math: +2 }, feed: "🌒 You saved and slept. The test went fine. The game was still there, patient as ever. Discipline unlocked." } },
+  ] } }) },
+
+  /* — young adult — */
+  { id: "firstApartment", i: 1, w: 3, minAge: 18, maxAge: 25, once: true, cond: (s) => !inSchool(s), run: (s) => ({ event: { emoji: "🔑", title: "Moving out", text: "Time to leave the nest. The listings are... humbling.", options: [
+    { label: "Tiny place, all yours", fx: { money: -Math.min(s.money, 300), stats: { happiness: +6 }, feed: "🔑 A shoebox with your name on the buzzer. You can touch the kitchen from the bed. It is a PALACE." } },
+    { label: "Bigger place, roommates included", fx: { money: -Math.min(s.money, 150), stats: { happiness: +3 }, flags: { roommates: true }, feed: "🔑 You moved in with roommates. The fridge has territorial zones and one shelf of mystery. It's a society now." } },
+    { label: "Stay home a while longer, save up", fx: { money: +100, stats: { happiness: -2 }, rel: { mom: +3 }, feed: "🏠 You stayed home and stacked savings. Free laundry has no price. Well — it has a price: commentary." } },
+  ] } }) },
+  { id: "roommateWar", i: 1, w: 2, minAge: 18, maxAge: 30, cd: 500, cond: (s) => !!s.flags.roommates, run: () => ({ event: { emoji: "🍽", title: "The dish standoff", text: "The sink has developed archaeology. Nobody will yield. The passive-aggressive note era has begun.", options: [
+    { label: "House meeting. Adult mode.", fx: { emergent: { prudence: +4 }, stats: { happiness: +2 }, feed: "🍽 You called a meeting, made a chore wheel, endured the eye-rolls. It... works? The sink has seen the light." } },
+    { label: "Escalate the note war", fx: { stats: { happiness: +2 }, emergent: { kindness: -2 }, feed: "🍽 Your notes achieved literary acclaim and solved nothing. The sink remains a monument to stubbornness." } },
+    { label: "Just do the dishes yourself, seething", fx: { stats: { happiness: -2 }, emergent: { discipline: +2 }, feed: "🍽 You cleaned it all, loudly. Martyrdom smells like lemon soap." } },
+  ] } }) },
+  { id: "carTrouble", i: 1, w: 2, minAge: 18, maxAge: 70, cd: 700, cond: (s) => !!s.flags.license, run: (s) => ({ event: { emoji: "🔧", title: "The noise the car makes now", text: "Your ride has developed a sound. The sound is not free.", options: [
+    { label: `Mechanic (${s.profile.curSym}180)`, cond: (st) => st.money >= 180, fx: { money: -180, stats: { happiness: -1 }, feed: "🔧 The mechanic said a word you pretended to know, charged accordingly, and the noise is gone. Money well surrendered." } },
+    { label: "Fix it yourself off tutorials", fx: Math.random() < 0.5 ? { emergent: { discipline: +4 }, stats: { happiness: +4 }, feed: "🔧 Three videos, skinned knuckles, VICTORY. You are now insufferable about it." } : { money: -60, stats: { happiness: -2 }, feed: "🔧 You made the noise worse and invented a new one. The mechanic was kind enough not to laugh until you left." } },
+    { label: "Turn the radio up", fx: { emergent: { prudence: -3 }, stats: { happiness: +1 }, feed: "🔧 Problem solved via volume knob. The car and you have an understanding built on denial." } },
+  ] } }) },
+  { id: "cookDisaster", i: 1, w: 2, minAge: 18, maxAge: 80, cd: 1400, run: (s) => ({ event: { emoji: "🔥", title: pick(["Dinner has gone rogue", "Kitchen emergency", "It's on fire (a bit)"]), text: pick([
+    "The recipe said 'easy'. The smoke alarm disagrees. Guests arrive in 20 minutes.",
+    "You've invented a new dish. Nobody asked for it. It is grey, and it is bubbling in a way food should not.",
+    "Halfway through, you realise you skipped a step that appears to have been load-bearing.",
+    "The oven has two settings, apparently: off, and the surface of a small star.",
+  ]), options: [
+    { label: `Order in, plate it, say nothing (${s.profile.curSym}40)`, cond: (st) => st.money >= 40, fx: { money: -40, stats: { happiness: +3 }, feed: "🔥 The takeout arrived, got re-plated onto your dishes, and received compliments 'to the chef'. You accepted them. No regrets." } },
+    { label: "Salvage the survivors", fx: { emergent: { discipline: +3 }, stats: { happiness: +2 }, feed: "🔥 You performed culinary triage. The result was renamed 'rustic' and, honestly, kind of worked." } },
+  ] } }) },
+  { id: "tattoo", i: 1, w: 1, minAge: 18, maxAge: 35, once: true, run: (s) => ({ event: { emoji: "🪶", title: "The tattoo idea", text: "You've been sketching the same small design in margins for a year. The shop takes walk-ins today.", options: [
+    { label: `Get it (${s.profile.curSym}120)`, cond: (st) => st.money >= 120, fx: { money: -120, emergent: { courage: +4 }, stats: { happiness: +4, looks: +1 }, feed: "🪶 It's on you now, small and exactly right. Some decisions you wear." } },
+    { label: "Keep it in the margins", fx: { emergent: { prudence: +3 }, feed: "🪶 You left it on paper. The design keeps you company there, still yours, still optional." } },
+  ] } }) },
+  { id: "backpackTrip", i: 1, w: 2, minAge: 19, maxAge: 29, once: true, cond: (s) => s.money >= 400 && !s.education.college, run: (s) => ({ event: { emoji: "🎒", title: "The big trip window", text: "No lease that can't wait, no job that owns you yet. This window doesn't stay open forever.", options: [
+    { label: `Go — a month with a backpack (${s.profile.curSym}400)`, fx: { money: -400, stats: { happiness: +10, health: +2 }, emergent: { courage: +5, selfAwareness: +5 }, feed: "🎒 A month of night buses, wrong turns, strangers' kindness and one perfect sunrise you'll measure others against forever." } },
+    { label: "Save the money, stay the course", fx: { emergent: { prudence: +4 }, money: +50, feed: "🎒 You banked the money and the fantasy both. The account grew. The window stayed on the vision board." } },
+  ] } }) },
+  { id: "festival", i: 1, w: 2, minAge: 18, maxAge: 34, cd: 900, run: (s) => ({ event: { emoji: "⛺", title: "Festival weekend", text: "Three days, five stages, questionable toilets, your people.", options: [
+    { label: `All in (${s.profile.curSym}150)`, cond: (st) => st.money >= 150, fx: { money: -150, stats: { happiness: +8, health: -3 }, feed: "⛺ Three days of music, mud and strangers becoming a choir. You returned hoarse, broke, and completely recharged." } },
+    { label: "Pass this year", fx: { money: +20, feed: "⛺ You skipped it and watched the aftermath photos with a clean conscience and clean shoes." } },
+  ] } }) },
+
+  /* — adult texture — */
+  { id: "juryDuty", i: 1, w: 1, minAge: 25, maxAge: 70, cd: 1800, run: () => ({ event: { emoji: "⚖️", title: "Jury summons", text: "The envelope everyone dreads. Civic duty calls, in triplicate.", options: [
+    { label: "Serve, and take it seriously", fx: { stats: { smarts: +3 }, emergent: { prudence: +3 }, feed: "⚖️ Two weeks of testimony and deliberation. Slower and heavier and more human than TV. You were glad you paid attention." } },
+    { label: "Serve, resentfully, doodling", fx: { stats: { happiness: -1 }, feed: "⚖️ You served. Your notebook now contains one verdict and forty excellent sketches of the bailiff." } },
+  ] } }) },
+  { id: "neighbor", i: 1, w: 2, minAge: 20, maxAge: 90, cd: 800, run: () => ({ event: { emoji: "🏘", title: "The neighbor situation", text: "The neighbor's noise/hedge/parking has crossed a line. Something must be done. Or not.", options: [
+    { label: "Show up with baked goods and talk", fx: { emergent: { kindness: +5 }, stats: { happiness: +3 }, feed: "🏘 Cookies opened the door; honesty handled the rest. You now have a functioning treaty and a standing wave hello." } },
+    { label: "Cold war: pointed silence and notes", fx: { stats: { happiness: -2 }, feed: "🏘 The conflict entered its passive phase. Both sides claim victory. Both sides adjust their schedules to avoid each other." } },
+  ] } }) },
+  { id: "walletFound", i: 1, w: 2, minAge: 12, maxAge: 90, cd: 1000, run: (s) => ({ event: { emoji: "👛", title: "A wallet on the sidewalk", text: `A lost wallet, fat with cash. ID inside. Nobody around.`, options: [
+    { label: "Track down the owner", fx: { emergent: { kindness: +6 }, stats: { happiness: +4 }, feed: "👛 You returned it intact. The owner's relief was worth more than the cash — they insisted on buying you coffee and telling you their whole life story. Fair trade." } },
+    { label: "Keep the cash, mail the rest", fx: { money: +80, emergent: { kindness: -6 }, feed: "👛 You kept the bills and mailed the wallet. The math worked out. Something else didn't, quite." } },
+  ] } }) },
+  { id: "scamCall", i: 1, w: 2, minAge: 18, maxAge: 95, cd: 700, cond: (s) => yearOf(s) >= 1995, run: () => ({ event: { emoji: "☎️", title: "'Urgent action required'", text: "A very confident voice says your account/computer/relative needs money immediately.", options: [
+    { label: "Hang up, warn your parents", fx: { emergent: { prudence: +4 }, rel: { mom: +2, dad: +2 }, feed: "☎️ You hung up and called your parents before the scammers could. Family firewall: active." } },
+    { label: "Waste their time for sport", fx: { stats: { happiness: +3 }, feed: "☎️ You kept them on the line for 25 minutes discussing your fictional yacht. A public service, performed with relish." } },
+  ] } }) },
+  { id: "reunionHS", i: 1, w: 2, minAge: 27, maxAge: 34, once: true, run: (s) => ({ event: { emoji: "🏫", title: "High school reunion", text: "The invitation glitters with implied comparison. Ten years. Who even are these people now?", options: [
+    { label: "Go", fx: { stats: { happiness: +4 }, relF: s.friends.bff ? { dee: +6 } : undefined, feed: "🏫 The popular kids peaked, the quiet kids bloomed, and the gym still smells the same. You left oddly at peace with your own chapter." } },
+    { label: "Skip it", fx: { stats: { happiness: +2 }, feed: "🏫 You skipped it and got the highlights secondhand, which is the correct dosage of high school." } },
+  ] } }) },
+  { id: "midlife", i: 1, w: 3, minAge: 40, maxAge: 46, once: true, run: () => ({ event: { emoji: "🧭", title: "The quiet audit", text: "Forty-something. One night the question just sits down across from you: is this the life you meant?", options: [
+    { label: "Shake something loose — change is overdue", fx: { emergent: { courage: +6 }, stats: { happiness: +5 }, feed: "🧭 You made the change you'd been circling for years. Terrifying for a month; obvious ever after." } },
+    { label: "Take stock with gratitude", fx: { emergent: { selfAwareness: +6 }, stats: { happiness: +4 }, feed: "🧭 You counted what you'd built and who you'd become. More than the younger you dared hope. The audit came back: solvent, in the ways that count." } },
+  ] } }) },
+  { id: "insomnia", i: 1, w: 2, minAge: 20, maxAge: 80, cd: 1500, run: (s) => ({ event: { emoji: "🌃", title: pick(["3 a.m.", "Wide awake", "The ceiling again"]), text: pick([
+    "Sleep has left the building. Your brain is hosting a retrospective of every awkward moment since childhood.",
+    "You are lying perfectly still, performing sleep for an audience of nobody, and fooling no one.",
+    "It's the hour where every decision you've ever made queues up politely to be re-examined.",
+    "Two hours ago this was tiredness. Now it's a project.",
+  ]), options: [
+    { label: "Get up — night walk", fx: { stats: { health: +1, happiness: +2 }, emergent: { selfAwareness: +2 }, feed: "🌃 You walked the sleeping streets and left the retrospective at home. The world at 3 a.m. is weirdly gentle." } },
+    { label: yearOf(s) >= 2010 ? "Doomscroll until dawn" : "Late-night TV until dawn", fx: { stats: { health: -2 }, feed: "🌃 You fed the insomnia glowing rectangles until birdsong. Tomorrow-you has filed a formal complaint." } },
+    { label: "Warm milk, old trick", fx: { stats: { health: +1 }, feed: "🌃 Grandma's remedy. Placebo or not, you were out in twenty minutes." } },
+  ] } }) },
+  { id: "bloodDrive", i: 1, w: 1, minAge: 18, maxAge: 60, cd: 800, run: () => ({ event: { emoji: "🩸", title: "Blood drive", text: "A van, a clipboard, free cookies, and the chance to be someone's anonymous plot twist.", options: [
+    { label: "Donate", fx: { emergent: { kindness: +5 }, stats: { health: -1, happiness: +3 }, feed: "🩸 One arm, one juice box, one life quietly nudged somewhere. The cookie tasted like virtue." } },
+    { label: "Not today", fx: { feed: "🩸 You waved at the van and kept walking. The van understood." } },
+  ] } }) },
+  { id: "inheritSmall", w: 1, minAge: 30, maxAge: 65, once: true, run: (s) => { const amt = rnd(300, 900); return { auto: [`📜 A great-aunt you met twice left you ${s.profile.curSym}${amt} and a box of photographs of people mid-laugh. The money helped. The photos stayed on the shelf.`], fx: { money: amt } }; } },
+  { id: "lotteryNear", w: 1, minAge: 18, maxAge: 90, cd: 1200, run: () => ({ auto: ["🎟 Four of your numbers came up. FOUR. You have told everyone. You will never be this close again and you know it. Winnings: enough for a nice dinner."], fx: { money: +45, stats: { happiness: +3 } } }) },
+
+  /* — family — */
+  { id: "parentScare", i: 1, w: 3, minAge: 33, maxAge: 60, once: true, run: (s) => { const wh = Math.random() < 0.5 ? "mom" : "dad"; const p = s.family[wh]; return { event: { emoji: "🏥", title: "The phone call", text: `${p.name} had a health scare — the kind that turns out okay but rearranges your priorities on the way.`, options: [
+    { label: "Drop everything and go", fx: { rel: { [wh]: +12 }, stats: { happiness: +2 }, money: -80, feed: `🏥 You were there before visiting hours. ${p.name} pretended it was unnecessary and held your hand the entire time.` } },
+    { label: "Call daily, visit when stable", fx: { rel: { [wh]: +4 }, feed: `🏥 You managed it from a distance — calls, logistics, the quiet work. ${p.name} recovered. The 'someday' conversations moved up your list.` } },
+  ] } }; } },
+  { id: "momCalls", i: 1, w: 2, minAge: 19, maxAge: 70, cd: 400, run: (s) => ({ event: { emoji: "📞", title: `${s.family.mom.name} calls`, text: `"Just checking in," she says, which means she has forty minutes of questions about your life.`, options: [
+    { label: "Actually tell her things", fx: { rel: { mom: +6 }, stats: { happiness: +2 }, feed: `📞 You gave her the real update, not the brochure. She went quiet in the good way. "Thank you for telling me," she said.` } },
+    { label: "The highlights reel, then escape", fx: { rel: { mom: +1 }, feed: `📞 Twelve minutes of pleasant headlines. Efficient. She knows it was the brochure. Mothers always know.` } },
+  ] } }) },
+  { id: "dadBond", i: 1, w: 2, minAge: 22, maxAge: 60, once: true, run: (s) => { const act2 = s.family.dad.warmth > 50 ? "a fishing trip" : "help 'organizing the garage' (his language for time together)"; return { event: { emoji: "🎣", title: "Dad reaches out", text: `${s.family.dad.name}, not a man of speeches, invites you to ${act2}. This is enormous, in his currency.`, options: [
+    { label: "Go", fx: { rel: { dad: +10 }, stats: { happiness: +4 }, feed: `🎣 Hours of near-silence that somehow said everything. On the way home he said "we should do this more." You both knew it counted as a paragraph.` } },
+    { label: "Rain-check it", fx: { rel: { dad: -4 }, feed: `🎣 You postponed. He said "sure, sure, whenever." The garage got organized alone. Some invitations don't come twice — you hoped this wasn't one.` } },
+  ] } }; } },
+  { id: "recipeHand", w: 1, minAge: 22, maxAge: 60, once: true, run: (s) => ({ auto: [`🍲 ${s.family.mom.name} finally wrote down the family recipe — the one she measures in "some" and "enough". The card is in her handwriting. You'd save it from a fire.`], fx: { stats: { happiness: +4 }, rel: { mom: +4 } } }) },
+
+  /* — friendship — */
+  { id: "deeMoves", i: 1, w: 2, minAge: 20, maxAge: 30, once: true, cond: (s) => !!s.friends.bff && s.friends.bff.rel > 40, run: () => ({ event: { emoji: "📦", title: "your oldest friend is moving away", text: "A job in another city. Real, adult, far. You help tape boxes and pretend it's fine.", options: [
+    { label: "Distance is just logistics — commit to the calls", fx: { relF: { bff: +8 }, emergent: { loyalty: +5 }, feed: "📦 You built the ritual: same call, same day, every week. The friendship changed shape and lost nothing. Some people are load-bearing at any distance." } },
+    { label: "Let it drift naturally", fx: { relF: { bff: -15 }, stats: { happiness: -3 }, feed: "📦 The calls thinned to holidays, then to likes on photos. Nothing broke. It just... faded, the way unattended things do." } },
+  ] } }) },
+  { id: "friendLoan", i: 1, w: 2, minAge: 18, maxAge: 70, cd: 900, cond: (s) => Object.keys(s.friends).some((k) => !s.friends[k].pet) && s.money >= 100, run: (s) => { const k = pick(Object.keys(s.friends).filter((k2) => !s.friends[k2].pet)); const p = s.friends[k]; return { event: { emoji: "🤲", title: "A hard ask", text: `${p.name}, visibly swallowing pride: "I hate asking. Could you lend me ${s.profile.curSym}100? I'll pay it back."`, options: [
+    { label: "Lend it, no strings", fx: { money: -100, relF: { [k]: +8 }, emergent: { kindness: +4 }, flags: { loanOut: true }, run: (st) => { st.flags.loanDay = st.ageDays; st.flags.loanWho = k; }, feed: `🤲 You handed it over like it was nothing, because to the friendship it was. ${p.name} exhaled for the first time all week.` } },
+    { label: "Decline, gently", fx: { relF: { [k]: -6 }, feed: `🤲 You said no as kindly as no can be said. ${p.name} understood. Something small still shifted in the air between you.` } },
+  ] } }; } },
+  { id: "loanBack", w: 4, minAge: 18, maxAge: 75, cd: 100, cond: (s) => s.flags.loanOut && s.ageDays - (s.flags.loanDay || 0) > 200, run: (s) => { const k = s.flags.loanWho; const p = s.friends[k]; s.flags.loanOut = false; if (!p) return { auto: [] }; return Math.random() < 0.75 ? { auto: [`💸 ${p.name} paid you back — in cash, in an envelope, with a thank-you note that overshot the debt. Some people keep score in gratitude.`], fx: { money: +110, relF: { [k]: +4 } } } : { auto: [`💸 The loan to ${p.name} quietly became a gift. Neither of you mentions it. You've decided the friendship is worth more than the ledger — mostly.`], fx: { relF: { [k]: -2 } } }; } },
+  { id: "movingDay", i: 1, w: 2, minAge: 18, maxAge: 60, cd: 800, cond: (s) => Object.keys(s.friends).some((k) => !s.friends[k].pet), run: (s) => { const k = pick(Object.keys(s.friends).filter((k2) => !s.friends[k2].pet)); const p = s.friends[k]; return { event: { emoji: "🛋", title: "The couch summons", text: `${p.name} is moving and has deployed the sacred text: "hey... what are you doing Saturday? 🥺"`, options: [
+    { label: "Show up with gloves and snacks", fx: { relF: { [k]: +7 }, stats: { health: -2 }, emergent: { kindness: +3 }, feed: `🛋 Six flights. THE couch. Pizza on unpacked boxes at sunset. Friendship's oldest ceremony, honored in full.` } },
+    { label: "Suddenly very busy Saturday", fx: { relF: { [k]: -5 }, feed: `🛋 You dodged. The move happened without you. So did the pizza, and the story everyone now tells about the couch and the stairwell.` } },
+  ] } }; } },
+
+  /* — queer arcs — */
+  { id: "prideFirst", i: 1, w: 3, minAge: 15, maxAge: 90, once: true, cond: (s) => isOutQueer(s), run: (s) => { const era = eraAcceptance(yearOf(s)); const t = era < 30
+      ? { d: "It's small, watched by police, and electric with defiance. Being counted here costs something real.", a: "March anyway, at the front", ra: "🏳️‍🌈 You marched where cameras could see you. Fear and pride used the same heartbeat. You were counted — and being counted, you learned, is a kind of armor for whoever comes next.", b: "Walk at the edge, collar up", rb: "🏳️‍🌈 You walked the route's edge, half-in. Even the edge took courage this year. Next year, maybe a step further in." }
+      : era < 65
+      ? { d: "A real parade now — floats, families, counter-protesters penned across the street, joy anyway.", a: "March with the crowd", ra: "🏳️‍🌈 You marched. Someone's grandmother handed you a flag. A stranger on a float blew you a kiss. The counter-protest signs blurred into irrelevance behind so much noise and color.", b: "Watch from the sidewalk", rb: "🏳️‍🌈 You watched from the curb, and the parade waved at YOU, insistently, until watching felt like belonging anyway." }
+      : { d: "It's practically a city festival now — corporate floats, families, glitter infrastructure.", a: "Dive into the middle of it", ra: "🏳️‍🌈 Music, glitter, chosen family old and new. Somewhere between the dancing and the sunburn you thought about everyone who marched when it was dangerous — and danced a little harder on their behalf.", b: "Find the quiet corner with the elders", rb: "🏳️‍🌈 You skipped the main stage for the community tent, where the veterans of harder decades hold court. Their stories cost more than any float. You listened like it was inheritance. It was." };
+    return { event: { emoji: "🏳️‍🌈", title: "Your first Pride", text: t.d, options: [
+      { label: t.a, fx: { stats: { happiness: +8 }, emergent: { courage: +6 }, feed: t.ra } },
+      { label: t.b, fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +4 }, feed: t.rb } },
+    ] } }; } },
+  { id: "findCommunity", i: 1, w: 2, minAge: 15, maxAge: 60, once: true, cond: (s) => (s.discovered.orientation && isQueerO(s)) || (s.discovered.gender && isQueerG(s)), run: (s) => { const y = yearOf(s); const place = y < 1995 ? "a bookstore café that doesn't advertise what it is — you just know" : y < 2010 ? "an online forum where everyone types like they've been holding their breath for years" : "a group chat that came with its own dialect and instant belonging"; return { event: { emoji: "🫂", title: "People like you", text: `Through a friend of a friend, you find ${place}. For the first time, you're not translating yourself.`, options: [
+    { label: "Keep showing up", fx: { stats: { happiness: +7 }, emergent: { selfAwareness: +5 }, flags: { community: true }, feed: `🫂 You became a regular. There's a difference between being tolerated and being recognized — you can finally feel it from the inside.` } },
+    { label: "Visit once, keep your distance", fx: { stats: { happiness: +2 }, feed: `🫂 You went once and orbited the edges. It's there. Knowing it's there changes the weather, even from a distance.` } },
+  ] } }; } },
+  { id: "elderMentor", w: 2, minAge: 20, maxAge: 55, once: true, cond: (s) => isOutQueer(s) && s.flags.community, run: () => ({ auto: [`🕯 At a community night, an elder — silver-haired, sharp-eyed, twice a survivor of eras you only read about — tells stories until midnight. "We didn't fight so you'd be grateful," they say. "We fought so you'd be ORDINARY. Go be gloriously ordinary." You carry the sentence home like a lantern.`], fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +6 } } }) },
+  { id: "safePerson", i: 1, w: 2, minAge: 16, maxAge: 90, cd: 900, cond: (s) => isOutQueer(s) && s.outTo.public, run: () => ({ event: { emoji: "🚪", title: "Someone knocks", text: `A younger acquaintance asks to talk "about something", eyes on the floor, hands wringing. You recognize the posture from the inside.`, options: [
+    { label: "Make tea. Listen. Take as long as it takes.", fx: { emergent: { kindness: +7 }, stats: { happiness: +5 }, feed: `🚪 They came out to you — first person they ever told. You said the things you once needed said. Somewhere, the ladder you climbed grew a new rung below you.` } },
+    { label: "Point them to resources, keep it brief", fx: { emergent: { kindness: +2 }, feed: `🚪 You kept it short but real, and sent them somewhere good. Not everyone can be the harbor; being the lighthouse also counts.` } },
+  ] } }) },
+  { id: "quiltYears", w: 2, minAge: 18, maxAge: 60, once: true, cond: (s) => isOutQueer(s) && yearOf(s) >= 1985 && yearOf(s) <= 1996, run: () => ({ auto: [`🕯 These are the plague years, and the community has learned to take care of its own — meal trains, hospital visits, memorials that double as protests. You helped stitch a panel for a name that shouldn't be gone. Grief and love, it turns out, are the same skill.`], fx: { emergent: { kindness: +6 }, stats: { happiness: -2 } } }) },
+  { id: "transSteps", i: 1, w: 3, minAge: 18, maxAge: 70, once: true, cond: (s) => s.discovered.gender && isQueerG(s) && !s.flags.buried && !s.flags.hrt, run: (s) => { const y = yearOf(s); const t = y < 1990 ? "Information is scarce — passed hand to hand, photocopied, whispered. But paths exist, for those who look hard enough." : y < 2010 ? "There are clinics now, waiting lists, gatekeeping — but real, walkable paths." : "There are informed doctors, established care paths, and people who've walked every step before you, posting maps."; return { event: { emoji: "🦋", title: "The next step", text: `Living as yourself keeps getting more real. The question of transition steps — social, medical, whichever are yours — has moved from 'whether' to 'when'. ${t}`, options: [
+    { label: "Begin — your pace, your path", fx: { stats: { happiness: +9 }, emergent: { courage: +8, selfAwareness: +5 }, flags: { transitioning: true }, run: (st) => { movePres(st, 12); }, feed: `🦋 You took the first concrete steps. Months later, catching your reflection stopped being a flinch and started being a greeting. Slow magic, the realest kind.` } },
+    { label: "Not yet — the timing isn't yours", fx: { emergent: { prudence: +3 }, feed: `🦋 Not yet — and 'yet' is doing honest work in that sentence. The path isn't going anywhere. Neither is who you are.` } },
+  ] } }; } },
+  { id: "repOnScreen", w: 2, minAge: 10, maxAge: 60, once: true, cond: (s) => isQueerO(s) || isQueerG(s), run: (s) => { const y = yearOf(s); const t = y < 1997 ? "a character who was never named as anything — but you saw it, the coding, the glances, and you gripped the armrest" : y < 2005 ? "Ellen, or one of the brave few after her — network television, prime time, undeniable" : y < 2015 ? "an actual storyline, an actual couple, treated like it was normal, because it is" : "a character whose identity wasn't the plot twist or the tragedy — just one true fact among many"; return { auto: [`📺 Tonight you watched ${t}. Something in your chest unclenched a notch. Representation isn't everything — but the first time the screen looks back at you, it's not nothing either.`], fx: { stats: { happiness: +4 }, emergent: { selfAwareness: +3 } } }; } },
+
+  /* — elder — */
+  { id: "retireDay", i: 1, w: 4, minAge: 60, maxAge: 72, once: true, cond: (s) => !!s.career.job, run: (s) => ({ event: { emoji: "⛵", title: "The retirement question", text: `The number works. The pension math works. ${s.career.job.boss} would throw you a cake. The only question is whether you're done.`, options: [
+    { label: "Retire — the cake awaits", fx: { run: (st) => { push(st, `⛵ Cake, speeches, a card signed by people who fought over the good pens. You walked out light. Monday came and, for the first time in decades, wasn't yours to answer to.`); st.career.job = null; st.flags.retired = true; }, stats: { happiness: +8 }, feed: "" } },
+    { label: "Keep working — you're not done", fx: { stats: { happiness: +2 }, emergent: { discipline: +3 }, feed: `⛵ You stayed on. Not for the money — for the craft, the people, the shape it gives the week. Retirement will keep.` } },
+  ] } }) },
+  { id: "memoir", i: 1, w: 2, minAge: 65, maxAge: 95, once: true, run: () => ({ event: { emoji: "📖", title: "Your story, written down", text: "The grandnephews, the community archive, or just the drawer — someone should have this life on paper.", options: [
+    { label: "Write it all, honestly", fx: { emergent: { selfAwareness: +8 }, stats: { happiness: +6 }, feed: "📖 You wrote it — the shining parts, the shameful parts, the parts that only make sense now. A life, it turns out, is a better story than you'd been giving it credit for." } },
+    { label: "Tell it out loud instead, to whoever visits", fx: { stats: { happiness: +4 }, feed: "📖 You became the storyteller chair at every gathering. Oral tradition: the original memoir, with better timing." } },
+  ] } }) },
+  { id: "oldFriendCall", w: 2, minAge: 60, maxAge: 100, cd: 900, run: () => ({ auto: [`☎️ A voice from forty years ago called out of nowhere. Two hours vanished. You both promised not to let it go so long again, and this time you both wrote it down.`], fx: { stats: { happiness: +5 } } }) },
+  { id: "gardenPride", w: 2, minAge: 58, maxAge: 100, cd: 600, run: () => ({ auto: [`🍅 Your tomatoes have surpassed the neighbor's. You have said nothing. You have simply arranged them on the fence-adjacent windowsill. War has rules.`], fx: { stats: { happiness: +3 } } }) },
+
+  /* — romance extras — */
+  { id: "awkwardDate", i: 1, w: 2, minAge: 15, maxAge: 80, cd: 900, cond: (s) => activePartners(s).some(([, p]) => p.status === "dating"), run: (s) => { const [key, p] = partnerPick(s, (q) => q.status === "dating"); const mishap = pick(["the restaurant lost the reservation", "you called them the wrong name ONCE", "a bird stole part of the picnic", "you both wore the exact same shirt", "the movie was accidentally three hours of experimental cinema", "the bill arrived and both cards declined in sequence", "you walked into a glass door in front of them", "their ex was at the next table, radiating", "it rained in the specific way that ruins plans", "you talked about your childhood for ninety unbroken minutes and only noticed at the end"]); return { event: { emoji: "🙈", title: "Date malfunction", text: `Date with ${p.name}: ${mishap}. The evening teeters between disaster and legend.`, options: [
+    { label: "Lean into the chaos", fx: { relR: { [key]: +6 }, stats: { happiness: +4 }, feed: `🙈 You both surrendered to the absurdity. It became That Story — the one you'll still be telling at anniversaries.` } },
+    { label: "Apologize and salvage formally", fx: { relR: { [key]: +2 }, feed: `🙈 You course-corrected politely. Fine evening. Though ${p.name} seemed almost disappointed the chaos ended.` } },
+  ] } }; } },
+  { id: "meetTheirFolks", i: 1, w: 2, minAge: 17, maxAge: 70, cd: 600, cond: (s) => !!partnerPick(s, (p) => p.status === "serious"), run: (s) => { const [key, p] = partnerPick(s, (q) => q.status === "serious"); const same = sameSexCouple(s, p); const era = eraAcceptance(yearOf(s)); return { event: { emoji: "🍽", title: `Dinner with ${p.name}'s family`, text: `The invitation is official. ${same && era < 55 ? "You're being introduced as a 'friend' — a fiction that sits in your stomach like a stone." : "Best behavior, best shirt, firm handshake protocols."}`, options: [
+    same && era < 55 ? { label: "Play the 'friend' role, for now", fx: { relR: { [key]: +3 }, stats: { happiness: -2 }, emergent: { prudence: +3 }, feed: `🍽 You performed 'the friend' through four courses. ${p.name} squeezed your hand under the table at every lie. Survival is a duet, sometimes.` } } : { label: "Charm offensive", fx: { relR: { [key]: +6 }, stats: { happiness: +3 }, feed: `🍽 You complimented the cooking, asked about the photos, laughed at the dad-tier jokes. Verdict, whispered later: "they LOVE you."` } },
+    { label: "Be exactly yourself, no performance", fx: Math.random() < 0.7 ? { relR: { [key]: +7 }, emergent: { courage: +3 }, feed: `🍽 You showed up unedited. It worked — the real you and their real family found actual common ground. ${p.name} watched it happen with visible relief.` } : { relR: { [key]: +1 }, feed: `🍽 The unedited you and their family circled each other politely. Rome wasn't built in a dinner. ${p.name} appreciated the honesty anyway.` } },
+  ] } }; } },
+  { id: "moveInTogether", i: 1, w: 3, minAge: 19, maxAge: 70, cd: 400, cond: (s) => hreTenure(s) !== "withPartner" && !!partnerPick(s, (p) => p.status === "serious" && p.rel > 70), run: (s) => { const [key, p] = partnerPick(s, (q) => q.status === "serious" && q.rel > 70); return { event: { emoji: "🗝", title: "Two toothbrushes", text: `Half of ${p.name}'s things live at yours already. The lease renewal is an opening. The question hovers over breakfast.`, options: [
+    { label: "Ask them to move in", fx: { setR: { [key]: {} }, flags: { cohabiting: true }, relR: { [key]: +10 }, stats: { happiness: +6 }, feed: `🗝 They said yes before the toast popped. A month later your books are interleaved on the shelves and you can't remember whose mugs were whose. Home has a new definition.` } },
+    { label: "Not yet — you like the missing", fx: { emergent: { selfAwareness: +3 }, feed: `🗝 You held off. There's something about the doorbell, the anticipation, the missing-them that you're not ready to trade for convenience. ${p.name} got it. Mostly.` } },
+  ] } }; } },
+  { id: "loveLetter", w: 2, minAge: 16, maxAge: 90, cd: 500, cond: (s) => activePartners(s).length > 0, run: (s) => { const [key, p] = pick(activePartners(s)); return { auto: [`💌 You found a note from ${p.name} in your ${pick(["coat pocket", "lunch bag", "book, marking your page"])} — ${pick(["three lines that undid you at 11 a.m.", "a terrible pun and an 'I love you' doing heavy lifting together", "just a doodle of you two. Kept forever, obviously."])}`], fx: { relR: { [key]: +4 }, stats: { happiness: +4 } } }; } },
+
+  /* — college extras — */
+  { id: "roommateLottery", i: 1, w: 3, minAge: 17, maxAge: 24, once: true, cond: (s) => !!s.education.college, run: () => ({ event: { emoji: "🎲", title: "The roommate lottery", text: "Move-in day. Your assigned roommate is either your future best friend or a cautionary tale. First impressions loading...", options: [
+    { label: "Break the ice immediately — snacks diplomacy", fx: { run: (st) => { const key = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1); st.friends[key] = makePerson(pick(nameList(st.profile.country, "n")), "College friend", { rel: 60 }); }, stats: { happiness: +4 }, feed: "🎲 Snacks were deployed. By 2 a.m. you had a shared taste map, a poster treaty, and the beginnings of a real friendship." } },
+    { label: "Coexist politely, headphones on", fx: { stats: { smarts: +2 }, feed: "🎲 You and the roommate achieved diplomatic neutrality: nods, borrowed chargers, zero drama. Sometimes that's the win." } },
+  ] } }) },
+  { id: "professorMentor", i: 1, w: 2, minAge: 18, maxAge: 26, once: true, cond: (s) => !!s.education.college && s.education.college.gpa > 60, run: (s) => ({ event: { emoji: "🧑‍🏫", title: "Office hours", text: `A professor scrawled "come see me" on your paper. In office hours they slide it back: "This is genuinely good. What are you planning to DO with this brain?"`, options: [
+    { label: "Take the mentorship seriously", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 8); }, emergent: { discipline: +4 }, flags: { mentor: true }, feed: "🧑‍🏫 You started showing up — office hours, extra reading, real questions. Someone believing in you, it turns out, is a performance enhancer." } },
+    { label: "Nod politely, change nothing", fx: { feed: "🧑‍🏫 You said thanks and drifted on. The compliment still sits somewhere, occasionally glowing." } },
+  ] } }) },
+  { id: "internship", i: 1, w: 2, minAge: 19, maxAge: 26, once: true, cond: (s) => !!s.education.college, run: (s) => ({ event: { emoji: "📎", title: "Summer internship offer", text: `A real company, in your field, wants a summer intern. Pay: "experience" plus ${s.profile.curSym}300 total. But the door it opens is real.`, options: [
+    { label: "Take it", fx: { money: +300, flags: { internDone: true }, emergent: { discipline: +5 }, stats: { happiness: +2 }, feed: "📎 A summer of coffee runs, real work smuggled between them, and names that will remember yours. Résumé: upgraded." } },
+    { label: "Waiter job instead — actual money", fx: { money: +700, stats: { health: -1 }, feed: "💰 You chose cash over clout: a summer of doubles and sore feet and a genuinely healthy bank account. The résumé can wait; rent can't." } },
+  ] } }) },
+  { id: "campusCause", i: 1, w: 2, minAge: 18, maxAge: 25, once: true, cond: (s) => !!s.education.college, run: (s) => { const era = eraAcceptance(yearOf(s)); const cause = isOutQueer(s) ? (era < 50 ? "a tiny, brave campus group pushing for basic recognition" : "the campus queer alliance") : "a campaign for something you actually care about"; return { event: { emoji: "📣", title: "The organizing table", text: `Between classes, a folding table, a clipboard, and ${cause}. They need people.`, options: [
+    { label: "Sign up and show up", fx: { emergent: { courage: +5, kindness: +3 }, stats: { happiness: +3 }, flags: { activist: true }, feed: `📣 You joined. Meetings in borrowed rooms, flyers, small wins that felt enormous. You learned that 'someone should do something' has always meant you.` } },
+    { label: "Take a flyer, keep walking", fx: { feed: `📣 You took the flyer. It lived on your desk for a semester, radiating mild guilt, then became a bookmark. The cause survived without you. Probably.` } },
+  ] } }; } },
+
+  /* — work extras — */
+  { id: "officeParty", i: 1, w: 2, minAge: 18, maxAge: 70, cd: 360, cond: (s) => !!s.career.job, run: (s) => ({ event: { emoji: "🥂", title: "The office party", text: `Annual party. ${s.career.job.boss} is wearing a festive accessory. The karaoke machine hums with menace.`, options: [
+    { label: "Karaoke. Full commitment.", fx: { run: (st) => { st.career.job.perf = clamp(st.career.job.perf + 3); }, stats: { happiness: +5 }, feed: "🥂 Your performance became office canon. Monday's meeting opened with applause. HR smiled, worryingly." } },
+    { label: "Strategic mingling, early exit", fx: { emergent: { prudence: +3 }, feed: "🥂 You worked the room, planted two good impressions, and vanished before the karaoke claimed casualties. Textbook." } },
+  ] } }) },
+  { id: "mentorJunior", i: 1, w: 2, minAge: 25, maxAge: 70, cd: 700, cond: (s) => !!s.career.job && s.career.job.tier >= 2, run: () => ({ event: { emoji: "🌱", title: "The new hire is drowning", text: "The junior on your team is making the exact mistakes you made — and hiding them, which you also did.", options: [
+    { label: "Take them under your wing", fx: { run: (st) => { st.career.job.perf = clamp(st.career.job.perf + 4); }, emergent: { kindness: +5 }, stats: { happiness: +3 }, feed: "🌱 You shared the unwritten manual — the real one. They stopped drowning and started swimming. Their first solo win felt weirdly like yours." } },
+    { label: "Let them learn the hard way, like you did", fx: { feed: "🌱 You stayed out of it. They figured it out eventually, scarred and slower. Tradition, of a kind." } },
+  ] } }) },
+  { id: "bigClient", i: 1, w: 2, minAge: 20, maxAge: 70, cd: 500, cond: (s) => !!s.career.job, run: (s) => ({ event: { emoji: "😤", title: "The impossible client/customer", text: `A legendarily difficult ${s.career.job.tier > 2 ? "client" : "customer"} has chosen you as today's opponent. Everything is wrong, allegedly, including physics.`, options: [
+    { label: "Kill them with competence", fx: { run: (st) => { st.career.job.perf = clamp(st.career.job.perf + 6); }, stats: { happiness: -1 }, feed: "😤 You stayed glacier-calm and fixed the unfixable. They left almost disappointed to have nothing left to complain about. The team witnessed. Legend status: pending." } },
+    { label: "Politely hand them up the chain", fx: { emergent: { prudence: +3 }, feed: "😤 You escalated with a smile. Knowing which battles aren't yours is a skill they don't put on posters." } },
+  ] } }) },
+  { id: "imposter", i: 1, w: 2, minAge: 20, maxAge: 60, cd: 800, cond: (s) => !!s.career.job && s.career.job.tier >= 2, run: () => ({ event: { emoji: "🎭", title: "Imposter hour", text: "3 p.m., a meeting where everyone sounds certain, and a voice in your head says you've fooled them all and today's the day it shows.", options: [
+    { label: "Speak up anyway — your idea is good", fx: { run: (st) => { st.career.job.perf = clamp(st.career.job.perf + 5); }, emergent: { courage: +5 }, feed: "🎭 You said the idea. Silence — then nodding — then someone senior wrote it on the board. The voice in your head had no comment." } },
+    { label: "Sit on it, let someone else shine", fx: { stats: { happiness: -3 }, feed: "🎭 You kept quiet. Twenty minutes later someone said your exact idea and collected your exact nods. Noted. Painfully noted." } },
+  ] } }) },
+  { id: "printerRage", w: 2, minAge: 18, maxAge: 70, cd: 400, cond: (s) => !!s.career.job, run: (s) => ({ auto: [pick([
+      `🖨 The office printer jammed during YOUR deadline, as prophesied. You fixed it with the ancient technique (opening and closing every tray while muttering).`,
+      `📎 Someone scheduled a meeting that was, verifiably, an email. You survived on willpower and doodles.`,
+      `☕ The good coffee ran out and the office briefly considered anarchy. You had a secret stash. Power.`,
+      `💻 You hit 'reply' instead of 'reply all' on a spicy comment. Wait — no — the GOOD direction. Crisis averted by pure luck.`,
+    ])], fx: { stats: { happiness: +1 } } }) },
+];
+
+POOL.push(...EXTRA_POOL);
+
+/* ═══════════════ MORTALITY ═══════════════ */
+
+function mortalityCheck(s, age) {
+  const healthF = (1.6 - s.stats.health / 100) * (1 + conditionRisk(s) * 0.5);
+  let p = 0;
+  if (age < 40) p = 0.0002;
+  else if (age < 60) p = 0.001 * healthF;
+  else if (age < 80) p = 0.006 * Math.exp(0.07 * (age - 60)) * healthF;
+  else p = 0.05 * Math.exp(0.08 * (age - 80));
+  if (age >= 105) p = 1;
+  if (Math.random() < p) {
+    const cause = age < 40 ? pick(["a sudden accident", "a rare illness no one saw coming"]) : age < 65 ? pick(["a heart attack", "an illness fought hard and long"]) : pick(["old age, gently, in your sleep", "a long life simply reaching its final page", "heart failure, after everything that heart had held"]);
+    s.alive = false;
+    s.death = { cause, year: yearOf(s), ageY: age };
+    push(s, `🕊 The end came at ${age}: ${cause}.`);
+    return true;
+  }
+  return false;
+}
+
+/* ═══════════════ HRE · S01 · DETERMINISTIC CORE ═══════════════ */
+/* Housing & Real Estate Ecosystem — Layer 1 foundation.
+   Spec: HRE-ARCHITECTURE Part 1 §3.2, Part 2 §4.6, Part 3 §8.6.
+
+   Everything in HRE that is *generated* rather than *decided* draws from here.
+   The whole seed-reconstruction architecture rests on one property: the same
+   identity string plus the same world seed must yield byte-identical output,
+   in any process, at any time, forever.
+
+   INVARIANT I1 — nothing in this file may call Math.random, rnd, pick,
+   Date.now, or read mutable state. A generator that reads s.money is a bug.
+   Enforced by a lint over this file's source text in test-hre-s01.js.
+
+   INVARIANT I7 — every generated attribute draws from a NAMESPACED sub-stream.
+   Streams are derived independently per namespace, never sequentially, so a
+   future version can add a new generated attribute without perturbing any
+   existing one. This is the single most important forward-compatibility
+   decision in the module.
+
+   Dice vs generation (Part 1 §0.4): generation is a pure function of a seed;
+   outcomes are dice. The engine's rnd/pick remain correct and preferred for
+   event outcomes — did the survey find damp, did the seller accept. They must
+   never appear in generation, or the player's house changes bedroom count
+   between sessions and nothing errors. */
+
+/* ---------- versions (Part 3 §8.6: three independent version numbers) ------ */
+const HRE_ID_V = 1;      /* identity/addressing scheme. Changing this is a genuine breaking migration. */
+const HRE_SEED_V = 1;    /* world-seed derivation scheme. */
+
+/* ---------- hashing -------------------------------------------------------- */
+
+/* FNV-1a, 32-bit. Chosen for being trivially portable: every operation is a
+   32-bit integer op, so it is bit-identical on every JS engine. */
+function hreHash(str) {
+  const s = String(str);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/* Integer avalanche (murmur3 finaliser). Mixes two 32-bit values into one with
+   good bit diffusion, so seeds that differ by 1 produce unrelated streams. */
+function hreMix(a, b) {
+  let h = ((a >>> 0) ^ (b >>> 0)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/* ---------- world seed ----------------------------------------------------- */
+
+/* Pure: derives a world seed from arbitrary entropy. The CALLER supplies the
+   entropy at character creation — that call is a die roll (an outcome), which
+   is legal, and it keeps Math.random out of this file per I1.
+   Stored once on s.hre.seed and never changed for the life of the save. */
+function hreSeedFrom(entropy) {
+  return hreMix(hreHash("hre:seed:v" + HRE_SEED_V + ":" + String(entropy)), 0x9e3779b9);
+}
+
+/* Defensive read. Returns the world seed if present, else null. Never writes:
+   creating the seed is S09/S12's job at character creation (Phase 5). */
+function hreWorldSeed(s) {
+  return s && s.hre && typeof s.hre.seed === "number" ? s.hre.seed >>> 0 : null;
+}
+
+/* ---------- identity strings ---------------------------------------------- */
+
+/* Canonical form (Part 2 §4.3):  v : country : cityIdx : hoodIdx : blockIdx : unitIdx
+   e.g.  "1:United States:0:3:117:42"
+
+   Country is the exact COUNTRIES key (module 17) because the content-table
+   fallback chain resolves on it. Every other level is an integer index, so
+   city renames and city-list growth do not invalidate stored identities.
+
+   Identity strings are OPAQUE outside S01. No consumer may split, slice or
+   regex one — call hreIdParse. */
+
+function hreIdBuild(country, city, hood, block, unit) {
+  if (typeof country !== "string" || !country.length || country.indexOf(":") !== -1) return null;
+  const ix = [city, hood, block, unit];
+  for (let i = 0; i < ix.length; i++) {
+    if (!Number.isInteger(ix[i]) || ix[i] < 0) return null;
+  }
+  return HRE_ID_V + ":" + country + ":" + city + ":" + hood + ":" + block + ":" + unit;
+}
+
+function hreIdParse(id) {
+  if (typeof id !== "string") return null;
+  const p = id.split(":");
+  if (p.length !== 6) return null;
+  const v = Number(p[0]);
+  if (!Number.isInteger(v) || v !== HRE_ID_V) return null;
+  if (!p[1].length) return null;
+  const n = [];
+  for (let i = 2; i < 6; i++) {
+    if (!/^\d+$/.test(p[i])) return null;
+    n.push(Number(p[i]));
+  }
+  return { v: v, country: p[1], city: n[0], hood: n[1], block: n[2], unit: n[3] };
+}
+
+function hreIdValid(id) { return hreIdParse(id) !== null; }
+
+/* Truncated identities address a level of the lattice rather than a unit —
+   used by S03 for neighbourhood and block derivation, which must be stable
+   regardless of which unit inside them prompted the lookup. */
+function hreIdOf(id, level) {
+  const p = hreIdParse(id);
+  if (!p) return null;
+  if (level === "country") return HRE_ID_V + ":" + p.country;
+  if (level === "city") return HRE_ID_V + ":" + p.country + ":" + p.city;
+  if (level === "hood") return HRE_ID_V + ":" + p.country + ":" + p.city + ":" + p.hood;
+  if (level === "block") return HRE_ID_V + ":" + p.country + ":" + p.city + ":" + p.hood + ":" + p.block;
+  if (level === "unit") return id;
+  return null;
+}
+
+/* ---------- the stream ----------------------------------------------------- */
+
+/* mulberry32. Small, fast, statistically adequate for content generation, and
+   — critically — implemented entirely in 32-bit integer ops, so it produces
+   the same sequence on every engine. */
+function hreMulberry(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* hreRng(worldSeed, id, namespace) -> a FRESH stream.
+   Deviation from the spec's shorthand hreRng(id, "condition"): the world seed
+   is an explicit parameter rather than ambient, because Part 2 §4.1 fixes the
+   pipeline's inputs at exactly three and ambient state would make this file
+   impure. Recorded here per the spec's "deviations are recorded, not absorbed".
+
+   Streams are transient (Part 2 §5.1, class P1). Create, draw, discard. Never
+   store one, never share one, never advance one across a call boundary — two
+   callers holding the same stream reintroduces order-dependence, which is the
+   exact failure mode namespacing exists to prevent. */
+function hreRng(worldSeed, id, namespace) {
+  const base = hreMix(worldSeed >>> 0, hreHash(String(id)));
+  const seed = hreMix(base, hreHash("ns:" + String(namespace)));
+  const next = hreMulberry(seed);
+
+  const api = {
+    /* raw float in [0,1) */
+    float: function () { return next(); },
+
+    /* inclusive integer, mirroring the engine's rnd(a,b) ergonomics */
+    int: function (a, b) { return a + Math.floor(next() * (b - a + 1)); },
+
+    /* uniform element */
+    pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+
+    /* boolean at probability p */
+    chance: function (p) { return next() < p; },
+
+    /* float in [a,b) */
+    range: function (a, b) { return a + next() * (b - a); },
+
+    /* Weighted draw. Accepts either an array of [value, weight] pairs or a
+       plain object of {key: weight} (returns the key). Object key order is
+       insertion order for string keys, so both shapes are deterministic.
+       Zero/negative weights are skipped; an all-zero table returns null. */
+    weighted: function (table) {
+      const entries = Array.isArray(table)
+        ? table
+        : Object.keys(table).map(function (k) { return [k, table[k]]; });
+      let total = 0;
+      for (let i = 0; i < entries.length; i++) {
+        const w = entries[i][1];
+        if (w > 0) total += w;
+      }
+      if (total <= 0) return null;
+      let r = next() * total;
+      for (let i = 0; i < entries.length; i++) {
+        const w = entries[i][1];
+        if (w > 0) { r -= w; if (r <= 0) return entries[i][0]; }
+      }
+      return entries[entries.length - 1][0];
+    },
+
+    /* Approximately normal, via Irwin-Hall (sum of 12 uniforms, minus 6).
+       Deliberately NOT Box-Muller: that needs Math.log/sqrt/cos, whose
+       results are not guaranteed bit-identical across JS engines, which would
+       break determinism across the web build, the PWA and the APK. This uses
+       addition only. Support is truncated at +/-6 sd, which is irrelevant for
+       generating floor areas and condition scores. */
+    gauss: function (mean, sd) {
+      let sum = 0;
+      for (let i = 0; i < 12; i++) sum += next();
+      return (mean === undefined ? 0 : mean) + (sum - 6) * (sd === undefined ? 1 : sd);
+    },
+
+    /* Deterministic Fisher-Yates on a COPY; the input array is never mutated. */
+    shuffle: function (arr) {
+      const out = arr.slice();
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(next() * (i + 1));
+        const t = out[i]; out[i] = out[j]; out[j] = t;
+      }
+      return out;
+    },
+  };
+  return api;
+}
+
+/* Retry streams for the validation stage (Part 2 §4.8). The pipeline never
+   clamps a rejected draw — clamping piles every out-of-range property up at
+   exactly the boundary and quietly distorts the distribution. Instead it
+   re-derives from a nudged sub-seed, which is still fully deterministic. */
+function hreRngRetry(worldSeed, id, namespace, attempt) {
+  return hreRng(worldSeed, id, String(namespace) + ":r" + attempt);
+}
+
+/* ═══════════════ HRE · LAYER 2 · WORLD MODEL (S03 · S04) ═══════════════ */
+/* Spec: HRE-ARCHITECTURE Part 1 §3.3, Part 2 §4.3/§4.4 stages 1-2, §5.2/§5.3.
+   Depends on: S01 only (S03) and content tables only (S04). Never on Layer 3+.
+   INVARIANT I1 — no Math.random / rnd / pick / Date.now / mutable-state reads.
+   INVARIANT I9 — law and urban form are DATA with generic resolvers. There is
+   no `if (country === "Poland")` anywhere below, and adding one is a defect. */
+
+/* ───────────────────────── SHARED CONTENT TABLES ─────────────────────────
+   Part 2 §5.2: content tables sit OUTSIDE the subsystem DAG. Both S03 and S04
+   read these; neither owns the other. Keeping the region/development maps here
+   is what stops S03 acquiring a dependency on S04.
+   NOTE: the project docs say "39 countries" in several places. The real
+   COUNTRIES table has 41 keys. These maps cover all 41. */
+
+const HRE_REGION = {
+  "United States": "anglo", "United Kingdom": "anglo", "Canada": "anglo",
+  "Australia": "anglo", "New Zealand": "anglo", "Ireland": "anglo",
+  "France": "westEu", "Germany": "westEu", "Netherlands": "westEu",
+  "Austria": "westEu", "Switzerland": "westEu",
+  "Denmark": "nordic", "Norway": "nordic", "Sweden": "nordic",
+  "Spain": "southEu", "Portugal": "southEu", "Italy": "southEu", "Greece": "southEu",
+  "Poland": "eastEu", "Russia": "eastEu", "Ukraine": "eastEu",
+  "Argentina": "latam", "Brazil": "latam", "Chile": "latam",
+  "Colombia": "latam", "Cuba": "latam", "Mexico": "latam",
+  "China": "eastAsia", "Japan": "eastAsia", "South Korea": "eastAsia",
+  "India": "southAsia",
+  "Indonesia": "seAsia", "Philippines": "seAsia", "Thailand": "seAsia", "Vietnam": "seAsia",
+  "Egypt": "mena", "Israel": "mena", "Turkey": "mena",
+  "Kenya": "subSaharan", "Nigeria": "subSaharan", "South Africa": "subSaharan",
+};
+
+/* Development band. Provisional; module 22 tranche 2+ should make this
+   era-aware (a country moves bands across a century). Today it is a single
+   modern-era band per country, which the fallback chain treats as a coarse
+   default only — country and region entries always win over it. */
+const HRE_DEV = {
+  "United States": "high", "United Kingdom": "high", "Canada": "high", "Australia": "high",
+  "New Zealand": "high", "Ireland": "high", "France": "high", "Germany": "high",
+  "Netherlands": "high", "Austria": "high", "Switzerland": "high", "Denmark": "high",
+  "Norway": "high", "Sweden": "high", "Spain": "high", "Portugal": "high",
+  "Italy": "high", "Greece": "high", "Japan": "high", "South Korea": "high", "Israel": "high",
+  "Poland": "upper", "Russia": "upper", "Ukraine": "upper", "Argentina": "upper",
+  "Brazil": "upper", "Chile": "upper", "Colombia": "upper", "Cuba": "upper",
+  "Mexico": "upper", "China": "upper", "Turkey": "upper", "Thailand": "upper",
+  "South Africa": "upper",
+  "India": "middle", "Indonesia": "middle", "Philippines": "middle",
+  "Vietnam": "middle", "Egypt": "middle",
+  "Kenya": "low", "Nigeria": "low",
+};
+
+function hreRegionOf(country) { return HRE_REGION[country] || "universal"; }
+function hreDevOf(country) { return HRE_DEV[country] || "middle"; }
+
+/* ═══════════════════════════ S03 · GEOGRAPHY ═══════════════════════════ */
+/* There is no map. There is a hierarchy:
+     country -> city -> neighbourhood -> block -> unit
+   No coordinates, no geometry, no adjacency (Part 1 §1.3). The only spatial
+   query supported is distance CLASS. */
+
+const HRE_CLASS_ORDER = ["informal", "working", "suburban", "affluent", "elite"];
+
+/* Urban-form templates: the mix of neighbourhood classes a city of a given
+   development band contains. Weights, not counts — allocation below turns them
+   into a guaranteed spread. Content table; extend freely. */
+const HRE_URBAN_FORM = {
+  high:     { informal: 2,  working: 26, suburban: 40, affluent: 24, elite: 8 },
+  upper:    { informal: 14, working: 34, suburban: 30, affluent: 16, elite: 6 },
+  middle:   { informal: 28, working: 36, suburban: 22, affluent: 10, elite: 4 },
+  low:      { informal: 42, working: 34, suburban: 15, affluent: 6,  elite: 3 },
+  universal:{ informal: 20, working: 34, suburban: 28, affluent: 13, elite: 5 },
+};
+
+/* Cities per country come from module 17 (COUNTRIES[x].cities). Index 0 is
+   treated as the primary city — it carries a size and price premium. */
+function hreCityRank(cityIdx) { return cityIdx === 0 ? "primary" : cityIdx === 1 ? "secondary" : "regional"; }
+
+function hreHoodCount(seed, country, cityIdx) {
+  const r = hreRng(seed, hreIdBuild(country, cityIdx, 0, 0, 0), "geo:hoodCount");
+  const rank = hreCityRank(cityIdx);
+  /* Part 2 §4.3: 6-20 per city. Primary cities sit at the top of the range. */
+  return rank === "primary" ? r.int(14, 20) : rank === "secondary" ? r.int(10, 16) : r.int(6, 12);
+}
+
+/* Class ALLOCATION rather than per-hood rejection.
+   The spec (§4.4 Stage 1) says a city of entirely elite neighbourhoods is a
+   generation failure that "triggers redistribution". Drawing each hood
+   independently and rejecting bad cities is both slower and still capable of
+   producing implausible-but-not-rejected cities. Instead the city's whole
+   class multiset is built from the urban-form template and then shuffled onto
+   hood indices, so a realistic spread holds BY CONSTRUCTION and no rejection
+   path is needed. Recorded as a deliberate refinement of the spec. */
+function hreCityClasses(seed, country, cityIdx) {
+  const n = hreHoodCount(seed, country, cityIdx);
+  const form = HRE_URBAN_FORM[hreDevOf(country)] || HRE_URBAN_FORM.universal;
+  const r = hreRng(seed, hreIdBuild(country, cityIdx, 0, 0, 0), "geo:classMix");
+
+  /* largest-remainder allocation: deterministic, and guarantees the counts sum
+     to n exactly without drift */
+  const total = HRE_CLASS_ORDER.reduce(function (a, k) { return a + form[k]; }, 0);
+  const exact = HRE_CLASS_ORDER.map(function (k) { return { k: k, want: n * form[k] / total }; });
+  const out = [];
+  let used = 0;
+  for (let i = 0; i < exact.length; i++) {
+    const c = Math.floor(exact[i].want);
+    exact[i].rem = exact[i].want - c;
+    for (let j = 0; j < c; j++) out.push(exact[i].k);
+    used += c;
+  }
+  const byRem = exact.slice().sort(function (a, b) { return b.rem - a.rem || HRE_CLASS_ORDER.indexOf(a.k) - HRE_CLASS_ORDER.indexOf(b.k); });
+  let bi = 0;
+  while (out.length < n) { out.push(byRem[bi % byRem.length].k); bi++; }
+
+  /* every city gets at least one working-class neighbourhood — a city with
+     none is not a city */
+  if (out.indexOf("working") === -1) out[0] = "working";
+  return r.shuffle(out);
+}
+
+/* Drift (Part 2 §4.4 Stage 1). A deterministic piecewise-linear trajectory
+   through four knots, so a neighbourhood can be industrial in 1958 and
+   gentrified in 2008 without either value being stored.
+   Linear interpolation is used rather than a trigonometric curve because
+   Math.sin/cos are not guaranteed bit-identical across JS engines and the
+   whole architecture rests on cross-process reproducibility (see S01). */
+const HRE_DRIFT_KNOTS = [1900, 1960, 2000, 2060];
+
+function hreDriftTrajectory(seed, country, cityIdx, hoodIdx, baseClassIdx) {
+  const id = hreIdBuild(country, cityIdx, hoodIdx, 0, 0);
+  const r = hreRng(seed, id, "geo:drift");
+  /* most neighbourhoods are broadly stable; a minority move hard in one
+     direction, which is what makes gentrification and decline legible */
+  const mode = r.weighted({ stable: 55, gentrify: 18, decline: 18, churn: 9 });
+  const amp = mode === "stable" ? r.range(0.05, 0.4) : mode === "churn" ? r.range(0.5, 1.3) : r.range(0.6, 1.8);
+  const dir = mode === "gentrify" ? 1 : mode === "decline" ? -1 : r.chance(0.5) ? 1 : -1;
+  const knots = [];
+  let v = baseClassIdx;
+  for (let i = 0; i < HRE_DRIFT_KNOTS.length; i++) {
+    if (i === 0) { knots.push(v); continue; }
+    const step = mode === "churn" ? dir * amp * (i % 2 === 0 ? -1 : 1) : dir * amp * r.range(0.5, 1.0);
+    v = Math.max(0, Math.min(HRE_CLASS_ORDER.length - 1, v + step));
+    knots.push(v);
+  }
+  return { mode: mode, knots: knots };
+}
+
+function hreDriftAt(traj, year) {
+  const K = HRE_DRIFT_KNOTS;
+  if (year <= K[0]) return traj.knots[0];
+  if (year >= K[K.length - 1]) return traj.knots[K.length - 1];
+  for (let i = 0; i < K.length - 1; i++) {
+    if (year >= K[i] && year <= K[i + 1]) {
+      const t = (year - K[i]) / (K[i + 1] - K[i]);
+      return traj.knots[i] + t * (traj.knots[i + 1] - traj.knots[i]);
+    }
+  }
+  return traj.knots[0];
+}
+
+/* The neighbourhood descriptor comes in two forms, and the distinction is
+   load-bearing (Part 2 §4.4 time-dependency column):
+
+     hreHoodBase(...)          time-INDEPENDENT. What the place intrinsically
+                               is. Feeds generation stages 3-5, which the spec
+                               marks "Time-dependent: no". Reading the drifted
+                               class here would make a property's archetype and
+                               floor area change depending on which year you
+                               happened to look it up in — the same house would
+                               grow a bedroom between 1990 and 2020.
+
+     hreNeighbourhood(..., y)  time-DEPENDENT. Base plus drift evaluated at y.
+                               Feeds market valuation (S05), presentation and
+                               anything the player is shown.
+
+   P0 — derived, never stored (Part 2 §5.0). */
+function hreHoodBase(seed, country, cityIdx, hoodIdx) {
+  const classes = hreCityClasses(seed, country, cityIdx);
+  if (hoodIdx < 0 || hoodIdx >= classes.length) return null;
+  const baseClass = classes[hoodIdx];
+  const baseIdx = HRE_CLASS_ORDER.indexOf(baseClass);
+  const id = hreIdBuild(country, cityIdx, hoodIdx, 0, 0);
+  const r = hreRng(seed, id, "geo:hood");
+  const rank = hreCityRank(cityIdx);
+
+  const densityBase = rank === "primary" ? 62 : rank === "secondary" ? 48 : 34;
+  const density = Math.max(1, Math.min(100, Math.round(densityBase + r.gauss(0, 18) - (baseIdx - 2) * 6)));
+  const domEra = r.int(1870, 2010);
+
+  /* Queer visibility is a DELTA, never an absolute. Module 04 owns the national
+     climate via localAcceptance(); S03 only says how this particular place
+     differs from it. Cities contain both the most and least tolerant places in
+     a country, and dense central neighbourhoods are where queer life
+     concentrates — that is the mechanism, not a flag.
+     The delta must be ~zero-mean across a country's whole housing stock, or
+     S03 would be silently shifting the national climate it does not own. City
+     rank is therefore the only systematic term, balanced across ranks, and
+     density is measured as variance WITHIN a rank rather than against a global
+     midpoint (which would double-count rank, since rank sets the density base). */
+  const rq = hreRng(seed, id, "geo:queer");
+  const queerVisibility = Math.max(-25, Math.min(25, Math.round(
+    (density - densityBase) * 0.22 +
+    (rank === "primary" ? 5 : rank === "secondary" ? 1 : -5) +
+    rq.gauss(0, 9))));
+
+  return {
+    id: id, country: country, city: cityIdx, hood: hoodIdx, rank: rank,
+    baseClass: baseClass, baseClassIdx: baseIdx,
+    density: density, densityBase: densityBase, dominantEra: domEra,
+    queerVisibility: queerVisibility,
+    traj: hreDriftTrajectory(seed, country, cityIdx, hoodIdx, baseIdx),
+  };
+}
+
+function hreNeighbourhood(seed, country, cityIdx, hoodIdx, year) {
+  const base = hreHoodBase(seed, country, cityIdx, hoodIdx);
+  if (!base) return null;
+  const nowIdx = hreDriftAt(base.traj, year);
+  const nowClass = HRE_CLASS_ORDER[Math.round(nowIdx)];
+
+  /* drift moves density with class — a gentrifying area densifies */
+  const density = Math.max(1, Math.min(100, Math.round(base.density - (nowIdx - base.baseClassIdx) * 6)));
+
+  /* safety / transport / amenity track the CURRENT class, with real spread so
+     class is not a single hidden dial the player can read off one number */
+  const track = function (ns, weight) {
+    const rr = hreRng(seed, base.id, "geo:" + ns);
+    return Math.max(0, Math.min(100, Math.round(30 + nowIdx * 12 * weight + rr.gauss(0, 14))));
+  };
+
+  return {
+    id: base.id, country: country, city: cityIdx, hood: hoodIdx, rank: base.rank,
+    baseClass: base.baseClass, baseClassIdx: base.baseClassIdx,
+    classBand: nowClass, classIdx: nowIdx,
+    drift: base.traj.mode, density: density, dominantEra: base.dominantEra,
+    safety: track("safety", 1.0), transport: track("transport", 0.8), amenity: track("amenity", 0.9),
+    queerVisibility: base.queerVisibility,
+    year: year,
+  };
+}
+
+/* Block resolution (Part 2 §4.4 Stage 2). Blocks exist so a single street can
+   be internally coherent while the neighbourhood is varied, and so neighbours
+   (S11) have a meaningful scope. Without them every property would be
+   independently random and streets would read as noise.
+   The block's development era may differ from the neighbourhood's — real
+   cities are layered — but is always bounded by the reference year, which is
+   what enforces "a property cannot be viewed before it is built" (Stage 4). */
+function hreBlockCount(seed, country, cityIdx, hoodIdx) {
+  const r = hreRng(seed, hreIdBuild(country, cityIdx, hoodIdx, 0, 0), "geo:blockCount");
+  return r.int(150, 400);
+}
+
+function hreBlock(seed, id) {
+  const p = hreIdParse(id);
+  if (!p) return null;
+  const hood = hreHoodBase(seed, p.country, p.city, p.hood);
+  if (!hood) return null;
+  const blockId = hreIdOf(id, "block");
+  const r = hreRng(seed, blockId, "geo:block");
+
+  /* Time-independent. The block's development era is NOT clamped to a
+     reference year: a block developed in 1998 simply does not exist in 1975,
+     and hreBlockExistsAt says so. Clamping instead would retro-date the whole
+     block every time an earlier year was queried, which would make a
+     property's construction year — and therefore its archetype and
+     dimensions — depend on when you looked it up. */
+  const devEra = Math.max(1850, Math.round(hood.dominantEra + r.gauss(0, 22)));
+  const density = Math.max(1, Math.min(100, Math.round(hood.density + r.gauss(0, 12))));
+  /* units per block follow density: Part 2 §4.3 says 1-120 */
+  const units = Math.max(1, Math.min(120, Math.round(1 + (density / 100) * (density / 100) * 119)));
+
+  return {
+    id: blockId, country: p.country, city: p.city, hood: p.hood, block: p.block,
+    devEra: devEra, density: density, units: units,
+    street: hreStreetName(seed, blockId, p.country),
+    hoodClass: hood.baseClass,
+  };
+}
+
+/* Stage 4's hard constraint, expressed where it belongs. */
+function hreBlockExistsAt(block, year) { return !!block && block.devEra <= year; }
+
+/* ---------- addressing (S03 + module 17) ----------------------------------
+   MODULE 17 REQUEST: street-name banks, agency names and address formats per
+   country are a module 17 deliverable in module 17's format (§7.16). The banks
+   below are a PROVISIONAL placeholder so Phase 2 can be tested; they must be
+   replaced, not extended in place. */
+
+const HRE_STREET_BANKS = {
+  anglo:   { stems: ["Elm", "Oak", "Chapel", "Mill", "Station", "Victoria", "Church", "Bridge", "Kingsway", "Alder"], types: ["Street", "Road", "Lane", "Avenue", "Close", "Terrace"] },
+  westEu:  { stems: ["Lindenweg", "Rue Verte", "Kerkstraat", "Bergstrasse", "Marktplatz", "Rosenweg"], types: [""] },
+  nordic:  { stems: ["Storgata", "Björkvägen", "Havnegade", "Kungsgatan", "Skolgatan"], types: [""] },
+  southEu: { stems: ["Via Roma", "Calle Mayor", "Rua da Praia", "Odos Athinas", "Via Garibaldi"], types: [""] },
+  eastEu:  { stems: ["Kwiatowa", "Sadowa", "Lesna", "Polna", "Szkolna"], types: [""] },
+  latam:   { stems: ["Calle Bolívar", "Rua das Flores", "Avenida Central", "Calle Sucre", "Rua do Sol"], types: [""] },
+  eastAsia:{ stems: ["Sakura", "Nanjing", "Jongno", "Midosuji", "Hepingli"], types: [""] },
+  southAsia:{ stems: ["Gandhi", "Nehru", "Station", "Temple", "Bazaar"], types: ["Road", "Marg", "Street"] },
+  seAsia:  { stems: ["Jalan Merdeka", "Sukhumvit", "Rizal", "Le Loi", "Jalan Melati"], types: [""] },
+  mena:    { stems: ["Al-Nasr", "Istiklal", "Ha'atzmaut", "Al-Horreya", "Cumhuriyet"], types: [""] },
+  subSaharan:{ stems: ["Uhuru", "Independence", "Moi", "Ahmadu Bello", "Market"], types: ["Road", "Street", "Avenue"] },
+  universal:{ stems: ["Central", "North", "Garden", "Park", "Hill"], types: ["Street", "Road"] },
+};
+
+/* Numbering conventions differ meaningfully and are a cheap, high-value CE
+   detail: Japan addresses by block rather than by street frontage. */
+const HRE_ADDRESS_FORMAT = { eastAsia: "block", universal: "street" };
+
+function hreStreetName(seed, blockId, country) {
+  const bank = HRE_STREET_BANKS[hreRegionOf(country)] || HRE_STREET_BANKS.universal;
+  const r = hreRng(seed, blockId, "geo:street");
+  const stem = r.pick(bank.stems);
+  const type = r.pick(bank.types);
+  return type ? stem + " " + type : stem;
+}
+
+/* `multiUnit` says whether THIS dwelling is a flat. It is optional so S03 stays
+   independent of S02, but callers that know the archetype should pass it: the
+   flat-number form ("12/38 Kingsway Avenue") was previously chosen from block
+   DENSITY, which gave detached villas on dense blocks a flat number. Block
+   density is a property of the street, not of the dwelling. */
+function hreAddress(seed, id, multiUnit) {
+  const p = hreIdParse(id);
+  if (!p) return null;
+  const blk = hreBlock(seed, id);
+  if (!blk) return null;
+  const r = hreRng(seed, id, "geo:addr");
+  const fmt = HRE_ADDRESS_FORMAT[hreRegionOf(p.country)] || HRE_ADDRESS_FORMAT.universal;
+  if (fmt === "block") {
+    /* chome-banchi-go style: area-block-unit, no street in the address */
+    return (p.hood + 1) + "-" + (p.block % 40 + 1) + "-" + (p.unit + 1) + " " + blk.street;
+  }
+  const flat = multiUnit === undefined ? blk.units > 40 : !!multiUnit;
+  const number = flat ? (p.unit + 1) + "/" + (p.block % 200 + 1) : (p.block % 200 + 1) + (r.chance(0.12) ? "A" : "");
+  return number + " " + blk.street;
+}
+
+/* ---------- distance class ------------------------------------------------
+   The only spatial query the system supports (Part 1 §3.3). Sufficient for
+   commute (A12) and for "how far did you move". */
+function hreDistanceClass(idA, idB) {
+  const a = hreIdParse(idA), b = hreIdParse(idB);
+  if (!a || !b) return null;
+  if (a.country !== b.country) return "crossCountry";
+  if (a.city !== b.city) return "crossCity";
+  if (a.hood !== b.hood) return "sameCity";
+  if (a.block !== b.block) return "sameHood";
+  return "sameBlock";
+}
+
+/* ═══════════════════════════ S04 · LAW & ERA ═══════════════════════════ */
+/* Answers every "is this legal / available / normal here and now" question
+   with DATA. Returns values, never behaviour: consumers decide what to do
+   with maxLtv: 0.8. That is what makes 41 countries x many eras tractable.
+
+   PROVENANCE WARNING. Every entry below is marked provisional. Module 22
+   (Research) owns the sourced facts that replace them — mortgage market
+   emergence dates, historical LTVs and income multiples, tenant protection
+   regimes, discrimination prohibition dates and whether enforcement existed,
+   owner-occupation rates, amenity adoption curves. Until tranche 1 lands, the
+   numbers here are plausible placeholders good enough to build and test the
+   resolver against, and NOT good enough to ship as history.
+   hreLawCoverage() reports exactly how much of the table is still provisional. */
+
+const HRE_LAW_SCHEMA_V = 1;
+
+/* Universal default — the bottom of the fallback chain. Every field the schema
+   defines must appear here, because this is the entry that guarantees a lookup
+   can never return empty (Part 2 §4.3). */
+const HRE_LAW_UNIVERSAL = [
+  { from: 0, provisional: true,
+    mortgage: { exists: false, maxLtv: 0, incomeMultiple: 0, rateBand: [0, 0], termYears: [0, 0], instruments: [] },
+    eligibility: { unmarriedCouple: false, femaleSoleBorrower: false, sameSexCouple: false, nonCitizen: false },
+    tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 1, protection: 10 },
+    transaction: { buyerFeePct: 0.02, sellerFeePct: 0.03, transferTaxPct: 0.01 },
+    propertyTax: { exists: false, annualPct: 0 },
+    discrimination: { queerProhibitedFrom: null, enforcement: "none" },
+    socialHousing: { availability: 0, form: "none" },
+    condoLegalFrom: null,
+    insurance: { exists: false },
+    ownerOccupationNorm: 55 },
+  /* NOTE: the universal default never asserts that a mortgage market EXISTS.
+     "We know nothing about this country" must mean no market, not a Western
+     one — otherwise a low-development band correcting the record later reads
+     as a market disappearing, which is both wrong and untestable. Only the
+     development, region and country levels turn a market on. */
+  { from: 1945, provisional: true,
+    tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 1, protection: 20 },
+    insurance: { exists: true },
+    ownerOccupationNorm: 50 },
+  { from: 1990, provisional: true,
+    eligibility: { unmarriedCouple: true, femaleSoleBorrower: true, sameSexCouple: false, nonCitizen: false },
+    condoLegalFrom: 1990, ownerOccupationNorm: 55 },
+  { from: 2010, provisional: true,
+    eligibility: { unmarriedCouple: true, femaleSoleBorrower: true, sameSexCouple: true, nonCitizen: true } },
+];
+
+/* Development-band defaults — one level above universal. */
+const HRE_LAW_DEV = {
+  high: [
+    { from: 1930, provisional: true, mortgage: { exists: true, maxLtv: 0.7, incomeMultiple: 2.5, rateBand: [0.04, 0.07], termYears: [20, 25], instruments: ["fixed"] }, insurance: { exists: true }, propertyTax: { exists: true, annualPct: 0.008 } },
+    { from: 1980, provisional: true, mortgage: { exists: true, maxLtv: 0.85, incomeMultiple: 3.2, rateBand: [0.05, 0.14], termYears: [25, 30], instruments: ["fixed", "variable"] }, socialHousing: { availability: 30, form: "municipal" }, ownerOccupationNorm: 62 },
+    { from: 2005, provisional: true, mortgage: { exists: true, maxLtv: 0.9, incomeMultiple: 4.0, rateBand: [0.02, 0.06], termYears: [25, 35], instruments: ["fixed", "variable", "interestOnly"] } },
+  ],
+  upper: [
+    { from: 1970, provisional: true, mortgage: { exists: true, maxLtv: 0.5, incomeMultiple: 2.0, rateBand: [0.06, 0.15], termYears: [10, 20], instruments: ["fixed"] }, propertyTax: { exists: true, annualPct: 0.004 } },
+    { from: 2000, provisional: true, mortgage: { exists: true, maxLtv: 0.7, incomeMultiple: 3.0, rateBand: [0.05, 0.13], termYears: [15, 25], instruments: ["fixed", "variable"] }, insurance: { exists: true }, ownerOccupationNorm: 65 },
+  ],
+  middle: [
+    { from: 1990, provisional: true, mortgage: { exists: true, maxLtv: 0.4, incomeMultiple: 1.5, rateBand: [0.08, 0.18], termYears: [8, 15], instruments: ["fixed"] }, ownerOccupationNorm: 70 },
+    { from: 2010, provisional: true, mortgage: { exists: true, maxLtv: 0.6, incomeMultiple: 2.5, rateBand: [0.07, 0.16], termYears: [10, 20], instruments: ["fixed", "variable"] }, insurance: { exists: true } },
+  ],
+  low: [
+    { from: 1990, provisional: true, mortgage: { exists: false }, socialHousing: { availability: 5, form: "none" }, ownerOccupationNorm: 75 },
+    { from: 2005, provisional: true, mortgage: { exists: true, maxLtv: 0.3, incomeMultiple: 1.2, rateBand: [0.12, 0.25], termYears: [5, 12], instruments: ["fixed"] } },
+  ],
+};
+
+/* Region overlays. */
+const HRE_LAW_REGION = {
+  anglo: [
+    { from: 1930, provisional: true, tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 1, protection: 25 } },
+    { from: 1975, provisional: true, tenancy: { noticeDaysLandlord: 60, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "partial", depositMonths: 1.5, protection: 45 }, eligibility: { unmarriedCouple: true, femaleSoleBorrower: true, sameSexCouple: false, nonCitizen: true } },
+    { from: 2000, provisional: true, transaction: { buyerFeePct: 0.02, sellerFeePct: 0.045, transferTaxPct: 0.03 } },
+  ],
+  westEu: [
+    { from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 90, noFaultEviction: false, rentRegulation: "partial", depositMonths: 2, protection: 60 }, ownerOccupationNorm: 45 },
+    { from: 1990, provisional: true, tenancy: { noticeDaysLandlord: 180, noticeDaysTenant: 90, noFaultEviction: false, rentRegulation: "strong", depositMonths: 3, protection: 80 }, socialHousing: { availability: 45, form: "municipal" } },
+  ],
+  nordic: [
+    { from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 90, noFaultEviction: false, rentRegulation: "strong", depositMonths: 2, protection: 70 }, socialHousing: { availability: 50, form: "cooperative" }, ownerOccupationNorm: 50 },
+  ],
+  southEu: [
+    { from: 1960, provisional: true, tenancy: { noticeDaysLandlord: 60, noticeDaysTenant: 60, noFaultEviction: false, rentRegulation: "partial", depositMonths: 2, protection: 50 }, ownerOccupationNorm: 75 },
+  ],
+  eastEu: [
+    { from: 1950, provisional: true, mortgage: { exists: false }, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 30, noFaultEviction: false, rentRegulation: "strong", depositMonths: 0, protection: 55 }, socialHousing: { availability: 70, form: "state" }, ownerOccupationNorm: 40 },
+    { from: 1992, provisional: true, mortgage: { exists: false }, socialHousing: { availability: 25, form: "residual" }, ownerOccupationNorm: 78 },
+    { from: 1999, provisional: true, mortgage: { exists: true, maxLtv: 0.7, incomeMultiple: 3.0, rateBand: [0.05, 0.12], termYears: [15, 30], instruments: ["fixed", "variable"] } },
+  ],
+  latam: [
+    { from: 1960, provisional: true, tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "partial", depositMonths: 1, protection: 30 }, socialHousing: { availability: 15, form: "programme" }, ownerOccupationNorm: 70 },
+  ],
+  eastAsia: [
+    { from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 180, noticeDaysTenant: 30, noFaultEviction: false, rentRegulation: "partial", depositMonths: 3, protection: 65 }, ownerOccupationNorm: 60 },
+  ],
+  southAsia: [{ from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "partial", depositMonths: 2, protection: 25 }, ownerOccupationNorm: 82 }],
+  seAsia:   [{ from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 2, protection: 20 }, ownerOccupationNorm: 78 }],
+  mena:     [{ from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 60, noticeDaysTenant: 30, noFaultEviction: false, rentRegulation: "partial", depositMonths: 2, protection: 35 }, ownerOccupationNorm: 68 }],
+  subSaharan: [{ from: 1960, provisional: true, tenancy: { noticeDaysLandlord: 30, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 3, protection: 15 }, socialHousing: { availability: 3, form: "none" }, ownerOccupationNorm: 72 }],
+};
+
+/* Country tranche 1 — 8 countries, chosen to span development bands, regions,
+   and legal climates. PROVISIONAL pending module 22. */
+const HRE_LAW_COUNTRY = {
+  "United States": [
+    { from: 1934, provisional: true, mortgage: { exists: true, maxLtv: 0.8, incomeMultiple: 2.5, rateBand: [0.04, 0.06], termYears: [20, 30], instruments: ["fixed"] }, eligibility: { unmarriedCouple: false, femaleSoleBorrower: false, sameSexCouple: false, nonCitizen: false }, discrimination: { queerProhibitedFrom: null, enforcement: "none" }, ownerOccupationNorm: 55 },
+    { from: 1968, provisional: true, discrimination: { queerProhibitedFrom: null, enforcement: "weak" }, ownerOccupationNorm: 63 },
+    { from: 1974, provisional: true, eligibility: { unmarriedCouple: true, femaleSoleBorrower: true, sameSexCouple: false, nonCitizen: true } },
+    { from: 2005, provisional: true, mortgage: { exists: true, maxLtv: 0.95, incomeMultiple: 4.0, rateBand: [0.03, 0.07], termYears: [30, 30], instruments: ["fixed", "variable", "interestOnly"] } },
+    { from: 2021, provisional: true, eligibility: { unmarriedCouple: true, femaleSoleBorrower: true, sameSexCouple: true, nonCitizen: true }, discrimination: { queerProhibitedFrom: 2021, enforcement: "moderate" } },
+  ],
+  "United Kingdom": [
+    { from: 1920, provisional: true, mortgage: { exists: true, maxLtv: 0.7, incomeMultiple: 2.5, rateBand: [0.04, 0.08], termYears: [20, 25], instruments: ["variable"] }, socialHousing: { availability: 40, form: "council" }, ownerOccupationNorm: 30 },
+    { from: 1977, provisional: true, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 30, noFaultEviction: false, rentRegulation: "strong", depositMonths: 1, protection: 70 }, socialHousing: { availability: 55, form: "council" } },
+    { from: 1988, provisional: true, tenancy: { noticeDaysLandlord: 60, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 1.5, protection: 30 }, socialHousing: { availability: 35, form: "council" }, ownerOccupationNorm: 66 },
+    { from: 2007, provisional: true, discrimination: { queerProhibitedFrom: 2007, enforcement: "moderate" }, tenancy: { noticeDaysLandlord: 60, noticeDaysTenant: 30, noFaultEviction: true, rentRegulation: "none", depositMonths: 1.25, protection: 40 } },
+  ],
+  "Germany": [
+    { from: 1950, provisional: true, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 90, noFaultEviction: false, rentRegulation: "partial", depositMonths: 2, protection: 65 }, ownerOccupationNorm: 38 },
+    { from: 1971, provisional: true, tenancy: { noticeDaysLandlord: 270, noticeDaysTenant: 90, noFaultEviction: false, rentRegulation: "strong", depositMonths: 3, protection: 88 }, ownerOccupationNorm: 42 },
+    { from: 2006, provisional: true, discrimination: { queerProhibitedFrom: 2006, enforcement: "moderate" } },
+  ],
+  "Sweden": [
+    { from: 1945, provisional: true, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 90, noFaultEviction: false, rentRegulation: "strong", depositMonths: 0, protection: 82 }, socialHousing: { availability: 60, form: "cooperative" }, ownerOccupationNorm: 42 },
+    { from: 1987, provisional: true, discrimination: { queerProhibitedFrom: 1987, enforcement: "moderate" } },
+    { from: 2009, provisional: true, discrimination: { queerProhibitedFrom: 1987, enforcement: "strong" } },
+  ],
+  "Poland": [
+    { from: 1950, provisional: true, mortgage: { exists: false }, tenancy: { noticeDaysLandlord: 90, noticeDaysTenant: 30, noFaultEviction: false, rentRegulation: "strong", depositMonths: 0, protection: 60 }, socialHousing: { availability: 75, form: "state" }, ownerOccupationNorm: 35 },
+    { from: 1990, provisional: true, mortgage: { exists: false }, socialHousing: { availability: 20, form: "residual" }, ownerOccupationNorm: 80 },
+    { from: 1998, provisional: true, mortgage: { exists: true, maxLtv: 0.7, incomeMultiple: 3.0, rateBand: [0.06, 0.14], termYears: [15, 30], instruments: ["fixed", "variable"] } },
+    { from: 2011, provisional: true, mortgage: { exists: true, maxLtv: 0.8, incomeMultiple: 3.5, rateBand: [0.03, 0.09], termYears: [20, 35], instruments: ["fixed", "variable"] } },
+  ],
+  "Japan": [
+    { from: 1950, provisional: true, mortgage: { exists: true, maxLtv: 0.6, incomeMultiple: 3.0, rateBand: [0.04, 0.08], termYears: [20, 25], instruments: ["fixed"] }, tenancy: { noticeDaysLandlord: 180, noticeDaysTenant: 30, noFaultEviction: false, rentRegulation: "partial", depositMonths: 4, protection: 72 }, ownerOccupationNorm: 60 },
+    { from: 1992, provisional: true, mortgage: { exists: true, maxLtv: 0.8, incomeMultiple: 4.5, rateBand: [0.02, 0.06], termYears: [25, 35], instruments: ["fixed", "variable"] } },
+  ],
+  "Brazil": [
+    { from: 1964, provisional: true, mortgage: { exists: true, maxLtv: 0.5, incomeMultiple: 2.0, rateBand: [0.08, 0.16], termYears: [10, 20], instruments: ["fixed"] }, socialHousing: { availability: 12, form: "programme" }, ownerOccupationNorm: 70 },
+    { from: 2009, provisional: true, mortgage: { exists: true, maxLtv: 0.8, incomeMultiple: 3.0, rateBand: [0.07, 0.12], termYears: [20, 30], instruments: ["fixed", "variable"] }, socialHousing: { availability: 25, form: "programme" } },
+    { from: 2019, provisional: true, discrimination: { queerProhibitedFrom: 2019, enforcement: "weak" } },
+  ],
+  "Nigeria": [
+    { from: 1977, provisional: true, mortgage: { exists: false }, socialHousing: { availability: 4, form: "none" }, ownerOccupationNorm: 74 },
+    { from: 1992, provisional: true, mortgage: { exists: true, maxLtv: 0.3, incomeMultiple: 1.2, rateBand: [0.14, 0.26], termYears: [5, 15], instruments: ["fixed"] } },
+  ],
+};
+
+/* ---------- the resolver --------------------------------------------------
+   Refinement of Part 2 §4.3: the chain MERGES rather than replaces. A country
+   entry that only specifies mortgage terms still inherits tenancy law from its
+   region and everything else from the universal default. A strict
+   first-match-wins chain would force every country entry to restate the entire
+   schema, which is how content tables rot.
+   The diagnostic records every level that contributed and the most specific
+   one reached, which is what makes coverage measurable (§4.3, §8.3). */
+
+const HRE_LAW_LEVELS = ["universal", "dev", "region", "country"];
+
+function hreLawBandAt(bands, year) {
+  if (!bands || !bands.length) return null;
+  let out = null;
+  for (let i = 0; i < bands.length; i++) if (year >= bands[i].from) out = bands[i];
+  return out;
+}
+
+/* All bands up to `year`, oldest first — merged in order so that a later band
+   which only restates one field does not wipe the rest. */
+function hreLawStack(bands, year) {
+  const out = [];
+  if (!bands) return out;
+  for (let i = 0; i < bands.length; i++) if (year >= bands[i].from) out.push(bands[i]);
+  return out;
+}
+
+function hreLawMerge(target, src) {
+  if (!src) return target;
+  for (const k in src) {
+    if (k === "from" || k === "provisional") continue;
+    const v = src[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      target[k] = hreLawMerge(Object.assign({}, target[k] || {}), v);
+    } else {
+      target[k] = v;
+    }
+  }
+  return target;
+}
+
+function hreLaw(country, year) {
+  const diag = { levels: [], resolved: "universal", provisional: false, schema: HRE_LAW_SCHEMA_V };
+  let out = {};
+
+  const apply = function (bands, level) {
+    const stack = hreLawStack(bands, year);
+    if (!stack.length) return;
+    diag.levels.push(level);
+    diag.resolved = level;
+    for (let i = 0; i < stack.length; i++) {
+      if (stack[i].provisional) diag.provisional = true;
+      out = hreLawMerge(out, stack[i]);
+    }
+  };
+
+  apply(HRE_LAW_UNIVERSAL, "universal");
+  apply(HRE_LAW_DEV[hreDevOf(country)], "dev");
+  apply(HRE_LAW_REGION[hreRegionOf(country)], "region");
+  apply(HRE_LAW_COUNTRY[country], "country");
+
+  /* Same-sex-couple mortgage eligibility is NOT restated here. Module 04 owns
+     the marriage timeline via COUNTRIES[x].ssm and countryTol() derives from
+     it; duplicating it in the law table would create a second authority that
+     could silently disagree. S12 combines the two at read time. */
+  out._diag = diag;
+  return out;
+}
+
+/* Coverage report — the deliverable that makes "which countries need research"
+   an answerable question rather than a guess (Part 2 §4.3, Part 3 §8.3).
+   Pass the COUNTRIES key list in; S04 does not import module 17. */
+function hreLawCoverage(countryKeys, years) {
+  const ys = years || [1900, 1930, 1955, 1975, 1995, 2010, 2025, 2050];
+  const rows = [];
+  const tally = { universal: 0, dev: 0, region: 0, country: 0 };
+  let provisional = 0, empty = 0, total = 0;
+  for (let i = 0; i < countryKeys.length; i++) {
+    const c = countryKeys[i];
+    const levels = {};
+    for (let j = 0; j < ys.length; j++) {
+      const law = hreLaw(c, ys[j]);
+      const d = law._diag;
+      total++;
+      tally[d.resolved]++;
+      levels[ys[j]] = d.resolved;
+      if (d.provisional) provisional++;
+      if (!law.mortgage || !law.tenancy) empty++;
+    }
+    rows.push({ country: c, region: hreRegionOf(c), dev: hreDevOf(c), levels: levels,
+      best: HRE_LAW_LEVELS.indexOf(Object.keys(levels).reduce(function (a, k) {
+        return HRE_LAW_LEVELS.indexOf(levels[k]) > HRE_LAW_LEVELS.indexOf(a) ? levels[k] : a; }, "universal")) });
+  }
+  return { rows: rows, tally: tally, total: total, provisional: provisional, empty: empty,
+    countryCoverage: rows.filter(function (r) { return r.best === 3; }).length / rows.length };
+}
+
+/* ═══════════════ HRE · S02 · PROPERTY GENERATOR (Stages 3-9) ═══════════════ */
+/* Spec: HRE-ARCHITECTURE Part 1 §3.2, Part 2 §4.4 stages 3-9, §4.8 validation.
+   Depends on: S01 (streams), S03 (neighbourhood/block), S04 (law/era).
+   Produces a BLUEPRINT — the property as it intrinsically is, with no market,
+   no currency and no listing. Everything time-dependent past Stage 9 belongs
+   to S05 and beyond.
+
+   INVARIANT I1 — no Math.random / rnd / pick / Date.now / mutable-state reads.
+   INVARIANT I7 — every stage draws from its own namespaced sub-stream, so a
+   future Stage 14 cannot perturb Stage 5's output in an existing world.
+   INVARIANT I9 — archetypes, amenities and defects are DATA. No country or
+   archetype name appears in a conditional.
+
+   The pipeline never clamps a rejected draw. Clamping piles every out-of-range
+   property up at exactly the boundary and silently distorts the distribution;
+   instead the offending stage is re-derived from a nudged sub-seed (§4.8). */
+
+/* ─────────────────────────── content: archetypes ───────────────────────────
+   `era`: [firstBuilt, lastBuilt] — the window in which this form was CONSTRUCTED.
+   `regions`: null = universal, else a whitelist.
+   `dev`: development bands where this form is common.
+   `class`: affinity weights per neighbourhood class band.
+   `density`: preferred density midpoint; selection falls off away from it.
+   `area`: [mean, sd, min, max] m², before class/density modulation.
+   `coef`: Stage 9 archetype coefficient (relative worth per unit area).
+   `retrofit`: 0-1, resistance to amenity retrofit. High = cheap but cold. */
+const HRE_ARCHETYPES = [
+  { id: "informalSelfBuilt", maxBed: 4, label: "self-built dwelling", era: [1900, 2100], regions: null, dev: ["middle", "low", "upper"],
+    class: { informal: 70, working: 12, suburban: 1, affluent: 0, elite: 0 }, density: 70,
+    area: [38, 14, 12, 90], storeys: [1, 2], outdoor: { none: 30, yard: 60, garden: 10 }, parking: 5,
+    coef: 0.45, retrofit: 0.75, lift: false },
+  { id: "courtyardHouse", maxBed: 6, label: "courtyard house", era: [1850, 1965], regions: ["mena", "southAsia", "eastAsia", "subSaharan", "southEu"], dev: null,
+    class: { informal: 15, working: 35, suburban: 30, affluent: 18, elite: 6 }, density: 55,
+    area: [110, 35, 50, 260], storeys: [1, 2], outdoor: { yard: 40, garden: 55, grounds: 5 }, parking: 20,
+    coef: 1.05, retrofit: 0.55, lift: false },
+  { id: "terrace", maxBed: 5, label: "terraced house", era: [1840, 1945], regions: ["anglo", "westEu", "southEu"], dev: null,
+    class: { informal: 8, working: 45, suburban: 28, affluent: 15, elite: 3 }, density: 62,
+    area: [88, 26, 40, 190], storeys: [2, 3], outdoor: { none: 8, yard: 42, garden: 50 }, parking: 15,
+    coef: 1.0, retrofit: 0.45, lift: false },
+  { id: "tenement", maxBed: 3, label: "tenement flat", era: [1850, 1940], regions: ["anglo", "westEu", "eastEu", "southEu"], dev: null,
+    class: { informal: 25, working: 50, suburban: 15, affluent: 8, elite: 2 }, density: 82,
+    area: [58, 18, 25, 120], storeys: [1, 1], outdoor: { none: 82, balcony: 18 }, parking: 3,
+    coef: 0.78, retrofit: 0.6, lift: false },
+  { id: "mansionBlockFlat", maxBed: 5, label: "mansion-block apartment", era: [1880, 1939], regions: ["anglo", "westEu", "southEu", "eastEu"], dev: null,
+    class: { informal: 0, working: 5, suburban: 22, affluent: 48, elite: 34 }, density: 78,
+    area: [105, 32, 55, 240], storeys: [1, 1], outdoor: { none: 62, balcony: 38 }, parking: 12,
+    coef: 1.35, retrofit: 0.4, lift: true },
+  { id: "semiDetached", maxBed: 5, label: "semi-detached house", era: [1918, 2010], regions: ["anglo", "westEu", "nordic"], dev: null,
+    class: { informal: 2, working: 28, suburban: 44, affluent: 22, elite: 4 }, density: 45,
+    area: [102, 28, 55, 220], storeys: [2, 2], outdoor: { yard: 20, garden: 78, grounds: 2 }, parking: 55,
+    coef: 1.1, retrofit: 0.3, lift: false },
+  { id: "detachedHouse", maxBed: 6, label: "detached house", era: [1900, 2100], regions: null, dev: null,
+    class: { informal: 1, working: 12, suburban: 40, affluent: 40, elite: 24 }, density: 32,
+    area: [148, 48, 65, 400], storeys: [1, 3], outdoor: { yard: 10, garden: 76, grounds: 14 }, parking: 78,
+    coef: 1.3, retrofit: 0.25, lift: false },
+  { id: "bungalow", maxBed: 4, label: "bungalow", era: [1900, 1995], regions: null, dev: null,
+    class: { informal: 5, working: 25, suburban: 42, affluent: 24, elite: 4 }, density: 35,
+    area: [95, 26, 50, 190], storeys: [1, 1], outdoor: { yard: 18, garden: 76, grounds: 6 }, parking: 62,
+    coef: 1.05, retrofit: 0.3, lift: false },
+  { id: "farmhouse", maxBed: 6, label: "farmhouse", era: [1750, 1960], regions: null, dev: null,
+    class: { informal: 12, working: 30, suburban: 26, affluent: 24, elite: 8 }, density: 8,
+    area: [165, 60, 70, 420], storeys: [2, 2], outdoor: { garden: 25, grounds: 75 }, parking: 70,
+    coef: 1.15, retrofit: 0.65, lift: false },
+  { id: "walkUpApartment", maxBed: 4, label: "walk-up apartment", era: [1900, 2100], regions: null, dev: null,
+    class: { informal: 12, working: 40, suburban: 28, affluent: 16, elite: 4 }, density: 74,
+    area: [68, 22, 28, 150], storeys: [1, 1], outdoor: { none: 55, balcony: 45 }, parking: 20,
+    coef: 0.9, retrofit: 0.4, lift: false },
+  { id: "panelBlockFlat", maxBed: 4, label: "prefabricated panel flat", era: [1958, 1992], regions: ["eastEu", "eastAsia"], dev: null,
+    class: { informal: 10, working: 52, suburban: 30, affluent: 7, elite: 1 }, density: 84,
+    area: [54, 12, 28, 96], storeys: [1, 1], outdoor: { none: 30, balcony: 70 }, parking: 25,
+    coef: 0.72, retrofit: 0.7, lift: true },
+  { id: "towerBlockFlat", maxBed: 4, label: "tower-block flat", era: [1955, 2100], regions: null, dev: null,
+    class: { informal: 14, working: 44, suburban: 26, affluent: 13, elite: 3 }, density: 92,
+    area: [62, 18, 26, 140], storeys: [1, 1], outdoor: { none: 40, balcony: 60 }, parking: 30,
+    coef: 0.8, retrofit: 0.5, lift: true },
+  { id: "newBuildFlat", maxBed: 4, label: "new-build apartment", era: [1996, 2100], regions: null, dev: null,
+    class: { informal: 2, working: 20, suburban: 34, affluent: 32, elite: 12 }, density: 80,
+    area: [72, 20, 32, 165], storeys: [1, 1], outdoor: { none: 28, balcony: 72 }, parking: 45,
+    coef: 1.15, retrofit: 0.15, lift: true },
+  { id: "convertedFlat", maxBed: 3, label: "converted flat", era: [1968, 2100], regions: null, dev: null,
+    class: { informal: 5, working: 30, suburban: 32, affluent: 27, elite: 6 }, density: 70,
+    area: [64, 20, 26, 150], storeys: [1, 1], outdoor: { none: 60, balcony: 25, garden: 15 }, parking: 18,
+    coef: 0.95, retrofit: 0.45, lift: false },
+  { id: "villa", maxBed: 8, label: "villa", era: [1850, 2100], regions: null, dev: null,
+    class: { informal: 0, working: 1, suburban: 3, affluent: 12, elite: 26 }, density: 22,
+    area: [255, 85, 110, 650], storeys: [2, 3], outdoor: { garden: 42, grounds: 58 }, parking: 88,
+    coef: 1.75, retrofit: 0.2, lift: false },
+  { id: "mobileHome", maxBed: 3, label: "mobile home", era: [1950, 2100], regions: ["anglo"], dev: null,
+    class: { informal: 45, working: 38, suburban: 15, affluent: 2, elite: 0 }, density: 40,
+    area: [46, 12, 22, 90], storeys: [1, 1], outdoor: { none: 25, yard: 75 }, parking: 60,
+    coef: 0.4, retrofit: 0.6, lift: false },
+];
+
+/* ──────────────────────── content: amenity axes ────────────────────────────
+   `exists`: earliest year the amenity existed anywhere. Absolute hard gate.
+   `curve`: per development band, [start, half, saturate] adoption years.
+   `class`: how strongly neighbourhood class pulls adoption forward/back.
+   `retrofitable`: 0-1, how readily it can be added to an existing building. */
+/* Which archetypes are multi-unit forms. Addressing and some amenity logic
+   depend on it, and deriving it from labels or block density gets it wrong —
+   a detached villa on a dense block was being given a flat number. */
+const HRE_MULTI_UNIT = {
+  tenement: 1, mansionBlockFlat: 1, walkUpApartment: 1, panelBlockFlat: 1,
+  towerBlockFlat: 1, newBuildFlat: 1, convertedFlat: 1,
+};
+function hreIsMultiUnit(archId) { return !!HRE_MULTI_UNIT[archId]; }
+
+/* AMENITY PREREQUISITES.
+   Found by the Phase 3 human sample review (gate item 4, risk R6): amenities
+   were drawn independently, so 19.6% of properties were physically impossible
+   — a 1894 villa with internet, central heating and a fitted kitchen but no
+   piped water or electricity. Every automated check passed, because no test
+   asserted that amenities imply one another.
+
+   `requires` is unconditional. `requiresBefore` models a prerequisite that
+   stops applying once technology moves on: household internet needed a
+   telephone line in the dial-up era and stopped needing one when cable, fibre
+   and mobile arrived. Telephone itself requires nothing — early exchange lines
+   carried their own power, which is why a house could have a phone before it
+   had electricity.
+
+   ORDERING CONTRACT: Stage 6 resolves amenities in table order, so every
+   entry's prerequisites must appear EARLIER in this array. A test asserts the
+   table is topologically sorted, so a future edit that breaks it fails loudly
+   instead of silently reintroducing impossible houses. */
+const HRE_AMENITIES = [
+  { id: "water",        label: "piped water",       exists: 1850, retrofitable: 0.90,  classPull: 12,
+    curve: { high: [1860, 1915, 1955], upper: [1890, 1945, 1985], middle: [1910, 1975, 2015], low: [1930, 2000, 2060] } },
+  { id: "sanitation",   label: "indoor sanitation", exists: 1870, requires: ["water"], retrofitable: 0.85, classPull: 14,
+    curve: { high: [1880, 1930, 1965], upper: [1905, 1960, 1995], middle: [1925, 1990, 2030], low: [1945, 2015, 2070] } },
+  { id: "electricity",  label: "electricity",       exists: 1890, retrofitable: 0.95,  classPull: 13,
+    curve: { high: [1900, 1932, 1958], upper: [1915, 1958, 1988], middle: [1930, 1982, 2020], low: [1950, 2005, 2060] } },
+  { id: "centralHeat",  label: "central heating",   exists: 1900, requires: ["water"], retrofitable: 0.6,  classPull: 16,
+    curve: { high: [1920, 1972, 2000], upper: [1945, 1992, 2025], middle: [1970, 2015, 2055], low: [1995, 2045, 2090] } },
+  { id: "insulation",   label: "insulation",        exists: 1935, retrofitable: 0.45, classPull: 10,
+    curve: { high: [1950, 1988, 2020], upper: [1970, 2005, 2040], middle: [1990, 2025, 2060], low: [2010, 2055, 2095] } },
+  { id: "cooling",      label: "cooling",           exists: 1945, requires: ["electricity"], retrofitable: 0.7,  classPull: 18,
+    curve: { high: [1960, 2005, 2050], upper: [1975, 2010, 2050], middle: [1985, 2015, 2055], low: [2000, 2040, 2085] } },
+  { id: "telephone",    label: "telephone line",    exists: 1900, retrofitable: 0.85, classPull: 15,
+    curve: { high: [1915, 1958, 1985], upper: [1935, 1978, 2005], middle: [1955, 1995, 2025], low: [1975, 2015, 2055] } },
+  { id: "television",   label: "television reception", exists: 1946, requires: ["electricity"], retrofitable: 0.9, classPull: 8,
+    curve: { high: [1950, 1962, 1978], upper: [1958, 1975, 1992], middle: [1968, 1990, 2010], low: [1980, 2005, 2035] } },
+  { id: "internet",     label: "internet",          exists: 1994, requires: ["electricity"], requiresBefore: { year: 2005, ids: ["telephone"] }, retrofitable: 0.85, classPull: 12,
+    curve: { high: [1996, 2003, 2014], upper: [1999, 2008, 2020], middle: [2003, 2014, 2030], low: [2008, 2025, 2050] } },
+  { id: "lift",         label: "lift",              exists: 1870, requires: ["electricity"], retrofitable: 0.1,  classPull: 20,
+    curve: { high: [1890, 1950, 2000], upper: [1920, 1975, 2020], middle: [1945, 1998, 2040], low: [1970, 2025, 2070] } },
+  { id: "accessibility",label: "step-free access",  exists: 1975, retrofitable: 0.25, classPull: 10,
+    curve: { high: [1985, 2012, 2045], upper: [1998, 2025, 2060], middle: [2010, 2040, 2080], low: [2025, 2060, 2100] } },
+  { id: "parking",      label: "off-street parking", exists: 1920, retrofitable: 0.3, classPull: 14,
+    curve: { high: [1930, 1968, 2000], upper: [1950, 1988, 2020], middle: [1970, 2008, 2045], low: [1990, 2035, 2080] } },
+  { id: "laundry",      label: "laundry provision", exists: 1948, requires: ["water", "electricity"], retrofitable: 0.75, classPull: 12,
+    curve: { high: [1955, 1978, 2000], upper: [1968, 1992, 2015], middle: [1982, 2010, 2040], low: [2000, 2035, 2075] } },
+  { id: "fittedKitchen",label: "fitted kitchen",    exists: 1930, requires: ["water"], retrofitable: 0.8,  classPull: 13,
+    curve: { high: [1945, 1975, 1998], upper: [1962, 1990, 2015], middle: [1980, 2008, 2038], low: [1998, 2032, 2075] } },
+  { id: "doubleGlazing",label: "double glazing",    exists: 1952, retrofitable: 0.7,  classPull: 11,
+    curve: { high: [1965, 1990, 2015], upper: [1980, 2005, 2032], middle: [1995, 2022, 2055], low: [2012, 2048, 2090] } },
+];
+
+/* Condition components (Stage 7). `life` = notional service life in years. */
+const HRE_COMPONENTS = [
+  { id: "structure", life: 140, weight: 0.20 }, { id: "roof", life: 55, weight: 0.12 },
+  { id: "exterior", life: 40, weight: 0.09 },   { id: "windows", life: 35, weight: 0.08 },
+  { id: "plumbing", life: 45, weight: 0.10 },   { id: "electrical", life: 40, weight: 0.10 },
+  { id: "heating", life: 22, weight: 0.10 },    { id: "kitchen", life: 20, weight: 0.09 },
+  { id: "bathroom", life: 25, weight: 0.08 },   { id: "damp", life: 30, weight: 0.04 },
+];
+
+/* Defects (Stage 8). `disclosure` is the entire information-asymmetry model. */
+const HRE_DEFECTS = [
+  { id: "subsidence",      label: "subsidence",              disclosure: "technical", era: [1850, 2100], p: 0.035, ageBoost: 0.00030, severity: 0.28 },
+  { id: "structuralCrack", label: "structural cracking",     disclosure: "apparent",  era: [1850, 2100], p: 0.055, ageBoost: 0.00040, severity: 0.16 },
+  { id: "risingDamp",      label: "rising damp",             disclosure: "apparent",  era: [1850, 2100], p: 0.085, ageBoost: 0.00055, severity: 0.12 },
+  { id: "asbestos",        label: "asbestos",                disclosure: "technical", era: [1850, 2100], p: 0.05,  ageBoost: 0,       severity: 0.18, builtBetween: [1930, 1999] },
+  { id: "wiringUnsafe",    label: "non-compliant wiring",    disclosure: "technical", era: [1900, 2100], p: 0.07,  ageBoost: 0.00045, severity: 0.14, needs: "electricity" },
+  { id: "invasivePlant",   label: "invasive plant growth",   disclosure: "apparent",  era: [1900, 2100], p: 0.03,  ageBoost: 0,       severity: 0.20, needsOutdoor: true },
+  { id: "floodHistory",    label: "history of flooding",     disclosure: "open",      era: [1850, 2100], p: 0.045, ageBoost: 0,       severity: 0.22 },
+  { id: "shortLease",      label: "short lease",             disclosure: "open",      era: [1900, 2100], p: 0.06,  ageBoost: 0,       severity: 0.25, flatsOnly: true },
+  { id: "boundaryDispute", label: "boundary dispute",        disclosure: "latent",    era: [1850, 2100], p: 0.025, ageBoost: 0,       severity: 0.10, needsOutdoor: true },
+  { id: "noisyNeighbour",  label: "problem neighbour",       disclosure: "latent",    era: [1850, 2100], p: 0.075, ageBoost: 0,       severity: 0.08 },
+  { id: "radon",           label: "elevated radon",          disclosure: "latent",    era: [1980, 2100], p: 0.03,  ageBoost: 0,       severity: 0.12 },
+  { id: "unsafeCladding",  label: "unsafe cladding",         disclosure: "technical", era: [2017, 2100], p: 0.05,  ageBoost: 0,       severity: 0.30, builtBetween: [1985, 2018], flatsOnly: true },
+];
+
+/* Era space norms: m² per habitable room. Rooms follow area, never the reverse
+   — independent draws are what produce studios with five bedrooms (§4.4 S5). */
+const HRE_SPACE_NORMS = {
+  high:   [[1900, 15], [1950, 17], [1980, 20], [2010, 23], [2060, 25]],
+  upper:  [[1900, 12], [1950, 13], [1980, 15], [2010, 18], [2060, 21]],
+  middle: [[1900, 10], [1950, 11], [1980, 12], [2010, 15], [2060, 18]],
+  low:    [[1900, 8],  [1950, 9],  [1980, 10], [2010, 12], [2060, 15]],
+};
+
+const HRE_OUTDOOR_VALUE = { none: 1.0, balcony: 1.03, yard: 1.08, garden: 1.15, grounds: 1.34 };
+const HRE_GEN_V = 1;               /* generator version — crystallised with each property */
+const HRE_HVU_REFERENCE = 100;     /* the reference dwelling. See Phase 0 §B1.4. */
+
+/* ─────────────────────────── small pure helpers ─────────────────────────── */
+
+function hreLerpTable(table, year) {
+  if (year <= table[0][0]) return table[0][1];
+  if (year >= table[table.length - 1][0]) return table[table.length - 1][1];
+  for (let i = 0; i < table.length - 1; i++) {
+    if (year >= table[i][0] && year <= table[i + 1][0]) {
+      const t = (year - table[i][0]) / (table[i + 1][0] - table[i][0]);
+      return table[i][1] + t * (table[i + 1][1] - table[i][1]);
+    }
+  }
+  return table[0][1];
+}
+
+/* Adoption probability from a [start, half, saturate] curve. Piecewise linear,
+   arithmetic only — same cross-engine portability rule as S01's gauss(). */
+function hreAdoption(curve, year) {
+  const a = curve[0], h = curve[1], z = curve[2];
+  if (year <= a) return 0;
+  if (year >= z) return 0.97;
+  if (year <= h) return 0.5 * (year - a) / (h - a);
+  return 0.5 + 0.47 * (year - h) / (z - h);
+}
+
+function hreArchetypeById(id) {
+  for (let i = 0; i < HRE_ARCHETYPES.length; i++) if (HRE_ARCHETYPES[i].id === id) return HRE_ARCHETYPES[i];
+  return null;
+}
+
+/* ───────────────────── Stage 3 · archetype selection ─────────────────────
+   Filtered by block era, region and development band; weighted by
+   neighbourhood class and density. Normative ordering (§4.4): the block's
+   development era is already fixed by S03 Stage 2, so archetype validity is
+   resolved against a KNOWN era and the archetype<->year circularity never
+   arises. */
+function hreArchetypeCandidates(country, hoodClass, blockDevEra, density) {
+  const region = hreRegionOf(country);
+  const dev = hreDevOf(country);
+  const out = [];
+  for (let i = 0; i < HRE_ARCHETYPES.length; i++) {
+    const a = HRE_ARCHETYPES[i];
+    if (blockDevEra < a.era[0] || blockDevEra > a.era[1]) continue;
+    if (a.regions && a.regions.indexOf(region) === -1) continue;
+    if (a.dev && a.dev.indexOf(dev) === -1) continue;
+    const classW = a.class[hoodClass] || 0;
+    if (classW <= 0) continue;
+    /* density affinity: falls off with distance from the archetype's midpoint */
+    const dGap = Math.abs(density - a.density);
+    const densityW = Math.max(0.08, 1 - dGap / 70);
+    out.push([a, classW * densityW]);
+  }
+  return out;
+}
+
+function hreStage3Archetype(seed, id, block, hood, attempt) {
+  const r = hreRngRetry(seed, id, "s02:archetype", attempt || 0);
+  const cands = hreArchetypeCandidates(block.country, hood.baseClass, block.devEra, block.density);
+  if (!cands.length) return null;
+  return r.weighted(cands);
+}
+
+/* ───────────────────── Stage 4 · construction year ─────────────────────
+   Drawn from the intersection of the archetype's validity window and the
+   block's development era. Hard constraint: never after the reference year. */
+function hreStage4Year(seed, id, arch, block, refYear, attempt) {
+  const r = hreRngRetry(seed, id, "s02:built", attempt || 0);
+  const lo = Math.max(arch.era[0], block.devEra - 12);
+  const hi = Math.min(arch.era[1], block.devEra + 12, refYear);
+  if (hi < lo) return Math.min(lo, refYear);
+  /* skewed toward the block's own era — blocks are developed in waves */
+  const a = r.int(lo, hi), b = r.int(lo, hi);
+  return Math.abs(a - block.devEra) < Math.abs(b - block.devEra) ? a : b;
+}
+
+/* ─────────────────────── Stage 5 · dimensioning ───────────────────────
+   Area first, then rooms DERIVED from area against era space norms, then a
+   draw within the resulting band. Bedrooms are never drawn independently. */
+function hreStage5Dimensions(seed, id, arch, hood, builtYear, country, attempt) {
+  const r = hreRngRetry(seed, id, "s02:dim", attempt || 0);
+  const dev = hreDevOf(country);
+
+  /* class modulates size: the same archetype is bigger in a better area */
+  const classMod = 0.80 + hood.baseClassIdx * 0.11;
+  const densityMod = 1.12 - (hood.density / 100) * 0.24;
+  let area = arch.area[0] * classMod * densityMod + r.gauss(0, arch.area[1] * 0.85);
+  area = Math.max(arch.area[2], Math.min(arch.area[3], Math.round(area)));
+
+  const norm = hreLerpTable(HRE_SPACE_NORMS[dev] || HRE_SPACE_NORMS.middle, builtYear);
+  /* A room does not cost only its own floor area: it carries a share of hall,
+     kitchen, bathroom and circulation. Dividing area by the bare room norm
+     makes room count grow linearly with size, so every large dwelling pins at
+     the cap and a villa reads as an eight-bedroom house. The effective cost of
+     a room is ~1.9x the bare norm, which keeps counts sublinear and realistic. */
+  const effRoom = norm * 1.9;
+  const habitable = area / effRoom;
+  const isStudio = habitable < 1.55;
+  const reception = isStudio ? 0 : habitable >= 14 ? 4 : habitable >= 9 ? 3 : habitable >= 5 ? 2 : 1;
+  let bedrooms = isStudio ? 0 : Math.max(1, Math.round(habitable) - reception);
+  bedrooms = Math.min(bedrooms, arch.maxBed || 8);
+
+  const bathrooms = Math.max(1, Math.min(4, 1 + Math.floor(bedrooms / 3) + (r.chance(0.18 + hood.baseClassIdx * 0.07) ? 1 : 0)));
+  const storeys = r.int(arch.storeys[0], arch.storeys[1]);
+  const outdoor = r.weighted(arch.outdoor) || "none";
+  const parking = r.chance((arch.parking / 100) * (0.55 + hood.baseClassIdx * 0.14) * (1.25 - hood.density / 140));
+
+  return { area: area, bedrooms: bedrooms, reception: reception, bathrooms: bathrooms,
+    storeys: storeys, outdoor: outdoor, parking: parking,
+    /* rounded: this is a derived ratio, and an unrounded float
+       (2.245614035087719) leaking onto a listing is a display defect */
+    habitable: Math.round(habitable * 100) / 100, spaceNorm: norm };
+}
+
+/* ───────────────────── Stage 6 · amenity resolution ─────────────────────
+   Two passes. As-built: what was typical at construction. Retrofit: what has
+   been added since, evaluated at the reference year. The retrofit pass is why
+   the amenity vector is time-dependent and therefore why it must be
+   crystallised on acquisition (§4.9). */
+function hreStage6Amenities(seed, id, arch, dims, hood, builtYear, refYear, country) {
+  const dev = hreDevOf(country);
+  const out = {};
+  for (let i = 0; i < HRE_AMENITIES.length; i++) {
+    const am = HRE_AMENITIES[i];
+    const r = hreRng(seed, id, "s02:amenity:" + am.id);
+
+    /* hard era gate — no 1890 air conditioning, no 1975 broadband */
+    if (refYear < am.exists) { out[am.id] = { has: false, since: null }; continue; }
+
+    /* lifts only exist in buildings that can have one */
+    if (am.id === "lift" && (!arch.lift || dims.storeys > 1)) { out[am.id] = { has: false, since: null }; continue; }
+    /* parking as an amenity is settled at Stage 5 for dwelling forms */
+    if (am.id === "parking") {
+      out[am.id] = { has: dims.parking, since: dims.parking ? Math.max(builtYear, am.exists) : null };
+      continue;
+    }
+
+    const curve = am.curve[dev] || am.curve.middle;
+    const classShift = (hood.baseClassIdx - 2) * am.classPull;
+    /* Class shifts when a service ARRIVES, but only weakly when it SATURATES:
+       infrastructure that becomes universal reaches poor areas late, not never.
+       Applying the full shift to the saturation point left a fifth of 1975 US
+       working-class dwellings without electricity, which is not history. */
+    const shifted = [
+      curve[0] - classShift,
+      curve[1] - classShift,
+      Math.max(curve[1] - classShift + 4, curve[2] - classShift * 0.35),
+    ];
+
+    /* pass 1 — as built */
+    const pBuilt = builtYear >= am.exists ? hreAdoption(shifted, builtYear) : 0;
+    if (r.chance(pBuilt)) { out[am.id] = { has: true, since: builtYear }; continue; }
+
+    /* pass 2 — retrofit since. Some buildings resist retrofit, which is the
+       mechanism behind cheap-but-cold housing rather than a special case. */
+    const pNow = hreAdoption(shifted, refYear);
+    const headroom = Math.max(0, pNow - pBuilt);
+    const resist = 1 - arch.retrofit * (1 - am.retrofitable);
+    /* Conditional on NOT already having it, so that as-built + retrofit
+       together approach the adoption level at the reference year rather than
+       falling short of it. Unconditional headroom left 1975 US dwellings
+       without electricity. */
+    const pRetro = pBuilt >= 1 ? 0 : (headroom / (1 - pBuilt)) * Math.max(0.05, resist);
+    if (r.chance(pRetro)) {
+      /* when did it arrive? somewhere between construction and now */
+      const rr = hreRng(seed, id, "s02:retroYear:" + am.id);
+      const y = rr.int(Math.max(builtYear, am.exists), refYear);
+      out[am.id] = { has: true, since: y };
+    } else {
+      out[am.id] = { has: false, since: null };
+    }
+  }
+
+  /* ---- prerequisite pass -------------------------------------------------
+     Resolved in table order, which the ordering contract guarantees is
+     topological, so a prerequisite is always already settled when read.
+     Two corrections are applied:
+       1. an amenity whose prerequisite is absent cannot be present at all;
+       2. an amenity cannot predate its own prerequisites — a house wired in
+          1975 did not have television reception in 1960 — so `since` is pulled
+          forward to the latest prerequisite, and if that pushes it past the
+          reference year the amenity is simply not there yet.
+     Drawing first and correcting here (rather than skipping the draw) keeps
+     each amenity's stream independent per I7, so adding a prerequisite in a
+     later version does not perturb any other amenity's history. */
+  for (let i = 0; i < HRE_AMENITIES.length; i++) {
+    const am = HRE_AMENITIES[i];
+    const cur = out[am.id];
+    if (!cur || !cur.has) continue;
+    let need = am.requires ? am.requires.slice() : [];
+    if (am.requiresBefore && refYear < am.requiresBefore.year) need = need.concat(am.requiresBefore.ids);
+    if (!need.length) continue;
+
+    let latest = cur.since;
+    let blocked = null;
+    for (let j = 0; j < need.length; j++) {
+      const pre = out[need[j]];
+      if (!pre || !pre.has) { blocked = need[j]; break; }
+      if (pre.since !== null && (latest === null || pre.since > latest)) latest = pre.since;
+    }
+    if (blocked) { out[am.id] = { has: false, since: null, blockedBy: blocked }; continue; }
+    if (latest !== null && latest > refYear) { out[am.id] = { has: false, since: null, blockedBy: "prereqTooLate" }; continue; }
+    if (latest !== cur.since) out[am.id] = { has: true, since: latest };
+  }
+  return out;
+}
+
+/* Public condition view. `_overall` and `_care` are Stage 7 internals consumed
+   by Stages 8 and 9; they are not facts about the building and must never reach
+   a display surface or a listing. Any consumer rendering condition to the
+   player uses this, not the raw map. */
+function hrePublicCondition(cond) {
+  const out = {};
+  for (const k in cond) if (k.charAt(0) !== "_") out[k] = cond[k];
+  return out;
+}
+
+function hreAmenityScore(amenities, refYear) {
+  let have = 0, possible = 0;
+  for (let i = 0; i < HRE_AMENITIES.length; i++) {
+    const am = HRE_AMENITIES[i];
+    if (refYear < am.exists) continue;      /* not counted against a property that predates it */
+    possible++;
+    if (amenities[am.id] && amenities[am.id].has) have++;
+  }
+  return possible ? have / possible : 0.5;
+}
+
+/* ──────────────────── Stage 7 · condition derivation ────────────────────
+   Each component decays against its service life since construction or its
+   last notional replacement. A deterministic maintenance proxy — derived from
+   neighbourhood class plus a per-property sub-seed — decides whether previous
+   owners looked after it. Some houses are simply well kept, reproducibly. */
+function hreStage7Condition(seed, id, arch, hood, builtYear, refYear) {
+  const rm = hreRng(seed, id, "s02:maintenance");
+  /* 0-1; class pulls the mean, the per-property draw supplies the spread */
+  const care = Math.max(0, Math.min(1, 0.34 + hood.baseClassIdx * 0.10 + rm.gauss(0, 0.17)));
+  const age = Math.max(0, refYear - builtYear);
+  const out = {};
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    const cmp = HRE_COMPONENTS[i];
+    const r = hreRng(seed, id, "s02:cond:" + cmp.id);
+    /* well-maintained components get notionally replaced; poorly-kept ones run
+       past their service life */
+    const cycles = Math.floor(age / cmp.life);
+    const replaced = cycles > 0 && r.chance(care * 0.85);
+    const sinceWork = replaced ? age % cmp.life : age;
+    const wear = Math.min(1.6, sinceWork / cmp.life);
+    let v = 100 - wear * (72 - care * 34) + r.gauss(0, 7);
+    v = Math.max(2, Math.min(100, Math.round(v)));
+    out[cmp.id] = v;
+  }
+  let overall = 0, wsum = 0;
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    overall += out[HRE_COMPONENTS[i].id] * HRE_COMPONENTS[i].weight;
+    wsum += HRE_COMPONENTS[i].weight;
+  }
+  out._overall = Math.round(overall / wsum);
+  out._care = Math.round(care * 100);
+  return out;
+}
+
+/* ───────────────────── Stage 8 · defect assignment ─────────────────────
+   Follows condition. Each defect carries a disclosure class, which is the
+   whole information-asymmetry model: what a listing shows, what a viewing
+   reveals, what a survey finds, and what you only learn once you own it. */
+function hreStage8Defects(seed, id, arch, dims, cond, amenities, builtYear, refYear) {
+  const age = Math.max(0, refYear - builtYear);
+  const isFlat = arch.id.indexOf("Flat") !== -1 || arch.id === "tenement";
+  const hasOutdoor = dims.outdoor !== "none" && dims.outdoor !== "balcony";
+  const out = [];
+  for (let i = 0; i < HRE_DEFECTS.length; i++) {
+    const d = HRE_DEFECTS[i];
+    if (refYear < d.era[0] || refYear > d.era[1]) continue;
+    if (d.builtBetween && (builtYear < d.builtBetween[0] || builtYear > d.builtBetween[1])) continue;
+    if (d.flatsOnly && !isFlat) continue;
+    if (d.needsOutdoor && !hasOutdoor) continue;
+    if (d.needs && !(amenities[d.needs] && amenities[d.needs].has)) continue;
+    const r = hreRng(seed, id, "s02:defect:" + d.id);
+    /* poor condition makes physical defects far likelier; paperwork defects
+       (lease, boundary) are independent of it */
+    const condPull = d.ageBoost > 0 ? (1 + (70 - cond._overall) / 45) : 1;
+    const p = Math.max(0, Math.min(0.85, (d.p + d.ageBoost * age) * Math.max(0.15, condPull)));
+    if (r.chance(p)) out.push({ id: d.id, label: d.label, disclosure: d.disclosure, severity: d.severity });
+  }
+  return out;
+}
+
+/* Which defects are knowable at a given information level. */
+const HRE_DISCLOSURE_VISIBILITY = {
+  listing: ["open"],
+  viewing: ["open", "apparent"],
+  survey:  ["open", "apparent", "technical"],
+  owned:   ["open", "apparent", "technical", "latent"],
+};
+
+function hreVisibleDefects(defects, level) {
+  const allow = HRE_DISCLOSURE_VISIBILITY[level] || HRE_DISCLOSURE_VISIBILITY.listing;
+  return defects.filter(function (d) { return allow.indexOf(d.disclosure) !== -1; });
+}
+
+/* ────────────────────── Stage 9 · base valuation ──────────────────────
+   Intrinsic worth in HVU: currency-neutral, era-neutral, market-free.
+   MUST NOT read the market, the year's price level, or any currency — that is
+   what lets S05 be a pure O(1) multiplicative layer on top (§4.4 S9). */
+function hreStage9BaseValue(seed, id, arch, dims, amenities, cond, defects, refYear) {
+  const r = hreRng(seed, id, "s02:value");
+  /* Concave in area: a 400 m2 house is not worth 10x a 40 m2 one per the same
+     coefficient. Linear scaling let the villa tail dominate the distribution. */
+  const areaFactor = Math.pow(dims.area / 90, 0.92);
+  const roomUtility = 0.86 + Math.min(dims.bedrooms, 6) * 0.035 + Math.min(dims.bathrooms - 1, 3) * 0.02;
+  const amenityFactor = 0.55 + 0.55 * hreAmenityScore(amenities, refYear);
+  const conditionFactor = 0.58 + 0.42 * (cond._overall / 100);
+  const outdoorFactor = HRE_OUTDOOR_VALUE[dims.outdoor] || 1.0;
+  const parkingFactor = dims.parking ? 1.07 : 1.0;
+  let defectFactor = 1;
+  for (let i = 0; i < defects.length; i++) defectFactor *= (1 - defects[i].severity * 0.55);
+  const idio = Math.max(0.78, Math.min(1.28, r.gauss(1, 0.075)));
+
+  const hvu = HRE_HVU_REFERENCE * areaFactor * arch.coef * roomUtility * amenityFactor *
+    conditionFactor * outdoorFactor * parkingFactor * defectFactor * idio;
+  return Math.max(1, Math.round(hvu * 10) / 10);
+}
+
+/* ──────────────────────────── validation (§4.8) ────────────────────────────
+   Hard constraints must never be emitted. The pipeline re-derives the
+   offending stage from a nudged sub-seed rather than clamping, because
+   clamping piles every out-of-range property up at the boundary and quietly
+   distorts the distribution. Retries are deterministic, so a corrected
+   property is still perfectly reproducible. */
+const HRE_MAX_RETRIES = 3;
+
+function hreValidateBlueprint(bp, refYear) {
+  const errs = [];
+  if (!bp.archetype) errs.push("noArchetype");
+  if (bp.builtYear > refYear) errs.push("builtAfterReference");
+  if (bp.dims.area < bp.arch.area[2] || bp.dims.area > bp.arch.area[3]) errs.push("areaOutOfEnvelope");
+  if (bp.dims.bedrooms > 0 && bp.dims.area / (bp.dims.bedrooms + bp.dims.reception) < bp.dims.spaceNorm * 0.45) errs.push("roomsTooSmall");
+  if (bp.dims.bedrooms > 8) errs.push("tooManyBedrooms");
+  for (let i = 0; i < HRE_AMENITIES.length; i++) {
+    const am = HRE_AMENITIES[i], v = bp.amenities[am.id];
+    if (v && v.has && refYear < am.exists) errs.push("anachronism:" + am.id);
+    if (v && v.has && v.since !== null && v.since < am.exists) errs.push("anachronismSince:" + am.id);
+    if (v && v.has && v.since !== null && v.since > refYear) errs.push("amenityFromFuture:" + am.id);
+  }
+  for (let i = 0; i < HRE_COMPONENTS.length; i++) {
+    const c = bp.condition[HRE_COMPONENTS[i].id];
+    if (!(c >= 0 && c <= 100)) errs.push("conditionOutOfBounds:" + HRE_COMPONENTS[i].id);
+  }
+  if (!(bp.baseHvu > 0)) errs.push("nonPositiveValue");
+  if (bp.baseHvu > HRE_HVU_REFERENCE * 40) errs.push("valueImplausible");
+  return errs;
+}
+
+/* ─────────────────────── the pipeline: Stages 3-9 ───────────────────────
+   Pure. Returns a blueprint plus a runtime-only diagnostic. A generator that
+   corrects frequently has a CONTENT problem, not a runtime one, and the
+   counter is how that gets noticed (§4.8). */
+function hreBlueprint(seed, id, refYear) {
+  const parsed = hreIdParse(id);
+  if (!parsed) return null;
+  /* Time-INDEPENDENT inputs only. Stages 3-5 are specified as not
+     time-dependent, so they must not see the drifted neighbourhood class —
+     otherwise the same house gains a bedroom between 1990 and 2020. */
+  const hood = hreHoodBase(seed, parsed.country, parsed.city, parsed.hood);
+  if (!hood) return null;
+  const block = hreBlock(seed, id);
+  if (!block) return null;
+  /* Stage 4 hard constraint, enforced at the boundary: a property that has not
+     been built yet does not exist to be viewed, priced or listed. */
+  if (!hreBlockExistsAt(block, refYear)) return null;
+  if (parsed.unit >= block.units) return null;
+
+  const diag = { retries: 0, errors: [], fellBack: false };
+  let bp = null;
+
+  for (let attempt = 0; attempt <= HRE_MAX_RETRIES; attempt++) {
+    const arch = hreStage3Archetype(seed, id, block, hood, attempt);
+    if (!arch) break;
+    const builtYear = hreStage4Year(seed, id, arch, block, refYear, attempt);
+    const dims = hreStage5Dimensions(seed, id, arch, hood, builtYear, parsed.country, attempt);
+    const amenities = hreStage6Amenities(seed, id, arch, dims, hood, builtYear, refYear, parsed.country);
+    const condition = hreStage7Condition(seed, id, arch, hood, builtYear, refYear);
+    const defects = hreStage8Defects(seed, id, arch, dims, condition, amenities, builtYear, refYear);
+    const baseHvu = hreStage9BaseValue(seed, id, arch, dims, amenities, condition, defects, refYear);
+
+    const candidate = { id: id, genV: HRE_GEN_V, country: parsed.country, city: parsed.city,
+      hood: parsed.hood, block: parsed.block, unit: parsed.unit,
+      archetype: arch.id, arch: arch, label: arch.label, builtYear: builtYear,
+      dims: dims, amenities: amenities, condition: condition, defects: defects,
+      baseHvu: baseHvu, hoodClass: hood.baseClass, street: block.street,
+      address: hreAddress(seed, id, hreIsMultiUnit(arch.id)), refYear: refYear };
+
+    const errs = hreValidateBlueprint(candidate, refYear);
+    if (!errs.length) { bp = candidate; diag.retries = attempt; break; }
+    diag.errors = errs;
+    diag.retries = attempt + 1;
+    bp = candidate;                       /* keep the last one as the fallback */
+  }
+
+  if (!bp) return null;
+  if (hreValidateBlueprint(bp, refYear).length) diag.fellBack = true;
+  bp._diag = diag;
+  return bp;
+}
+
+/* Crystallisation payload (§4.9). What gets written to state the moment a
+   property becomes materially significant, after which it is never
+   regenerated — which is what lets the generator be rewritten in a later
+   version without altering an existing character's house.
+   Market value is deliberately NOT included: it must keep moving with S05. */
+function hreCrystallise(bp) {
+  return {
+    id: bp.id, genV: bp.genV, archetype: bp.archetype, builtYear: bp.builtYear,
+    dims: bp.dims, amenities: bp.amenities, condition: bp.condition,
+    defects: bp.defects, baseHvu: bp.baseHvu, address: bp.address,
+  };
+}
+
+/* ═══════════════ HRE · CALIBRATION CONSTANTS (B4 decision) ═══════════════ */
+/* Resolves blocker B4 from the Phase 0 exit gate.
+
+   THE PROBLEM (measured, Phase 0 §B1.3)
+   Wages are delivered by a POOL event (id:"salary", w:6, cd:30) that must win a
+   weighted draw against ~214 other events. Measured over 18 country x era cases,
+   30 simulated years each, salary pinned: characters are paid in only 29.8% of
+   the months they are employed. Nominal TIER_SALARY is therefore not income.
+   Peak salaries also compound without ceiling (askRaise x1.12, promotion x1.3),
+   reaching 85,000/month against a table maximum of 16,000.
+
+   WHY IT IS A BLOCKER FOR RENTING, NOT JUST BUYING
+   Rent is a recurring obligation. Charged monthly against income arriving three
+   months in ten, the player is permanently in arrears through no decision of
+   their own, and the arrears pipeline fires as noise. That lands in Phase 7 —
+   the MVP — not Phase 8. Phase 0 understated this.
+
+   THE DECISION
+   HRE does NOT wait for payroll reform, and does not trigger one.
+
+   Making wages deterministic would triple realised income, and every existing
+   price in the game — care costs, salon prices, tuition, crime payouts, gifts —
+   is implicitly balanced against today's realised figure. That is a game-wide
+   rebalance across modules 08, 09, 10, 12 and 13. It may well be the right
+   thing to do, but it is module 09's call and its own piece of work. A housing
+   subsystem must not be the reason four other modules get rebalanced, and the
+   MVP must not wait on that negotiation.
+
+   Instead the dependency is isolated into ONE named constant. Every HRE figure
+   that touches money is derived from it. When module 09 makes payroll
+   deterministic, HRE_INCOME_REALISATION goes to 1.0, one line changes, and
+   every HRE price, rent and mortgage rebalances correctly with no other edit.
+   This is R2 applied properly: the expensive-to-change-late decision is the
+   *shape* of the coupling, not the number.
+
+   WHAT IS AND IS NOT MODELLED AS A DEFECT
+   The VARIANCE in income delivery is defensible and arguably valuable: certain
+   obligations against uncertain income is precarity, which this game already
+   models elsewhere (homelessness, couch-surfing, eviction). Arrears driven by a
+   bad few months is a feature. What is NOT defensible is the MEAN: the player
+   is told 6,000/month and receives about 1,800. That is a display lie, and it
+   is module 09's to fix. HRE calibrates against the mean it measured and takes
+   no position on the display question.
+
+   Note also that HRE's OWN charges are deterministic regardless — rent and
+   mortgage instalments are charged from HRE's tick, never through a POOL draw
+   (Phase 0 §B3 rejected that). Obligations are certain; income is volatile.
+   That asymmetry is the intended model, not an accident. */
+
+/* MEASURED. Re-derive with hre-p0d.js; do not adjust by intuition.
+   Fraction of scheduled monthly wages the engine actually delivers.
+   Measured 0.298 (range 0.192-0.433 across 18 country x era cases).
+   Set to 1.0 the day module 09 makes payroll calendar-driven. */
+const HRE_INCOME_REALISATION = 0.298;
+
+/* Whether the engine pays wages on a schedule. Read by nothing yet; exists so
+   that a future module 09 patch flipping it is self-documenting, and so the
+   test suite can assert the two constants stay consistent. */
+const HRE_PAYROLL_IS_DETERMINISTIC = false;
+
+/* Target ratios. Mid-band values for the countries and eras in scope; S05 will
+   vary them per country and era. These are the anchors those curves multiply.
+   ONLY TWO OF THESE THREE ARE INDEPENDENT. Gross yield is fully determined by
+   the other two — rent/price = (rentToIncome x 12 x annual/12) / (priceToIncome
+   x annual) = rentToIncome / priceToIncome. Declaring it as a third constant
+   created a second authority for the same fact, which is exactly the duplicated-
+   business-logic failure the project rules forbid: someone would eventually tune
+   one and not the others, and the three would silently disagree. It is derived. */
+const HRE_PRICE_TO_INCOME = 4.0;   /* median dwelling price / gross annual income */
+const HRE_RENT_TO_INCOME = 0.25;   /* rent / gross monthly income */
+
+/* Derived, never set. ~6.25% at the anchors above, inside the plausible 3-7%
+   band for gross residential yields. If a future S05 wants a specific yield for
+   a country and era, it must move one of the two ratios above, not this. */
+function hreGrossYield() { return HRE_RENT_TO_INCOME / HRE_PRICE_TO_INCOME; }
+
+/* The reference earner HVU is anchored to: mid-career, mid-tier.
+   TIER_SALARY[3] is [4500, 8000] per month in module 09's table. */
+const HRE_REF_SALARY_MONTHLY = 6250;
+
+/* Realised annual income for the reference earner — the figure that actually
+   reaches s.money, which is the only figure affordability may be built on. */
+function hreRealisedAnnual(nominalMonthly) {
+  return nominalMonthly * 12 * HRE_INCOME_REALISATION;
+}
+
+/* Money value of one HVU at market index 1.00.
+   DERIVED, never hardcoded: it must move when HRE_INCOME_REALISATION moves, or
+   fixing payroll would leave every property priced for a poorer world. */
+const HRE_HVU_REFERENCE_UNITS = 100;   /* the reference dwelling is 100 HVU */
+
+function hreHvuToMoney() {
+  return (HRE_PRICE_TO_INCOME * hreRealisedAnnual(HRE_REF_SALARY_MONTHLY)) / HRE_HVU_REFERENCE_UNITS;
+}
+
+/* Convenience: a monthly rent that is HRE_RENT_TO_INCOME of realised income for
+   an earner on `nominalMonthly`. Expressed against realised income on purpose —
+   the ratio the player experiences is the realistic one, even though the ratio
+   to the salary figure they are shown is not. That discrepancy is the display
+   lie above, and it disappears when payroll is fixed. */
+function hreAffordableRent(nominalMonthly) {
+  return (hreRealisedAnnual(nominalMonthly) / 12) * HRE_RENT_TO_INCOME;
+}
+
+/* Deposit affordability in months of realised income — the figure that decides
+   whether saving for a home is a reachable goal or a decorative one. */
+function hreDepositMonths(priceHvu, ltv, nominalMonthly) {
+  const price = priceHvu * hreHvuToMoney();
+  const deposit = price * (1 - ltv);
+  return deposit / (hreRealisedAnnual(nominalMonthly) / 12);
+}
+
+/* ═══════════════ HRE · S05 · MARKET INDEX & VALUATION ═══════════════ */
+/* Spec: HRE-ARCHITECTURE Part 1 §3.4, Part 2 §4.4 stages 10-13, §5.4.
+   Depends on: S01, S03, S04, calibration constants. Never on Layer 4+.
+   INVARIANT I1 — no Math.random / rnd / pick / Date.now / mutable-state reads.
+   INVARIANT I9 — curves and shocks are DATA. No `if (country === ...)`.
+
+   ── WHAT THE INDEX ACTUALLY MEASURES ────────────────────────────────────────
+   The index is a PRICE-TO-INCOME multiple, not a real price level. Index 1.00
+   means the reference dwelling costs HRE_PRICE_TO_INCOME years of the reference
+   earner's realised income.
+
+   This is forced by module 09, and it matters enough to spell out. TIER_SALARY
+   is flat across BOTH era and country: a manager earns the same in 1930 as in
+   2020, and the same in Lagos as in Oslo. An index expressing real price growth
+   over the century would therefore make historical housing absurdly affordable —
+   the first draft of this file put 1930 Austria at 0.7x income — because prices
+   grew against an income that never did. Expressing price-to-income instead
+   keeps the ratio the player actually feels correct in every era.
+
+   The cost of that choice: the country spread is compressed well below reality.
+   Real price-to-income is often WORSE in poor countries than rich ones (Lagos
+   and Mumbai are brutally unaffordable), but honouring that here would make a
+   Lagos house cost more money than an Oslo one, since incomes are equal. So the
+   dev-band spread keeps the intuitive ordering (richer country, dearer housing)
+   at about 1.25x rather than the 3x it would really be. Both properties are
+   approximately right and neither is exactly right.
+   > RAISED WITH MODULE 09: salary should be scaled by country and era, exactly
+     as care costs already are via HC and tuition via COUNTRIES[x].tui. Until it
+     is, this compression is the least-wrong option. Same class of issue as B4.
+
+   ── TREND VERSUS EVENT ──────────────────────────────────────────────────────
+   Knots carry the smooth secular trend ONLY. Every dated crash and boom lives
+   in the shock table. The first draft encoded the 1929 crash in both, and they
+   fought: the knot had already fallen by 1929 while the shock was only starting,
+   so the Depression trough landed above its own onset. One authority per fact.
+
+   ── O(1) AND CACHE-INDEPENDENT (gate requirement) ───────────────────────────
+   Every function is closed-form in (identity, year). Nothing iterates over
+   years, accumulates, or memoises. Valuing 2015 never requires having valued
+   2014 — which is why shocks decay by formula rather than by simulation. */
+
+/* ───────────────────────── secular trend curves ─────────────────────────
+   Smooth. No event-shaped wiggles: those belong to HRE_SHOCKS. */
+
+const HRE_INDEX_KNOTS = {
+  "United States":  [[1900, 0.90], [1950, 0.84], [1980, 0.94], [2000, 1.02], [2025, 1.20], [2060, 1.26]],
+  "United Kingdom": [[1900, 0.94], [1950, 0.86], [1980, 1.00], [2000, 1.12], [2025, 1.36], [2060, 1.42]],
+  "Japan":          [[1900, 0.84], [1950, 0.74], [1980, 0.98], [2000, 1.00], [2025, 1.10], [2060, 1.14]],
+  "Germany":        [[1900, 0.86], [1950, 0.76], [1980, 0.84], [2000, 0.86], [2025, 1.10], [2060, 1.18]],
+  "Poland":         [[1900, 0.78], [1950, 0.68], [1980, 0.76], [2000, 0.86], [2025, 1.06], [2060, 1.12]],
+  "Sweden":         [[1900, 0.86], [1950, 0.84], [1980, 0.92], [2000, 1.02], [2025, 1.30], [2060, 1.34]],
+  "Brazil":         [[1900, 0.80], [1950, 0.78], [1980, 0.86], [2000, 0.92], [2025, 1.06], [2060, 1.10]],
+  "Nigeria":        [[1900, 0.74], [1950, 0.72], [1980, 0.82], [2000, 0.86], [2025, 0.96], [2060, 1.02]],
+};
+
+const HRE_INDEX_REGION = {
+  anglo:      [[1900, 0.92], [1950, 0.86], [1980, 0.96], [2000, 1.06], [2025, 1.28], [2060, 1.34]],
+  westEu:     [[1900, 0.86], [1950, 0.78], [1980, 0.86], [2000, 0.92], [2025, 1.14], [2060, 1.20]],
+  nordic:     [[1900, 0.86], [1950, 0.84], [1980, 0.92], [2000, 1.02], [2025, 1.26], [2060, 1.30]],
+  southEu:    [[1900, 0.84], [1950, 0.80], [1980, 0.90], [2000, 1.00], [2025, 1.10], [2060, 1.16]],
+  eastEu:     [[1900, 0.78], [1950, 0.70], [1980, 0.78], [2000, 0.86], [2025, 1.04], [2060, 1.10]],
+  latam:      [[1900, 0.80], [1950, 0.78], [1980, 0.86], [2000, 0.92], [2025, 1.04], [2060, 1.10]],
+  eastAsia:   [[1900, 0.82], [1950, 0.76], [1980, 0.94], [2000, 1.02], [2025, 1.22], [2060, 1.28]],
+  southAsia:  [[1900, 0.78], [1950, 0.76], [1980, 0.84], [2000, 0.94], [2025, 1.10], [2060, 1.16]],
+  seAsia:     [[1900, 0.78], [1950, 0.76], [1980, 0.84], [2000, 0.92], [2025, 1.06], [2060, 1.12]],
+  mena:       [[1900, 0.80], [1950, 0.78], [1980, 0.86], [2000, 0.92], [2025, 1.02], [2060, 1.08]],
+  subSaharan: [[1900, 0.74], [1950, 0.72], [1980, 0.80], [2000, 0.84], [2025, 0.94], [2060, 1.00]],
+};
+
+const HRE_INDEX_DEV = {
+  high:   [[1900, 0.88], [1950, 0.82], [1980, 0.90], [2000, 1.00], [2025, 1.18], [2060, 1.24]],
+  upper:  [[1900, 0.80], [1950, 0.76], [1980, 0.84], [2000, 0.92], [2025, 1.06], [2060, 1.12]],
+  middle: [[1900, 0.76], [1950, 0.74], [1980, 0.80], [2000, 0.88], [2025, 1.00], [2060, 1.06]],
+  low:    [[1900, 0.72], [1950, 0.70], [1980, 0.76], [2000, 0.82], [2025, 0.92], [2060, 0.98]],
+};
+const HRE_INDEX_UNIVERSAL = [[1900, 0.80], [1950, 0.76], [1980, 0.84], [2000, 0.92], [2025, 1.06], [2060, 1.12]];
+
+/* ───────────────────────────────── shocks ─────────────────────────────────
+   Anchored to module 04's WORLD_EVENTS where they overlap. WORLD_EVENTS owns
+   what the player is TOLD; S05 owns what happened to prices. Neither duplicates
+   the other, and a test asserts they cannot contradict.
+
+   year       the year the event begins
+   onset      years from start to full effect. Crashes are not instantaneous —
+              1929 did not bottom out in 1929, it bottomed in 1933 — and the
+              first draft's snap-to-depth model put the Depression trough above
+              its own starting point.
+   depth      fractional move at full effect (negative crash, positive boom)
+   recovery   years from full effect back to the permanent residue
+   permanent  fraction of the move that never unwinds
+   scope      "global" | { regions: [...] } | { countries: [...] }
+   by         per-country depth multipliers. The same global event hit Spain and
+              Germany utterly differently; scaling one shock is far better than
+              carving event shapes back into the trend curves. 0 means immune. */
+const HRE_SHOCKS = [
+  { id: "depression", year: 1929, onset: 4, depth: -0.24, recovery: 14, permanent: 0.04, scope: "global",
+    by: { "United States": 1.4, "Germany": 1.3, "Canada": 1.2 } },
+  { id: "worldWar2", year: 1940, onset: 3, depth: -0.18, recovery: 14, permanent: 0.00,
+    scope: { regions: ["westEu", "eastEu", "southEu", "eastAsia", "nordic"] },
+    by: { "Japan": 1.6, "Germany": 1.6, "Poland": 1.7, "Sweden": 0.3, "Switzerland": 0.2 } },
+  { id: "oilShock", year: 1974, onset: 2, depth: -0.13, recovery: 7, permanent: 0.00,
+    scope: { regions: ["anglo", "westEu", "nordic", "southEu", "eastAsia"] } },
+  { id: "ratesSpike", year: 1981, onset: 2, depth: -0.10, recovery: 5, permanent: 0.00,
+    scope: { regions: ["anglo", "westEu", "latam"] } },
+  { id: "japanBubble", year: 1985, onset: 4, depth: +0.55, recovery: 8, permanent: 0.00, scope: { countries: ["Japan"] } },
+  { id: "japanBust", year: 1990, onset: 3, depth: -0.45, recovery: 20, permanent: 0.50, scope: { countries: ["Japan"] } },
+  { id: "nordicCrash", year: 1991, onset: 3, depth: -0.24, recovery: 8, permanent: 0.05, scope: { regions: ["nordic"] } },
+  /* WORLD_EVENTS 1991 — "The Soviet Union dissolves." */
+  { id: "sovietCollapse", year: 1991, onset: 3, depth: -0.24, recovery: 9, permanent: 0.00,
+    scope: { regions: ["eastEu"] }, by: { "Russia": 1.3, "Ukraine": 1.3, "Poland": 1.1 } },
+  { id: "asianCrisis", year: 1997, onset: 2, depth: -0.26, recovery: 8, permanent: 0.04,
+    scope: { regions: ["seAsia", "eastAsia"] }, by: { "Japan": 0.3, "China": 0.4 } },
+  { id: "anglo2000sBoom", year: 1998, onset: 9, depth: +0.34, recovery: 9, permanent: 0.10,
+    scope: { regions: ["anglo", "southEu"] }, by: { "Spain": 1.4, "Ireland": 1.5 } },
+  { id: "eastEuAccession", year: 2004, onset: 4, depth: +0.40, recovery: 8, permanent: 0.12,
+    scope: { regions: ["eastEu"] }, by: { "Russia": 0.5, "Ukraine": 0.5 } },
+  /* WORLD_EVENTS 2008 — "A global financial crisis wipes out savings and jobs
+     worldwide." Depth varied enormously by country, hence `by`. */
+  { id: "gfc", year: 2008, onset: 3, depth: -0.20, recovery: 7, permanent: 0.02, scope: "global",
+    by: { "United States": 1.8, "United Kingdom": 1.5, "Spain": 2.2, "Ireland": 2.4,
+          "Greece": 2.0, "Germany": 0.15, "Poland": 0.4, "Brazil": 0.5, "China": 0.3 } },
+  /* WORLD_EVENTS 2020 — "A global pandemic locks down the world." Real house
+     prices ROSE through this: a brief freeze, then a boom as rates fell and
+     space gained value. A shock table that only crashes gets this backwards. */
+  { id: "pandemic", year: 2020, onset: 2, depth: +0.14, recovery: 6, permanent: 0.06, scope: "global" },
+];
+
+/* Economically meaningful WORLD_EVENTS years. Listed rather than parsed from the
+   prose, because reading strings for economic meaning breaks the moment someone
+   rewords an event. A test asserts each of these moves the index. */
+const HRE_ECONOMIC_WORLD_EVENT_YEARS = [1991, 2008, 2020];
+
+function hreShockScale(shock, country) {
+  if (shock.by && shock.by[country] !== undefined) return shock.by[country];
+  return 1;
+}
+
+function hreShockApplies(shock, country) {
+  if (hreShockScale(shock, country) === 0) return false;
+  if (shock.scope === "global") return true;
+  if (shock.scope.countries) return shock.scope.countries.indexOf(country) !== -1;
+  if (shock.scope.regions) return shock.scope.regions.indexOf(hreRegionOf(country)) !== -1;
+  return false;
+}
+
+/* Closed form: ramp in over `onset`, then decay to `permanent` over `recovery`. */
+function hreShockEffect(shock, year, country) {
+  const t = year - shock.year;
+  if (t < 0) return 0;
+  const depth = shock.depth * hreShockScale(shock, country);
+  const onset = shock.onset || 0;
+  if (t < onset) return depth * (t / onset);
+  const t2 = t - onset;
+  const perm = depth * shock.permanent;
+  if (t2 >= shock.recovery) return perm;
+  return perm + depth * (1 - shock.permanent) * (1 - t2 / shock.recovery);
+}
+
+/* ─────────────────── curve interpolation + resolution ─────────────────── */
+
+function hreCurveAt(knots, year) {
+  if (!knots || !knots.length) return null;
+  if (year <= knots[0][0]) return knots[0][1];
+  const last = knots[knots.length - 1];
+  if (year >= last[0]) return last[1];
+  for (let i = 0; i < knots.length - 1; i++) {
+    if (year >= knots[i][0] && year <= knots[i + 1][0]) {
+      const t = (year - knots[i][0]) / (knots[i + 1][0] - knots[i][0]);
+      return knots[i][1] + t * (knots[i + 1][1] - knots[i][1]);
+    }
+  }
+  return last[1];
+}
+
+/* Fallback chain, first match wins. Unlike S04's law profile this does NOT
+   merge: a curve is atomic, and blending two would produce a shape neither
+   table's author intended. Level reported for coverage diagnostics. */
+function hreIndexCurve(country) {
+  if (HRE_INDEX_KNOTS[country]) return { knots: HRE_INDEX_KNOTS[country], level: "country" };
+  const reg = HRE_INDEX_REGION[hreRegionOf(country)];
+  if (reg) return { knots: reg, level: "region" };
+  const dev = HRE_INDEX_DEV[hreDevOf(country)];
+  if (dev) return { knots: dev, level: "dev" };
+  return { knots: HRE_INDEX_UNIVERSAL, level: "universal" };
+}
+
+function hreNationalIndex(country, year) {
+  let idx = hreCurveAt(hreIndexCurve(country).knots, year);
+  for (let i = 0; i < HRE_SHOCKS.length; i++) {
+    const sh = HRE_SHOCKS[i];
+    if (!hreShockApplies(sh, country)) continue;
+    idx *= 1 + hreShockEffect(sh, year, country);
+  }
+  /* a market can collapse, but property does not become free */
+  return Math.max(0.08, idx);
+}
+
+/* ────────────────────────── city multiplier ──────────────────────────
+   Primary cities pull away from the rest of a country through the twentieth
+   century and sharply after 1980 — the mechanism behind being priced out of the
+   capital. The idiosyncratic term is drawn PER COUNTRY, not per city: an urban
+   premium is a property of a country's settlement pattern, and drawing it per
+   city let noise invert primary > secondary > regional in early eras when the
+   spread is still narrow. */
+function hreCityMultiplier(seed, country, cityIdx, year) {
+  const rank = hreCityRank(cityIdx);
+  const spread = hreCurveAt([[1900, 0.10], [1950, 0.18], [1980, 0.30], [2005, 0.52], [2025, 0.60], [2060, 0.66]], year);
+  const r = hreRng(seed, hreIdBuild(country, 0, 0, 0, 0), "s05:urbanPremium");
+  const s = spread * (1 + r.range(-0.18, 0.18));
+  const base = rank === "primary" ? 1 + s : rank === "secondary" ? 1 + s * 0.25 : 1 - s * 0.22;
+  return Math.max(0.45, base);
+}
+
+/* ──────────────────────── neighbourhood multiplier ────────────────────────
+   Uses the DRIFTED class at this year, which is what makes S03's drift
+   economically real: a neighbourhood gentrifying between 1958 and 2008 gets
+   dearer over the same period with nothing stored. Safety, transport and
+   amenity contribute separately so class is not a single dial price reads off. */
+function hreHoodMultiplier(hood) {
+  if (!hood) return 1;
+  const classPart = 0.42 + hood.classIdx * 0.30;   /* 0.42 informal .. 1.62 elite */
+  const quality = (hood.safety * 0.5 + hood.transport * 0.3 + hood.amenity * 0.2) / 100;
+  return Math.max(0.25, classPart * (0.78 + quality * 0.44));
+}
+
+/* ───────────────────────────── yield curve ─────────────────────────────
+   The base gross yield is owned by the calibration constants, where it is
+   derived from price-to-income and rent-to-income. S05 applies only a
+   country/era MODIFIER, so exactly one authority for the anchor remains.
+   Yields run high where ownership is risky or capital scarce, and compress in
+   hot low-rate markets — which is why a boom lifts prices faster than rents. */
+function hreYieldModifier(country, year) {
+  const dev = hreDevOf(country);
+  const devPull = dev === "high" ? 0.86 : dev === "upper" ? 1.08 : dev === "middle" ? 1.24 : 1.38;
+  const eraPull = hreCurveAt([[1900, 1.26], [1950, 1.18], [1980, 1.10], [2000, 1.00], [2015, 0.86], [2060, 0.84]], year);
+  return devPull * eraPull;
+}
+
+function hreGrossYieldAt(country, year) { return hreGrossYield() * hreYieldModifier(country, year); }
+
+/* ──────────────── valuation composition (Stages 10-13) ────────────────
+   money = baseHvu x nationalIndex x cityMultiplier x hoodMultiplier x HVU_TO_MONEY
+   Pure, O(1), cache-independent. `hood` is the time-DEPENDENT S03 descriptor at
+   this year — drift matters here, unlike Stages 3-5 where it must not. */
+function hreValue(seed, bp, hood, year) {
+  if (!bp) return null;
+  const country = bp.country;
+  const national = hreNationalIndex(country, year);
+  const city = hreCityMultiplier(seed, country, bp.city, year);
+  const neighbourhood = hreHoodMultiplier(hood);
+  const hvu = bp.baseHvu * national * city * neighbourhood;
+  const money = hvu * hreHvuToMoney();
+  const yieldNow = hreGrossYieldAt(country, year);
+  return {
+    hvu: hvu, money: money, rentMonthly: (money * yieldNow) / 12, yield: yieldNow,
+    breakdown: { baseHvu: bp.baseHvu, national: national, city: city,
+      neighbourhood: neighbourhood, hvuToMoney: hreHvuToMoney(),
+      curveLevel: hreIndexCurve(country).level },
+    year: year,
+  };
+}
+
+/* The two ratios the Phase 4 gate is defined on, computed here so each caller
+   does not reconstruct them differently. */
+function hreAffordability(valuation, nominalMonthly) {
+  const annual = hreRealisedAnnual(nominalMonthly);
+  return {
+    priceToIncome: valuation.money / annual,
+    rentToIncome: valuation.rentMonthly / (annual / 12),
+  };
+}
+
+/* Coverage diagnostic, mirroring S04's. Country keys are passed in; S05 does
+   not import module 17. */
+function hreIndexCoverage(countryKeys) {
+  const tally = { country: 0, region: 0, dev: 0, universal: 0 };
+  const rows = [];
+  for (let i = 0; i < countryKeys.length; i++) {
+    const lvl = hreIndexCurve(countryKeys[i]).level;
+    tally[lvl]++;
+    rows.push({ country: countryKeys[i], level: lvl });
+  }
+  return { tally: tally, rows: rows, countryCoverage: tally.country / countryKeys.length };
+}
+
+/* ═══════════════ HRE · S09 · STATE, TENURE & RESIDENCE MIGRATION ═══════════════ */
+/* Spec: HRE-ARCHITECTURE Part 2 §5.0-§5.1, Part 3 §7.13. Phase 5 — the highest-
+   risk gate in the plan, because it is the first HRE code the existing game can
+   see, and because residence is currently expressed as four flags plus an
+   unwritten age rule that half the game reads inline.
+
+   ── THE RULE FOR THIS PHASE ─────────────────────────────────────────────────
+   NOTHING IS INVERTED YET. Every legacy predicate stays exactly where it is and
+   keeps deciding exactly what it decided. This file adds a parallel authority
+   and proves, across full-life soaks, that it answers identically. Only once
+   that equivalence is green does a later phase start replacing call sites.
+   That ordering is not caution for its own sake: residence gates the Act sheet,
+   the home tab, the street menu, coming-out risk and status chips, so a subtly
+   different answer would surface as unrelated bugs all over the game.
+
+   ── WHAT WAS FOUND IN THE LEGACY MODEL (Phase 0 §B2, re-verified) ───────────
+   * `flags.movedOut` is set ONLY on the homelessness exit path (§2902, §2903).
+     A character who never becomes homeless never has it set, and instead "moves
+     out" at 26 by a rule that exists only inside two inline expressions and is
+     never written to state. This is the majority path.
+   * `flags.couchAt` is set at §2852 and NEVER cleared. Once you couch-surf you
+     are permanently barred from your parents' room.
+   * The parentsroom predicate is duplicated verbatim at §4519 and §7905.
+   * The home-tab HEADER uses a different rule (`movedOut || age >= 26`) from the
+     parentsroom BUTTON beside it, so a 20-year-old with `couchAt` set is told
+     "your room is down the hall" and then denied the door. Pre-existing, and the
+     shim deliberately reproduces it rather than quietly fixing it — a shim that
+     improves on legacy behaviour cannot be proven equivalent to it. */
+
+const HRE_STATE_V = 3;
+
+/* Migration ladder (§8.6). Each step upgrades exactly one version to the next
+   and they are applied in order, so a Phase 5 v1 save and a freshly created v2
+   one converge on the same schema by the same path. HRE carries its own
+   version independently of `s.v` because its schema moves on its own cadence —
+   this is the first bump, and the ladder exists so the second is boring. */
+const HRE_STATE_LADDER = {
+  /* v1 -> v2 (Phase 6): S06 market memory. Two short strings, no collection:
+     "a branch without a cap is a defect" (§8.2), and the cheapest cap is a
+     shape that cannot grow. A list of listings the player has seen would be
+     unbounded and is deliberately not kept. */
+  1: function (h) { h.mem = { ch: null, filt: "all" }; },
+  /* v2 -> v3 (Phase 7): S07 engagement pinning. A collection this time,
+     so it carries both a cap and a TTL enforced at its single write site
+     (`hrePinEngagement`) — an uncapped branch is a defect (§8.2). */
+  2: function (h) { h.eng = []; },
+};
+
+function hreStateLadder(h) {
+  let guard = 0;
+  while (h.v < HRE_STATE_V && guard++ < 32) {
+    const step = HRE_STATE_LADDER[h.v];
+    if (step) step(h);
+    h.v = h.v + 1;
+  }
+  if (h.v > HRE_STATE_V) h.v = HRE_STATE_V;
+  return h;
+}
+
+/* Nine tenure states (Part 1 §2.1 C1). Four are unreachable from legacy state
+   and only become reachable once HRE creates them — a migration that emits one
+   is a bug, and the test asserts it never happens. */
+const HRE_TENURE_STATES = ["withParents", "renting", "lodging", "withPartner",
+  "owning", "ownOutright", "social", "institutional", "homeless"];
+const HRE_TENURE_FROM_LEGACY = ["withParents", "renting", "lodging", "withPartner", "institutional", "homeless"];
+
+/* ───────────────────────────── the shim layer ─────────────────────────────
+   §7.13 step 3. Each of these is a character-for-character transcription of a
+   legacy expression. They must NOT be improved, simplified or corrected: the
+   equivalence assertion is the whole value of this phase, and any deviation
+   makes it meaningless. Where legacy duplicates itself, the shim has one
+   function and a test proves both legacy copies agree with it. */
+
+/* Legacy: §4519 parentsroom item cond (and its verbatim twin at §7905). */
+function hreAtParents(s) {
+  /* Ownership-aware — see hreIsHomeless. A character who has signed a tenancy
+     must not still offer "your parents' room" because the legacy flags never
+     learned about it. */
+  if (s.hre && s.hre.owned) return hreTenure(s) === "withParents";
+  return ageYears(s) < 26 && !s.flags.movedOut && !s.flags.homeless && !s.flags.cohabiting &&
+    !s.spouse && !s.flags.couchAt && (!s.family.mom.deceased || !s.family.dad.deceased);
+}
+
+/* Legacy: §7896 home-tab header. Deliberately NOT the negation of the above. */
+function hreHasOwnPlace(s) {
+  return !!s.flags.movedOut || ageYears(s) >= 26;
+}
+
+/* Legacy: §2868 STREET_GROUP cond, §4517 HOME_GROUP cond. */
+/* Ownership-aware, for the same reason as hreTenure. Once HRE owns a
+   character's residence, the legacy flag is a stale artefact of writers that
+   have not inverted yet: a tenant evicted by the legacy path at §591/§5829
+   would otherwise read as `renting` in the home tab AND homeless in the Act
+   sheet at the same time. Measured directly — see test-hre-s09 §7.
+   Until the writers invert, HRE's answer wins wherever HRE has authority. */
+/* The legacy flag doubled as a timestamp (`s.ageDays - s.flags.homeless`), so
+   inverting its readers needs an inverted source for "how long". hreSetTenure
+   maintains s.hre.since; un-owned characters still fall back to the flag. */
+function hreHomelessSince(s) {
+  if (s.hre && s.hre.owned && typeof s.hre.since === "number") return s.hre.since;
+  return typeof s.flags.homeless === "number" ? s.flags.homeless : (s.ageDays || 0);
+}
+
+function hreIsHomeless(s) {
+  if (s.hre && s.hre.owned) return hreTenure(s) === "homeless";
+  return !!s.flags.homeless;
+}
+
+/* ─────────────────────── legacy tenure derivation ───────────────────────
+   §7.13 step 2. Evaluated in order; first match wins.
+
+   DECISION 1 (§B2.4 defect 1) — `couchAt` is evaluated LOW, not high.
+   Phase 0 proposed ranking it third, above partner and the age rule. That would
+   strand any character who ever couch-surfed in `lodging` for the rest of their
+   life, because the flag is never cleared. Ranking it below partnership and the
+   age rule means it only describes someone with no other housing, which is what
+   it was set to mean. The flag itself is NOT cleared here: clearing it would
+   change what §4519 and §7905 decide, and this phase changes nothing.
+   ► Clearing it belongs to Phase 7, when those call sites invert.
+
+   DECISION 2 (§B2.4 defect 2) — the age-26 rule is reproduced exactly and then
+   superseded. A migrated character at 26+ with no other signal becomes
+   `renting`, because the engine has no concept of ownership to distinguish them
+   and renting is the safe assumption: it implies an obligation rather than an
+   asset, so a migrated save can never be silently handed a free house. */
+function hreLegacyTenure(s) {
+  if (inPrison(s)) return "institutional";
+  if (s.flags.homeless) return "homeless";
+  if (s.spouse || s.flags.cohabiting) return "withPartner";
+  if (s.flags.movedOut) return "renting";
+  if (ageYears(s) >= 26) return "renting";
+  if (s.flags.couchAt) return "lodging";
+  return "withParents";
+}
+
+/* ─────────────────── family home crystallisation at creation ───────────────────
+   The dwelling a character grows up in is materially significant from birth, so
+   it is crystallised immediately (§4.9) and never regenerated. That is what lets
+   the generator be rewritten in a later version without altering an existing
+   character's childhood home.
+
+   Class chooses the TARGET neighbourhood band; the actual hood is the first in a
+   seeded shuffle of the city's hoods whose band matches, so families are not all
+   parked in hood 0 and two Wealthy characters in the same city can still grow up
+   in different places. */
+const HRE_CLASS_TARGET_BAND = {
+  Poor: ["informal", "working"],
+  Working: ["working", "suburban"],
+  Middle: ["suburban", "working"],
+  Wealthy: ["affluent", "elite"],
+};
+
+function hreCityIndexOf(country, cityName) {
+  const c = COUNTRIES[country];
+  if (!c) return 0;
+  const i = c.cities.indexOf(cityName);
+  return i < 0 ? 0 : i;
+}
+
+function hreFamilyHomeId(seed, country, cityIdx, cls, attempt) {
+  const want = HRE_CLASS_TARGET_BAND[cls] || ["working", "suburban"];
+  const classes = hreCityClasses(seed, country, cityIdx);
+  const r = hreRng(seed, hreIdBuild(country, cityIdx, 0, 0, 0), "s09:familyHome:" + (attempt || 0));
+  const order = r.shuffle(classes.map(function (_, i) { return i; }));
+  let hood = order[0];
+  for (let w = 0; w < want.length; w++) {
+    for (let i = 0; i < order.length; i++) {
+      if (classes[order[i]] === want[w]) { hood = order[i]; w = want.length; break; }
+    }
+  }
+  const blocks = hreBlockCount(seed, country, cityIdx, hood);
+  const block = r.int(0, blocks - 1);
+  const blk = hreBlock(seed, hreIdBuild(country, cityIdx, hood, block, 0));
+  const unit = blk ? r.int(0, Math.max(0, blk.units - 1)) : 0;
+  return hreIdBuild(country, cityIdx, hood, block, unit);
+}
+
+/* Returns a crystallised dwelling. A family must live SOMEWHERE, so this walks
+   candidate addresses until it finds one that holds a building in the birth year
+   rather than accepting the first miss. Stage 4 legitimately reports "not built
+   yet" for a given address — that is correct for a marketplace listing, but a
+   childhood home is not optional, and a first draft that took the first answer
+   left 17% of characters with no home at all.
+   Falls back to null only if the whole neighbourhood is unbuilt, which happens
+   for very early birth years and is handled by reconstructing later. */
+function hreCrystalliseFamilyHome(seed, country, cityName, cls, year) {
+  const cityIdx = hreCityIndexOf(country, cityName);
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const id = hreFamilyHomeId(seed, country, cityIdx, cls, attempt);
+    const bp = hreBlueprint(seed, id, year);
+    if (bp) return hreCrystallise(bp);
+  }
+  return null;
+}
+
+/* ───────────────────────────── s.hre schema ─────────────────────────────
+   Deliberately minimal for this phase. Everything a later phase needs
+   (portfolio, mortgage, arrears, listings) is absent rather than reserved —
+   an empty field costs bytes in every save forever, and §8.2's budget is
+   measured against a ~240 KB baseline that is already 92% feed.
+
+   v       schema version, for HRE's own migrations (independent of s.v)
+   seed    world seed. Written once, NEVER changed. Everything generated in this
+           character's world derives from it.
+   tenure  one of HRE_TENURE_STATES
+   since   ageDays at which the current tenure began
+   home    crystallised current dwelling, or null if not yet known
+   recon   true if this state was reconstructed by migration rather than lived */
+function hreInit(seed, country, cityName, cls, year) {
+  return {
+    v: HRE_STATE_V,
+    seed: seed >>> 0,
+    tenure: "withParents",
+    since: 0,
+    home: hreCrystalliseFamilyHome(seed, country, cityName, cls, year),
+    recon: false,
+    mem: { ch: null, filt: "all" },
+    eng: [],
+    /* Residence authority starts with the legacy flags, not with HRE — see
+       hreTenure. Flipped only by hreSetTenure, once something actually writes
+       a tenure through HRE. */
+    owned: false,
+    /* Tenancy record (S08a). null = not renting through HRE. */
+    ten: null,
+    lastEnd: null,
+    /* Has this character ever held a tenancy? Decides whether they have a
+       previous landlord to reference (S07b). A fact about the life, not a
+       derivable one, so it must be stored. */
+    everRented: false,
+    /* Mortgage (S08c). null = no loan. everOwned/ownedOutright are life facts
+       the same way everRented is. */
+    mtg: null,
+    everOwned: false,
+    ownedOutright: false,
+  };
+}
+
+/* Migration for saves written before HRE existed (§7.13 step 4).
+
+   The seed is derived from the character's OWN identity, not from entropy. This
+   matters: a seed drawn randomly at migration time would give the same save a
+   different world every time it loaded, so the house you grew up in would change
+   between sessions — the exact failure the whole seed architecture exists to
+   prevent.
+
+   `home` is left null. A mid-life save carries no record of where the character
+   has been living, and inventing a dwelling and asserting they own it would be
+   worse than admitting the gap: it gets populated the next time they interact
+   with housing. `recon` marks the state as reconstructed so later phases can
+   tell a lived history from an inferred one. */
+function hreMigrate(s) {
+  if (!s.hre) {
+    const p = s.profile || {};
+    const seed = hreSeedFrom("migrate:" + (p.first || "") + ":" + (p.last || "") + ":" +
+      (p.country || "") + ":" + (p.city || "") + ":" + (p.birthYear || 0));
+    s.hre = { v: HRE_STATE_V, seed: seed, tenure: hreLegacyTenure(s),
+      since: s.ageDays || 0, home: null, recon: true, mem: { ch: null, filt: "all" }, eng: [], owned: false,
+      ten: null, lastEnd: null, everRented: false, mtg: null, everOwned: false, ownedOutright: false };
+    return s.hre;
+  }
+  const h = s.hre;
+  if (h.v == null) h.v = HRE_STATE_V;
+  if (typeof h.seed !== "number") {
+    const p = s.profile || {};
+    h.seed = hreSeedFrom("repair:" + (p.first || "") + ":" + (p.last || "") + ":" + (p.birthYear || 0));
+  }
+  h.seed = h.seed >>> 0;
+  if (HRE_TENURE_STATES.indexOf(h.tenure) === -1) h.tenure = hreLegacyTenure(s);
+  if (typeof h.since !== "number") h.since = s.ageDays || 0;
+  if (h.home === undefined) h.home = null;
+  if (h.recon === undefined) h.recon = false;
+  hreStateLadder(h);
+  /* repair, not just upgrade: a hand-edited or truncated save can carry a
+     current version number and a missing branch */
+  if (!h.mem || typeof h.mem !== "object") h.mem = { ch: null, filt: "all" };
+  if (h.mem.ch === undefined) h.mem.ch = null;
+  if (typeof h.mem.filt !== "string") h.mem.filt = "all";
+  if (!Array.isArray(h.eng)) h.eng = [];
+  /* Residence authority. Defaults FALSE for every existing save, which is
+     correct: a save written before Phase 7 had its residence expressed in the
+     legacy flags, so HRE must defer to them until something writes through
+     hreSetTenure. Never repaired to true — only hreSetTenure grants it. */
+  if (typeof h.owned !== "boolean") h.owned = false;
+  if (typeof h.everRented !== "boolean") h.everRented = false;
+  if (h.mtg === undefined) h.mtg = null;
+  if (typeof h.everOwned !== "boolean") h.everOwned = false;
+  if (typeof h.ownedOutright !== "boolean") h.ownedOutright = false;
+  /* Tenancy (S08a). Absent on every pre-Phase-7 save; null is the correct
+     backfill — no tenancy, so hreOnTick is a no-op until one is formed. */
+  if (h.ten === undefined) h.ten = null;
+  if (h.lastEnd === undefined) h.lastEnd = null;
+  return h;
+}
+
+/* Read accessors. Consumers use these rather than touching s.hre, so the schema
+   can change without a search-and-replace across the game. */
+/* RESIDENCE AUTHORITY DURING TRANSITION (§7.13 steps 3-6).
+   While ANY legacy writer still sets flags.homeless/movedOut/couchAt/cohabiting,
+   the legacy flags are the source of truth and `s.hre.tenure` is a stale
+   snapshot: hreInit writes it once at birth (= "withParents" for a newborn) and
+   nothing updates it, because no call site writes through hreSetTenure yet.
+
+   Returning the stored value while writers are un-inverted reports withParents
+   for a character's whole life — measured at 66% of steps wrong over 5 full
+   lives (13,360/20,140), from age 26 onward. That is invisible until a reader
+   inverts, which is exactly what Phase 7 did.
+
+   So: HRE only answers with its own state once it has explicitly TAKEN
+   ownership via hreSetTenure. Until then it defers to the derivation. This
+   keeps inverted readers correct today and lets Phase 7's tenancy formation
+   assume authority the moment it writes, with no further change here. */
+function hreTenure(s) {
+  if (s.hre && s.hre.owned && s.hre.tenure) return s.hre.tenure;
+  return hreLegacyTenure(s);
+}
+function hreWorldSeedOf(s) { return s.hre && typeof s.hre.seed === "number" ? s.hre.seed >>> 0 : null; }
+function hreHome(s) { return s.hre ? s.hre.home : null; }
+
+/* Sole writer for tenure. Funnelling every change through one function is what
+   makes tenure history auditable, and it is the seam where Phase 13's advanced
+   tenure work attaches without touching any caller. */
+function hreSetTenure(s, tenure, home) {
+  if (HRE_TENURE_STATES.indexOf(tenure) === -1) return false;
+  hreMigrate(s);
+  s.hre.tenure = tenure;
+  s.hre.since = s.ageDays || 0;
+  /* Writing through this function is what transfers residence authority from
+     the legacy flags to HRE — see the note on hreTenure. One-way by design:
+     once HRE owns tenure for a character it does not hand it back, or the two
+     systems would alternate as authority mid-life. */
+  s.hre.owned = true;
+  if (home !== undefined) s.hre.home = home;
+  return true;
+}
+
+/* Does HRE's own view agree with the legacy flags? Used by the equivalence
+   soak, and worth keeping afterwards: once call sites invert, a divergence here
+   is the first sign that a flag write was missed. */
+function hreTenureAgreesWithLegacy(s) {
+  return hreTenure(s) === hreLegacyTenure(s);
+}
+
+
+/* ═══════════════ HRE · S06 · MARKETPLACE, CHANNELS & LISTINGS ═══════════════ */
+/* Phase 6. Part 1 §3.4 S06, Part 2 §4.4 Stages 12-13, Part 3 §10.2.
+
+   What is on the market, and how you find it. Everything here is DERIVED:
+   there is no stored list of listings and there cannot be one (Part 2 §5.7).
+   "What is for sale in Lyon in March 1962" is a pure function of
+   (world seed, place, period) — reproducible on demand, costing nothing to
+   store and nothing to browse.
+
+   The same purity rules as S01-S05 apply and are lint-asserted: no
+   Math.random, no engine rnd()/pick(), no Date.now, no ambient state. The
+   dice do not get rolled until S07 (Phase 7), which is the boundary between
+   the deterministic world and the historical record.
+
+   Money never appears here with a currency attached. Values are numbers;
+   the symbol is applied at the presentation boundary in S12. */
+
+const HRE_MARKET_V = 1;
+
+/* ─────────────────────────── market period ───────────────────────────
+   A market that refreshes every time you open the menu is a slot machine;
+   one that never refreshes is a catalogue. Both are wrong. Listings turn
+   over on a cadence, and the cadence is era-dependent — a 1910 market moves
+   at the speed of a printed classified column and a 2015 market moves at the
+   speed of a push notification. The period is the unit of "what's available
+   now", and it is what makes browsing reproducible across a save/load.
+
+   The key embeds the calendar year rather than an absolute slot counter: the
+   cadence itself changes across eras, so a bare counter would collide as the
+   divisor shrank and quietly resurrect an old market. */
+const HRE_REFRESH_KNOTS = [[1900, 210], [1935, 168], [1960, 120], [1980, 84],
+  [1997, 45], [2008, 28], [2018, 21], [2060, 21]];
+
+function hreRefreshDays(year) {
+  return Math.max(7, Math.round(hreCurveAt(HRE_REFRESH_KNOTS, year)));
+}
+
+function hreMarketPeriod(year, dayOfYear) {
+  const days = hreRefreshDays(year);
+  const d = Math.max(0, Math.min(365, Math.floor(dayOfYear || 0)));
+  const slot = Math.floor(d / days);
+  return { year: year, dayOfYear: d, refreshDays: days, slot: slot,
+    key: String(year) + ":" + slot };
+}
+
+/* ───────────────────────────── search channels ─────────────────────────────
+   The channel is the CE lever, not decoration. How you look for somewhere to
+   live is one of the most era-legible things about a life: a card in a
+   newsagent's window, a column of six-line classifieds, an agent who decides
+   whether to put you on his list, a website, an app. Each constrains how much
+   of the city you can see at once and how much you are told before you turn up.
+
+   Availability is expressed per development band and resolved through the same
+   fallback discipline as the law table — never `if (country === ...)` (I9).
+   `from` years are provisional pending module 22's tranche on retail property
+   marketing, and are marked as such. */
+const HRE_CHANNEL_DEV_FALLBACK = "middle";
+
+const HRE_CHANNELS = [
+  { id: "word", emoji: "🗣", label: "Ask around",
+    from: { high: 0, upper: 0, middle: 0, low: 0 },
+    reach: "hood", breadth: 3, scan: 8, disclosure: "listing", trust: 0.3,
+    rentPull: 0.20, provisional: true,
+    strap: "A cousin's landlord. A card passed hand to hand. Nothing written down.",
+    empty: "Nobody knows of anything going just now. You'd hear if they did." },
+  { id: "notice", emoji: "📌", label: "Windows and noticeboards",
+    from: { high: 1900, upper: 1905, middle: 1915, low: 1935 },
+    reach: "hood", breadth: 4, scan: 11, disclosure: "listing", trust: 0.4,
+    rentPull: 0.15, provisional: true,
+    strap: "Index cards in a newsagent's window, curling at the corners.",
+    empty: "Three cards for a lost cat and one for piano lessons. Nothing to live in." },
+  { id: "paper", emoji: "📰", label: "The classifieds",
+    from: { high: 1900, upper: 1912, middle: 1930, low: 1950 },
+    reach: "city", breadth: 6, scan: 16, disclosure: "listing", trust: 0.45,
+    rentPull: 0.05, provisional: true,
+    strap: "Six lines of abbreviation, priced by the word, printed on Thursdays.",
+    empty: "The column is half advertisements for furniture this week." },
+  { id: "agent", emoji: "🏢", label: "An agent's list",
+    from: { high: 1925, upper: 1950, middle: 1968, low: 1985 },
+    reach: "city", breadth: 8, scan: 22, disclosure: "listing", trust: 0.62,
+    rentPull: -0.10, provisional: true,
+    strap: "A desk, a ledger, and a man who decides what he shows you.",
+    empty: "He looks through the book twice and says there's nothing suitable." },
+  { id: "portal", emoji: "💻", label: "Property websites",
+    from: { high: 1997, upper: 2001, middle: 2005, low: 2010 },
+    reach: "city", breadth: 10, scan: 28, disclosure: "listing", trust: 0.72,
+    rentPull: 0.0, provisional: true,
+    strap: "Everything at once, sorted by price, photographed at flattering angles.",
+    empty: "Nothing matches. The site suggests widening your search, as it always does." },
+  { id: "app", emoji: "📱", label: "Property apps",
+    from: { high: 2011, upper: 2014, middle: 2017, low: 2022 },
+    reach: "city", breadth: 12, scan: 34, disclosure: "listing", trust: 0.78,
+    rentPull: 0.0, provisional: true,
+    strap: "Alerts within the minute. Half of them gone before you finish reading.",
+    empty: "No results in this area. The map is a lot of grey." },
+];
+
+function hreChannel(id) {
+  for (let i = 0; i < HRE_CHANNELS.length; i++) if (HRE_CHANNELS[i].id === id) return HRE_CHANNELS[i];
+  return null;
+}
+
+function hreChannelFrom(ch, country) {
+  const dev = hreDevOf(country);
+  const y = ch.from[dev];
+  return y === undefined ? ch.from[HRE_CHANNEL_DEV_FALLBACK] : y;
+}
+
+function hreChannelAvailable(ch, country, year) {
+  return !!ch && year >= hreChannelFrom(ch, country);
+}
+
+/* Newest-first: the way a person actually reaches for a channel is by the most
+   convenient one they have, not by the oldest. Word of mouth never disappears,
+   which is correct — it is still how a great many tenancies are found. */
+function hreChannels(country, year) {
+  const out = [];
+  for (let i = HRE_CHANNELS.length - 1; i >= 0; i--) {
+    if (hreChannelAvailable(HRE_CHANNELS[i], country, year)) out.push(HRE_CHANNELS[i]);
+  }
+  return out;
+}
+
+function hreBestChannel(country, year) {
+  const list = hreChannels(country, year);
+  return list.length ? list[0] : hreChannel("word");
+}
+
+/* ──────────────────────── which places you can see ────────────────────────
+   Reach is the information constraint made mechanical. Word of mouth and a
+   shop window show you the streets you already walk; a citywide channel shows
+   you a slice of the whole place. The slice rotates per period, so the market
+   feels alive without anything being stored. */
+function hreHoodScope(seed, country, cityIdx, homeHood, channel, period) {
+  const total = hreHoodCount(seed, country, cityIdx);
+  if (total <= 0) return [];
+  const home = Math.max(0, Math.min(total - 1, Math.floor(homeHood || 0)));
+  if (channel.reach === "hood") {
+    const out = [home];
+    if (total > 1) out.push((home + 1) % total);
+    return out;
+  }
+  const r = hreRng(seed, hreIdBuild(country, cityIdx, 0, 0, 0), "s06:scope:" + channel.id + ":" + period.key);
+  const all = [];
+  for (let i = 0; i < total; i++) all.push(i);
+  const shuffled = r.shuffle(all);
+  const want = Math.max(2, Math.min(total, Math.ceil(channel.breadth / 2) + 2));
+  const out = shuffled.slice(0, want);
+  /* the home neighbourhood is always visible on a citywide channel: you know
+     your own streets whatever the medium */
+  if (out.indexOf(home) === -1) out[out.length - 1] = home;
+  return out;
+}
+
+/* Deterministic per-period selection over the lattice (Part 2 §4.4 Stage 13).
+   Note the direction: listings are SELECTED, not filtered. Rolling
+   "is this unit for sale?" against every unit in a neighbourhood would mean
+   scanning thousands of addresses to find eight, which is the one thing a
+   browse must never cost. Drawing eight addresses from the period stream
+   gives the same distribution for a fixed, tiny amount of work. */
+function hreListingIds(seed, country, cityIdx, hoodIdx, channel, period, want) {
+  const hoodId = hreIdBuild(country, cityIdx, hoodIdx, 0, 0);
+  if (!hoodId) return [];
+  const r = hreRng(seed, hoodId, "s06:draw:" + channel.id + ":" + period.key);
+  const blocks = hreBlockCount(seed, country, cityIdx, hoodIdx);
+  const out = [];
+  const seen = {};
+  for (let i = 0; i < want; i++) {
+    const b = r.int(0, blocks - 1);
+    const blk = hreBlock(seed, hreIdBuild(country, cityIdx, hoodIdx, b, 0));
+    const unit = blk ? r.int(0, Math.max(0, blk.units - 1)) : 0;
+    const id = hreIdBuild(country, cityIdx, hoodIdx, b, unit);
+    if (!id || seen[id]) continue;
+    seen[id] = 1;
+    out.push(id);
+  }
+  return out;
+}
+
+/* ───────────────────────────── the seller ─────────────────────────────
+   A profile, not a person. The person is a module 06 `makePerson` product and
+   is not generated until the player engages (Phase 7), because generating a
+   landlord for every listing anybody glances at would be a person factory
+   running at browse speed for no reason.
+
+   `motivation` runs 0 (comfortable, will wait) to 1 (needs out, this month).
+   Everything visible about the price is downstream of it. */
+function hreSeller(seed, id, period, channel) {
+  const r = hreRng(seed, id, "s06:seller:" + period.key);
+  const motivation = Math.max(0, Math.min(1, r.gauss(0.48, 0.21)));
+  const honesty = Math.max(0, Math.min(1, r.gauss(0.55 + channel.trust * 0.25, 0.17)));
+  /* A slower market keeps things on the books longer; that is what a slow
+     market IS. Scaling by the era's own cadence is what stops a 1930
+     noticeboard reading like a portal with a 9-day average. */
+  const scale = period.refreshDays / 30;
+  const days = Math.max(0, Math.round(Math.max(0, r.gauss(34, 26)) * scale * (1 - motivation * 0.45)));
+  return { motivation: Math.round(motivation * 100) / 100,
+    honesty: Math.round(honesty * 100) / 100,
+    flexibility: Math.round((0.015 + motivation * 0.095) * 1000) / 1000,
+    daysOnMarket: days };
+}
+
+/* ─────────────────────────── sale or to let ───────────────────────────
+   Derived from the country/era's owner-occupation norm (S04) and pushed by
+   the things that really push it: flats let more than houses, poorer
+   neighbourhoods rent more than richer ones, and the channel itself is
+   selective — an agent's window in 1955 is mostly sales, a card in a
+   newsagent's window is almost always a room. */
+function hreOfferedTenure(seed, id, period, law, hood, bp, channel) {
+  const norm = (law && typeof law.ownerOccupationNorm === "number") ? law.ownerOccupationNorm : 55;
+  let pRent = 1 - norm / 100;
+  if (hreIsMultiUnit(bp.archetype)) pRent += 0.15;
+  pRent += (2 - hood.baseClassIdx) * 0.04;
+  pRent += channel.rentPull;
+  pRent = Math.max(0.05, Math.min(0.95, pRent));
+  const r = hreRng(seed, id, "s06:tenure:" + period.key);
+  return r.chance(pRent) ? "rent" : "sale";
+}
+
+/* ───────────────────────────── asking price ─────────────────────────────
+   Asking is not value. A comfortable seller asks over the number and waits; a
+   desperate one asks under it and still gets ground down. Time on the market
+   applies reductions, which is the mechanism behind every "reduced" sticker
+   the player will ever see, rather than a flag somebody sets. */
+const HRE_REDUCTION_STEP = 0.045;
+const HRE_MAX_REDUCTIONS = 3;
+
+function hreAsking(value, tenure, seller, period) {
+  const base = tenure === "rent" ? value.rentMonthly : value.money;
+  const optimism = 1 + (0.11 - seller.motivation * 0.155);
+  const cuts = Math.max(0, Math.min(HRE_MAX_REDUCTIONS,
+    Math.floor(seller.daysOnMarket / Math.max(21, period.refreshDays * 1.6))));
+  const asked = base * optimism;
+  const now = asked * Math.pow(1 - HRE_REDUCTION_STEP, cuts);
+  return { asking: Math.round(now), opening: Math.round(asked), reductions: cuts,
+    overValue: now / base, kind: tenure === "rent" ? "monthly" : "capital" };
+}
+
+/* ──────────────────── presentation registers (Stage 12) ────────────────────
+   The same three-bedroom house is described in four different languages
+   depending on when you are reading about it, and getting that wrong is the
+   fastest way to break the era. Registers are era bands, not country bands:
+   agent-speak arrived everywhere within a decade or two of everywhere else. */
+const HRE_REGISTER_BANDS = [
+  { id: "terse", to: 1935 }, { id: "plain", to: 1972 },
+  { id: "agentic", to: 2000 }, { id: "portal", to: 9999 },
+];
+
+function hreRegisterAt(year) {
+  for (let i = 0; i < HRE_REGISTER_BANDS.length; i++) {
+    if (year <= HRE_REGISTER_BANDS[i].to) return HRE_REGISTER_BANDS[i].id;
+  }
+  return "portal";
+}
+
+const HRE_LISTING_WORDS = {
+  terse: {
+    lead: ["", "", "Wanted, tenant for ", "To be let, "],
+    good: ["gd order", "sound", "clean", "wl kept"],
+    bad: ["some repair", "needs attn", "as seen"],
+    near: ["nr tram", "nr stn", "nr works", "nr mkt", "conv for town"],
+    tail: ["Apply within.", "No agents.", "Refs reqd.", "Vacant.", "Immed possn."],
+  },
+  plain: {
+    lead: ["", "", "Available, ", "For disposal, "],
+    good: ["in good decorative order", "well maintained", "recently redecorated", "sound throughout"],
+    bad: ["requiring modernisation", "in need of some attention", "offered as seen"],
+    near: ["close to the station", "handy for the works", "near the shops", "on a quiet road", "convenient for the town"],
+    tail: ["Vacant possession.", "References required.", "Early viewing advised.", "No pets."],
+  },
+  agentic: {
+    lead: ["", "", "Deceptively spacious ", "Rarely available, this ", "A well-proportioned "],
+    good: ["presented in excellent order", "beautifully appointed", "immaculately kept", "much improved by the present owners"],
+    bad: ["offering scope for improvement", "in need of some updating", "a project for the right buyer", "requiring a degree of modernisation"],
+    near: ["within walking distance of the station", "in a sought-after position", "close to local amenities", "on a popular residential road", "well placed for the town centre"],
+    tail: ["Viewing strongly recommended.", "No onward chain.", "Sole agency.", "Must be seen to be appreciated."],
+  },
+  portal: {
+    lead: ["", "", "", ""],
+    good: ["Recently refurbished.", "Well presented throughout.", "Move-in ready.", "Immaculate condition."],
+    bad: ["Would benefit from modernisation.", "Some updating required.", "Priced to reflect condition.", "In need of refurbishment."],
+    near: ["Close to transport links.", "Walking distance to amenities.", "Quiet residential street.", "Well connected."],
+    tail: ["Available now.", "Virtual tour available.", "Reduced for quick sale.", "Enquiries welcome."],
+  },
+};
+
+/* Which amenities are worth naming depends entirely on the year. Central
+   heating is a headline in 1965 and unremarkable in 2015; indoor sanitation is
+   a selling point in 1930 and an assumption by 1970. A listing that boasts
+   about piped water in 2003 is a broken listing. */
+const HRE_AMENITY_HEADLINE = {
+  water: [1850, 1950], sanitation: [1870, 1965], electricity: [1890, 1960],
+  centralHeat: [1900, 2005], insulation: [1935, 2100], cooling: [1945, 2100],
+  telephone: [1900, 1985], television: [1946, 1980], internet: [1994, 2012],
+  lift: [1870, 2100], accessibility: [1975, 2100], parking: [1920, 2100],
+  laundry: [1948, 2000], fittedKitchen: [1930, 2010], doubleGlazing: [1952, 2015],
+};
+
+function hreHeadlineAmenities(bp, year, limit) {
+  const out = [];
+  for (let i = 0; i < HRE_AMENITIES.length; i++) {
+    const am = HRE_AMENITIES[i];
+    const band = HRE_AMENITY_HEADLINE[am.id];
+    if (!band || year < band[0] || year > band[1]) continue;
+    const have = bp.amenities[am.id];
+    if (have && have.has) out.push(am.label);
+    if (out.length >= (limit || 3)) break;
+  }
+  return out;
+}
+
+function hreDwellingNoun(bp) {
+  const d = bp.dims;
+  if (d.bedrooms === 0) return hreIsMultiUnit(bp.archetype) ? "studio flat" : "one-room dwelling";
+  return bp.label;
+}
+
+function hreListingTitle(bp, tenure) {
+  const noun = hreDwellingNoun(bp);
+  const head = bp.dims.bedrooms === 0
+    ? noun.charAt(0).toUpperCase() + noun.slice(1)   /* "Studio flat", not "Studio studio flat" */
+    : bp.dims.bedrooms + " bed " + noun;
+  return head + (tenure === "rent" ? ", to let" : ", for sale");
+}
+
+/* The blurb is composed from attributes the property actually has. Nothing in
+   here invents a fact — that is the hard line between S06's presentation and
+   module 15's narration, which may rewrite this text but may never originate
+   an attribute, a price or a defect. */
+function hreListingBlurb(seed, bp, hood, tenure, listing, year) {
+  const reg = hreRegisterAt(year);
+  const w = HRE_LISTING_WORDS[reg];
+  const r = hreRng(seed, bp.id, "s06:blurb:" + listing.period + ":" + reg);
+  const d = bp.dims;
+  const cond = bp.condition._overall;
+  const amen = hreHeadlineAmenities(bp, year, reg === "portal" ? 4 : 2);
+  const outdoor = d.outdoor === "none" ? null
+    : d.outdoor === "grounds" ? "grounds" : d.outdoor === "garden" ? "garden"
+    : d.outdoor === "yard" ? "yard" : "balcony";
+
+  if (reg === "portal") {
+    const bits = [];
+    bits.push((d.bedrooms === 0 ? "Studio" : d.bedrooms + " bed") + " · " + d.bathrooms + " bath · " + d.area + " m²");
+    if (outdoor) bits.push(outdoor.charAt(0).toUpperCase() + outdoor.slice(1));
+    if (d.parking) bits.push("Parking");
+    const head = bits.join(" · ") + ".";
+    const quality = cond >= 68 ? r.pick(w.good) : cond <= 42 ? r.pick(w.bad) : "";
+    const list = amen.length ? amen.join(", ").replace(/^./, function (c) { return c.toUpperCase(); }) + "." : "";
+    return [head, quality, list, r.pick(w.near), listing.reductions ? "Reduced." : r.pick(w.tail)]
+      .filter(function (x) { return !!x; }).join(" ");
+  }
+
+  const roomWord = reg === "terse" ? " rms" : d.bedrooms === 1 ? " bedroom" : " bedrooms";
+  const quality = cond >= 68 ? r.pick(w.good) : cond <= 42 ? r.pick(w.bad) : "";
+  const parts = [];
+  const head = d.bedrooms === 0
+    ? (reg === "terse" ? "1 rm" : hreDwellingNoun(bp))
+    : d.bedrooms + roomWord + (reg === "terse" ? "" : " " + hreDwellingNoun(bp));
+  parts.push(r.pick(w.lead) + head);
+  if (outdoor) parts.push(reg === "terse" ? outdoor : (outdoor === "balcony" ? "with balcony" : "with " + outdoor));
+  if (amen.length) parts.push(reg === "terse" ? amen.join(", ") : amen.join(" and "));
+  if (quality) parts.push(quality);
+  parts.push(r.pick(w.near));
+  const body = parts.join(reg === "terse" ? ", " : ", ");
+  return body.charAt(0).toUpperCase() + body.slice(1) + ". " + r.pick(w.tail);
+}
+
+/* ─────────────── open defects, phrased by the seller's honesty ───────────────
+   Only `open`-disclosure defects reach a listing: that is what the disclosure
+   ladder in S02 means. Honesty does not decide WHETHER a legally open fact
+   appears — it decides how it is dressed. Everything below `open` is what
+   Phase 7's viewings and surveys are for. */
+function hreDisclosedDefects(bp, seller) {
+  const open = hreVisibleDefects(bp.defects, "listing");
+  return open.map(function (d) {
+    return { id: d.id, label: d.label, severity: d.severity,
+      phrased: seller.honesty >= 0.55 ? d.label : hreSoftenDefect(d.id, d.label) };
+  });
+}
+
+const HRE_DEFECT_EUPHEMISM = {
+  floodHistory: "has seen water in the past",
+  shortLease: "lease term to be confirmed",
+};
+
+function hreSoftenDefect(id, label) {
+  return HRE_DEFECT_EUPHEMISM[id] || label;
+}
+
+/* ──────────────────────── listing materialisation ────────────────────────
+   A listing is a VIEW: blueprint (S02) + market value (S05) + seller state +
+   presentation. It holds no authority over anything and is safe to throw away,
+   which is exactly why the market can be thousands of properties wide and cost
+   nothing. Engagement pinning (Part 2 §4.7) is Phase 7's job — it copies the
+   resolved numbers out of one of these into state. */
+function hreListing(seed, id, year, dayOfYear, channelId, opts) {
+  const channel = hreChannel(channelId) || hreChannel("word");
+  const bp = hreBlueprint(seed, id, year);
+  if (!bp) return null;
+  const period = (opts && opts.period) || hreMarketPeriod(year, dayOfYear);
+  const hood = hreNeighbourhood(seed, bp.country, bp.city, bp.hood, year);
+  if (!hood) return null;
+  const value = hreValue(seed, bp, hood, year);
+  const law = (opts && opts.law) || hreLaw(bp.country, year);
+  const seller = hreSeller(seed, id, period, channel);
+  const tenure = hreOfferedTenure(seed, id, period, law, hood, bp, channel);
+  const price = hreAsking(value, tenure, seller, period);
+
+  const listing = {
+    id: id, key: id + "@" + period.key, period: period.key, year: year,
+    channel: channel.id, tenure: tenure,
+    asking: price.asking, opening: price.opening, reductions: price.reductions,
+    priceKind: price.kind, overValue: price.overValue,
+    daysOnMarket: seller.daysOnMarket, seller: seller,
+    value: value, bp: bp, hood: hood, address: bp.address,
+    title: hreListingTitle(bp, tenure),
+    defects: hreDisclosedDefects(bp, seller),
+    register: hreRegisterAt(year),
+  };
+  listing.blurb = hreListingBlurb(seed, bp, hood, tenure, listing, year);
+  return listing;
+}
+
+/* ─────────────────────────────── search ───────────────────────────────
+   Bounded by construction. `scan` caps how many addresses are materialised
+   regardless of how little passes the filter, so a browse costs the same
+   whether the market is generous or empty — and an empty market is a real,
+   correct, era-true answer rather than a reason to keep drawing. */
+const HRE_SCAN_CAP = 48;
+
+const HRE_FILTERS = [
+  { id: "all", label: "Everything", test: function () { return true; } },
+  { id: "rent", label: "To rent", test: function (l) { return l.tenure === "rent"; } },
+  { id: "sale", label: "For sale", test: function (l) { return l.tenure === "sale"; } },
+  { id: "afford", label: "Within reach",
+    test: function (l, ctx) {
+      if (!ctx) return true;
+      return l.tenure === "rent" ? l.asking <= (ctx.rentCeiling || 0)
+                                 : l.asking <= (ctx.buyCeiling || 0);
+    } },
+  { id: "family", label: "Room for more than one", test: function (l) { return l.bp.dims.bedrooms >= 2; } },
+];
+
+function hreFilter(id) {
+  for (let i = 0; i < HRE_FILTERS.length; i++) if (HRE_FILTERS[i].id === id) return HRE_FILTERS[i];
+  return HRE_FILTERS[0];
+}
+
+/* params: { country, city (index), year, dayOfYear, homeHood, channel, filter, ctx, limit } */
+function hreSearch(seed, params) {
+  const country = params.country;
+  const cityIdx = params.city || 0;
+  const year = params.year;
+  const channel = hreChannel(params.channel) || hreBestChannel(country, year);
+  const period = hreMarketPeriod(year, params.dayOfYear || 0);
+  const filter = hreFilter(params.filter);
+  const law = hreLaw(country, year);
+  const hoods = hreHoodScope(seed, country, cityIdx, params.homeHood || 0, channel, period);
+  const budget = Math.min(HRE_SCAN_CAP, channel.scan);
+  const limit = Math.min(params.limit || channel.breadth, channel.breadth);
+
+  const listings = [];
+  let scanned = 0, built = 0;
+  const perHood = Math.max(1, Math.ceil(budget / Math.max(1, hoods.length)));
+
+  for (let h = 0; h < hoods.length && scanned < budget; h++) {
+    const ids = hreListingIds(seed, country, cityIdx, hoods[h], channel, period,
+      Math.min(perHood, budget - scanned));
+    for (let i = 0; i < ids.length && scanned < budget; i++) {
+      scanned++;
+      const l = hreListing(seed, ids[i], year, period.dayOfYear, channel.id, { period: period, law: law });
+      if (!l) continue;                       /* nothing built there yet — correct, not an error */
+      built++;
+      if (!filter.test(l, params.ctx)) continue;
+      listings.push(l);
+    }
+  }
+
+  /* Cheapest first is the wrong default for a life sim: what a person notices
+     first is the one they could actually have. Sort by how far inside reach it
+     sits when a budget is known, and by price when it is not. */
+  const ctx = params.ctx;
+  const reach = function (l) {
+    /* A monthly rent and a capital price are not comparable numbers, and
+       sorting them on one axis put every rental above every sale and then
+       sliced the sales off entirely. Both are divided by their own
+       tenure-appropriate denominator first, so the axis is "share of what you
+       could carry" — dimensionless, and the same quantity for both.
+       With no income the denominator falls back to the property's own market
+       value, which degrades the order to bargains-first rather than to
+       nonsense. */
+    const ceiling = l.tenure === "rent"
+      ? (ctx && ctx.rentCeiling) || l.value.rentMonthly
+      : (ctx && ctx.buyCeiling) || l.value.money;
+    return l.asking / Math.max(1, ceiling);
+  };
+  listings.sort(function (a, b) {
+    const d = reach(a) - reach(b);
+    if (d !== 0) return d;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;   /* stable, deterministic */
+  });
+
+  return { listings: listings.slice(0, limit), channel: channel, period: period,
+    filter: filter, hoods: hoods, scanned: scanned, built: built,
+    total: listings.length, law: law };
+}
+
+/* Coverage diagnostic in the house style: how much of the world can even see a
+   market, and through what. Answers "which countries and eras are we quietly
+   showing an empty shop to" without anybody having to play them. */
+function hreMarketCoverage(countryKeys, years) {
+  const ys = years || [1905, 1930, 1955, 1975, 1995, 2010, 2025];
+  const rows = [];
+  const tally = {};
+  for (let i = 0; i < countryKeys.length; i++) {
+    const c = countryKeys[i];
+    const levels = {};
+    for (let j = 0; j < ys.length; j++) {
+      const best = hreBestChannel(c, ys[j]);
+      levels[ys[j]] = best.id;
+      tally[best.id] = (tally[best.id] || 0) + 1;
+    }
+    rows.push({ country: c, dev: hreDevOf(c), levels: levels });
+  }
+  return { rows: rows, tally: tally, years: ys };
+}
+
+/* ═══════════════ HRE · S07 · ENGAGEMENT PINNING (Part 2 §4.7) ═══════════════ */
+/* The problem this solves, stated exactly as the spec states it: a deterministic
+   market has one failure mode. The player makes an offer on a flat, saves,
+   reloads, and the market has moved to the next period — the flat is gone, or
+   its asking price differs. Nothing was wrong with the generator; the listing
+   was simply never state, and a listing you are negotiating over has to be.
+
+   The rule is one line: ENGAGEMENT PINS, BROWSING DOES NOT. The player can
+   scroll thousands of listings for free, and pays storage only for the handful
+   they actually pursue. That is what keeps §8.2's save budget intact while
+   still letting a transaction survive a reload.
+
+   Everything here is deterministic. No dice are rolled in this section — the
+   dice belong to the landlord/seller decision (S07 step 2), which reads a
+   pinned engagement rather than a regenerated listing precisely so that its
+   inputs cannot shift under it between sessions. */
+
+const HRE_ENGAGE_V = 1;
+
+/* §8.2: "a branch without a cap is a defect." Both bounds are enforced at the
+   single write site below, so the branch cannot grow regardless of how the
+   player behaves. Five is the number of places a person can plausibly be
+   pursuing at once; the TTL is scaled to the era's own market cadence rather
+   than fixed, because a 1930 noticeboard and a 2015 app do not go stale at the
+   same rate — the same reasoning as `hreSeller`'s days-on-market scaling. */
+const HRE_ENGAGE_CAP = 5;
+const HRE_ENGAGE_TTL_PERIODS = 3;
+
+/* Stage ordering is also the eviction priority: when the cap is reached, the
+   least-invested engagement goes first. Evicting purely by age would be simpler
+   and would occasionally throw away an accepted application in favour of a flat
+   the player glanced at yesterday, which is the kind of silent data loss this
+   codebase has been bitten by before (Gotcha #2). */
+const HRE_ENGAGE_STAGES = ["interested", "viewed", "applied", "accepted"];
+
+function hreStageRank(stage) {
+  const i = HRE_ENGAGE_STAGES.indexOf(stage);
+  return i < 0 ? 0 : i;
+}
+
+/* Read accessor. Always returns an array — never null, never undefined — so no
+   caller needs a guard, and returns only LIVE entries so an expired engagement
+   is invisible the moment it lapses even if the prune has not run yet.
+   Non-mutating by contract: this is called from menu builders, whose clone is
+   discarded (Gotcha #2), so it must never be the thing that persists a change. */
+function hreEngagements(s, nowDays) {
+  const h = s && s.hre;
+  if (!h || !Array.isArray(h.eng)) return [];
+  const now = typeof nowDays === "number" ? nowDays : (s.ageDays || 0);
+  return h.eng.filter(function (e) { return e && (e.expires == null || e.expires > now); });
+}
+
+function hreEngagementFor(s, key) {
+  const live = hreEngagements(s);
+  for (let i = 0; i < live.length; i++) if (live[i].key === key) return live[i];
+  return null;
+}
+
+/* Mutating prune. Separated from the read accessor deliberately: lazy expiry on
+   read means expiry needs no per-tick work and therefore does not depend on the
+   B3 tick-hook decision at all. This is called at the write site, which is
+   enough to keep the array bounded, because the cap is enforced there too. */
+function hreExpireEngagements(s, nowDays) {
+  const h = s && s.hre;
+  if (!h || !Array.isArray(h.eng)) return 0;
+  const now = typeof nowDays === "number" ? nowDays : (s.ageDays || 0);
+  const before = h.eng.length;
+  h.eng = h.eng.filter(function (e) { return e && (e.expires == null || e.expires > now); });
+  return before - h.eng.length;
+}
+
+/* The sole writer. Mirrors `hreSetTenure`'s single-writer discipline for the
+   same reason: one place to reason about, one place to test, no possibility of
+   two call sites growing the branch by different rules.
+
+   Takes a resolved listing (from S06) and copies the numbers OUT of it. From
+   this moment the engagement is read from state and never regenerated — which
+   is the whole point. `value` is deliberately NOT copied: market value must
+   keep moving with S05 (§4.9's crystallisation rule draws the same line), while
+   the ASKING price is frozen, because that is what was agreed to be discussed. */
+function hrePinEngagement(s, listing, stage, nowDays) {
+  if (!s || !s.hre || !listing) return null;
+  const h = s.hre;
+  if (!Array.isArray(h.eng)) h.eng = [];
+  const now = typeof nowDays === "number" ? nowDays : (s.ageDays || 0);
+
+  /* already pursuing this exact listing in this exact period: advance its
+     stage rather than pinning a duplicate */
+  const existing = hreEngagementFor(s, listing.key);
+  if (existing) {
+    if (hreStageRank(stage) > hreStageRank(existing.stage)) existing.stage = stage;
+    existing.touched = now;
+    return existing;
+  }
+
+  hreExpireEngagements(s, now);
+
+  if (h.eng.length >= HRE_ENGAGE_CAP) {
+    /* evict the least-invested, oldest-touched entry */
+    let worst = 0;
+    for (let i = 1; i < h.eng.length; i++) {
+      const a = h.eng[i], b = h.eng[worst];
+      const ra = hreStageRank(a.stage), rb = hreStageRank(b.stage);
+      if (ra < rb || (ra === rb && (a.touched || 0) < (b.touched || 0))) worst = i;
+    }
+    h.eng.splice(worst, 1);
+  }
+
+  /* Era-scaled TTL. Derived from the listing's YEAR via S06's own cadence
+     function rather than read off the listing, which does not carry
+     `refreshDays` — reading a field that isn't there would have silently
+     defaulted every era to 30 days and quietly removed the era scaling this
+     line exists to provide. */
+  const cadence = hreRefreshDays(listing.year);
+  const ttl = Math.max(1, Math.round(cadence * HRE_ENGAGE_TTL_PERIODS));
+  const eng = {
+    v: HRE_ENGAGE_V,
+    key: listing.key,               /* id@period — unique per listing per period */
+    id: listing.id,
+    period: listing.period,
+    stage: HRE_ENGAGE_STAGES.indexOf(stage) >= 0 ? stage : "interested",
+    tenure: listing.tenure,         /* sale or rent, frozen at engagement */
+    asking: listing.asking,         /* frozen: this is the number being discussed */
+    priceKind: listing.priceKind,
+    channel: listing.channel,
+    address: listing.address,
+    title: listing.title,
+    seller: { motivation: listing.seller.motivation, honesty: listing.seller.honesty,
+              flexibility: listing.seller.flexibility, daysOnMarket: listing.seller.daysOnMarket },
+    pinned: now,
+    touched: now,
+    expires: now + ttl,
+    /* filled by later Phase 7 steps; declared here so the shape is stable and a
+       save written today loads cleanly against tomorrow's code */
+    viewing: null,
+    offers: [],
+    decision: null,
+  };
+  h.eng.push(eng);
+  return eng;
+}
+
+function hreReleaseEngagement(s, key) {
+  const h = s && s.hre;
+  if (!h || !Array.isArray(h.eng)) return false;
+  const before = h.eng.length;
+  h.eng = h.eng.filter(function (e) { return !e || e.key !== key; });
+  return h.eng.length < before;
+}
+
+/* Diagnostic, mirroring the other sections' coverage reporters. Used by the
+   test suite and by any future save-size probe. */
+function hreEngagementFootprint(s) {
+  const h = s && s.hre;
+  const eng = (h && Array.isArray(h.eng)) ? h.eng : [];
+  return { count: eng.length, cap: HRE_ENGAGE_CAP,
+           bytes: JSON.stringify(eng).length,
+           stages: eng.map(function (e) { return e.stage; }) };
+}
+
+/* ═══════════════ HRE · S08a · TENANCY & RECURRING OBLIGATIONS (B3 option b) ═══════════════ */
+/* Phase 7 step 4. Rent is the project's first genuine recurring obligation.
+ *
+ * B3 DECISION — option (b), the tick hook, chosen against Part 3 §7.2's original
+ * recommendation of option (a). §7.2 predates the P0-D wage probe, which measured
+ * POOL delivery at 29.8% of eligible periods (frozen as HRE_INCOME_REALISATION).
+ * ~30% reliability is survivable for income, where a missed draw reads as
+ * precarity and only the mean is wrong. It is not survivable for an obligation:
+ * rent that charges in 30% of months is mostly-free housing, and arrears computed
+ * against payments that never fired are arithmetically meaningless — silently, and
+ * with every test still green. Obligations must fire exactly.
+ *
+ * The hook is one call in advance()'s loop, placed after the WORLD_EVENTS block
+ * and before the MILESTONES scan, so a firing milestone's `continue` can never
+ * skip a rent payment (§5 of the loop pre-empts everything after it).
+ *
+ * CONTRACT — hreOnTick must be safe to call on every step of every character
+ * for the entire history of the game:
+ *   - it never sets s.pending (that would clobber a milestone/POOL popup and
+ *     silently swallow it — advance() only guards `!s.pending` at loop top)
+ *   - it is a no-op for anyone without an HRE-owned tenancy
+ *   - it is deterministic: no Math.random/rnd/pick anywhere in the payment path
+ *   - it is O(1) per step
+ *   - it is idempotent per period: paying twice for one period is impossible,
+ *     because progress is tracked by an absolute period index, not a countdown
+ */
+
+/* Rent falls due every 30 days of simulated time. Periods are absolute — derived
+   from ageDays, never accumulated — so a step of any size lands on the same
+   boundaries, and a save/reload cannot drift the schedule. */
+const HRE_RENT_PERIOD_DAYS = 30;
+
+/* Arrears escalate through named stages rather than a raw number, so downstream
+   systems (notice, eviction, deposit disputes in step 5) branch on a state
+   instead of re-deriving thresholds from a balance and disagreeing about them. */
+const HRE_ARREARS_STAGES = ["clear", "late", "chased", "notice", "eviction"];
+const HRE_ARREARS_AT = { clear: 0, late: 1, chased: 2, notice: 4, eviction: 6 };
+
+function hreArrearsStage(periodsOwed) {
+  let stage = "clear";
+  for (const s of HRE_ARREARS_STAGES) if (periodsOwed >= HRE_ARREARS_AT[s]) stage = s;
+  return stage;
+}
+
+/* The tenancy record. Lives at s.hre.ten, null when not renting. Deliberately
+   small (~120 B): the dwelling itself is NOT stored here — s.hre.home already
+   holds it, and duplicating it would create the second authority the project
+   rules forbid. */
+function hreNewTenancy(rentMonthly, depositMonths, startDay, home) {
+  /* Money is the one value a player notices instantly and can never recover
+     once it is NaN: every later comparison (`s.money >= rent`) is false, so the
+     tenant silently accrues arrears forever and every price check in the game
+     fails. A non-numeric rent reaching here means a caller bug, so coerce to a
+     safe 0 rather than propagating it into s.money. Step 2's landlord decision
+     is the first real caller; this guard is what stops a bad decision payload
+     from corrupting the save instead of just failing the application. */
+  const rentN = Number(rentMonthly);
+  const rent = Number.isFinite(rentN) ? Math.max(0, Math.round(rentN)) : 0;
+  const depN = Number(depositMonths);
+  const depMonths = Number.isFinite(depN) ? Math.max(0, depN) : 0;
+  return {
+    rent: rent,
+    deposit: Math.max(0, Math.round(rent * depMonths)),
+    start: startDay || 0,
+    paidThrough: hrePeriodIndex(startDay || 0),
+    owed: 0,
+    missed: 0,
+    stage: "clear",
+    home: home || null,
+  };
+}
+
+/* Absolute period index — the reason double-charging is structurally impossible. */
+function hrePeriodIndex(ageDays) {
+  return Math.floor((ageDays || 0) / HRE_RENT_PERIOD_DAYS);
+}
+
+function hreTenancy(s) { return s.hre && s.hre.ten ? s.hre.ten : null; }
+function hreIsRenting(s) { return !!hreTenancy(s) && hreTenure(s) === "renting"; }
+
+/* Tenancy formation. Step 2's application/landlord decision will call this on
+   acceptance; until then it is the programmatic entry point tests drive.
+   Taking a tenancy is what transfers residence authority to HRE for this
+   character — hreSetTenure flips s.hre.owned. */
+function hreStartTenancy(s, rentMonthly, depositMonths, home) {
+  hreMigrate(s);
+  const dep = hreNewTenancy(rentMonthly, depositMonths, s.ageDays || 0, home || null);
+  if (s.money < dep.deposit) return false;
+  s.money -= dep.deposit;
+  s.hre.ten = dep;
+  hreSetTenure(s, "renting", home || s.hre.home);
+  return true;
+}
+
+/* Ending a tenancy. `reason` is carried so step 5's deposit dispute can branch on
+   how it ended rather than guessing. Deposit is returned in full here; disputes
+   and deductions are step 5, and stubbing them as a partial return now would bake
+   in a number that research hasn't set yet. */
+function hreEndTenancy(s, reason) {
+  const t = hreTenancy(s);
+  if (!t) return false;
+  if (reason !== "eviction") s.money += t.deposit;
+  s.hre.ten = null;
+  s.hre.lastEnd = reason || "left";
+  return true;
+}
+
+/* ─────────────────────────── the tick ─────────────────────────── */
+/* Called once per 7-day step from advance(). Charges every whole rent period
+   that has elapsed since the last payment — a loop, not a single charge, because
+   advance() can be handed any totalDays and a long step must not lose periods. */
+function hreOnTick(s) {
+  /* S08c: this early return predates mortgages, when a tenancy was the only
+     recurring housing obligation. Left as-is it made the mortgage loop below
+     unreachable for every owner — the loan simply never amortised, silently,
+     because a frozen balance still looks plausible. Rent work is now guarded
+     locally instead so ownership gets its turn. */
+  const t = hreTenancy(s);
+  if (t) {
+  if (!s.alive) return;
+  /* In prison the tenancy is not being lived in; charging rent for a cell the
+     player is not in, on top of losing their job, is a compounding punishment the
+     simulation did not intend. Step 5 decides whether it lapses or is held. */
+  if (inPrison(s)) return;
+
+  const now = hrePeriodIndex(s.ageDays || 0);
+  let guard = 0;
+  while (t.paidThrough < now && guard++ < 64) {
+    t.paidThrough += 1;
+    if (s.money >= t.rent) {
+      s.money -= t.rent;
+      if (t.owed > 0) {
+        /* Clearing arrears takes priority over nothing else — a caught-up tenant
+           should visibly return to `clear`, not linger in a stage they've paid off. */
+        const catchUp = Math.min(t.owed, Math.floor(s.money / Math.max(1, t.rent)));
+        if (catchUp > 0) { s.money -= catchUp * t.rent; t.owed -= catchUp; }
+      }
+    } else {
+      t.owed += 1;
+      t.missed += 1;
+    }
+    const prevStage = t.stage;
+    t.stage = hreArrearsStage(t.owed);
+    if (t.stage !== prevStage && t.stage !== "clear") {
+      push(s, HRE_ARREARS_LINE[t.stage] || "📄 A letter about the rent.");
+    }
+
+    /* S08b: the ladder has to terminate in something. Without this the tenant
+       sits at stage "eviction" indefinitely — measured at 92 unpaid periods —
+       and rent becomes optional. Checked inside the catch-up loop so a long
+       gap between plays evicts at the right period rather than all at once. */
+    const ev = hreCheckEviction(s);
+    if (ev) {
+      push(s, ev.line);
+      break;
+    }
+    }
+  }
+
+  /* S08c: mortgages amortise on the same clock as rent. Separate loop because
+     a mortgage and a tenancy are mutually exclusive, so only one of these ever
+     does work for a given character. */
+  let mGuard = 0;
+  /* Periods elapsed since origination, compared like with like: both sides are
+     period INDEXES. An earlier version divided `start` by the period length
+     directly and compared that to an index, so `paid` never advanced and the
+     loan sat frozen — silently, because a frozen balance still looks plausible. */
+  while (hreMortgage(s) &&
+         (hrePeriodIndex(s.ageDays) - hrePeriodIndex(s.hre.mtg.start || 0)) > s.hre.mtg.paid &&
+         mGuard++ < 64) {
+    const line = hreMortgageTick(s);
+    if (line) push(s, line);
+    if (!hreMortgage(s)) break;
+  }
+}
+
+/* Arrears prose. Second person, concrete, unsaccharine — the project's tone rules
+   apply hardest where the subject is money you don't have. */
+const HRE_ARREARS_LINE = {
+  late: "📄 The rent didn't go out. You know the exact figure and you know what's in the account, and the two don't meet.",
+  chased: "📞 A second letter, then a call. The landlord's tone has changed from apologetic to procedural.",
+  notice: "⚠️ Formal notice, dated, with a number of days on it. It sat on the table all evening being read by everyone who walked past.",
+  eviction: "🚪 The letter uses the word 'possession'. There is a court date on it, and your name is spelled correctly.",
+};
+
+/* ═══════════════ HRE · S08c · MORTGAGES, PURCHASE & AMORTISATION ═══════════════ */
+/* Phase 8. Ownership. The gate demands that "amortisation is arithmetically
+ * correct" and "money flows reconcile", so this section is built around the
+ * standard annuity formula rather than an approximation that merely looks like
+ * debt going down.
+ *
+ * WHY REAL AMORTISATION AND NOT A DECAYING NUMBER. A mortgage is the longest
+ * commitment in the game — thirty simulated years, ~390 rent periods. Any
+ * per-period fudge compounds into visible nonsense: balances that never clear,
+ * or clear a decade early. The closed-form payment is computed once at
+ * origination and the balance is walked forward exactly:
+ *     payment = P · i / (1 − (1+i)^−n)
+ * with the final period trued up so the balance lands on exactly zero. That
+ * true-up matters: without it, floating point leaves a few units outstanding
+ * forever and the loan never closes.
+ *
+ * ERA AND COUNTRY DO THE WORK. No mortgage market exists before the law table
+ * says one does — 1900 UK and 1980 Nigeria return exists:false, and a player
+ * there simply cannot borrow. That is not a missing feature, it is the point:
+ * mass mortgage lending is a 20th-century development and the game should feel
+ * it. Loan-to-value, income multiple, rate band and term all come from the same
+ * table, so a 1975 UK buyer (70% LTV, 2.5× income) and a 2015 US buyer (95%,
+ * 4×) face genuinely different markets with no country-specific branching.
+ *
+ * ELIGIBILITY IS HISTORICAL, NOT MORAL. The eligibility block encodes who banks
+ * would actually lend to: femaleSoleBorrower and sameSexCouple are false for
+ * most of the century. This is the same R13 principle as S07b — the exclusion
+ * is read from the era's institutions rather than authored as a bank's opinion,
+ * and the refusal says what was actually said, which is worse than a slur
+ * because it was procedural and polite.
+ */
+
+const HRE_S08C_V = 1;
+
+/* Periods per year, tied to the rent period so mortgage and rent tick on the
+   same clock. Deriving rather than hardcoding keeps them from drifting. */
+const HRE_PERIODS_PER_YEAR = Math.max(1, Math.round(365.25 / HRE_RENT_PERIOD_DAYS));
+
+const HRE_LOAN_REFUSAL = {
+  noMarket:     { code: "noMarket",
+    line: "There is no such thing as a mortgage here, not yet. People buy with cash or they do not buy." },
+  noIncome:     { code: "noIncome",
+    line: "No income, no loan. The clerk did not need to look anything up." },
+  tooLittle:    { code: "tooLittle",
+    line: "They multiplied what you earn by a number they would not negotiate, and it was not enough." },
+  noDeposit:    { code: "noDeposit",
+    line: "The deposit was the wall. They were almost sympathetic about it." },
+  ineligible:   { code: "ineligible",
+    line: "The form had a box that did not have you in mind, and the manager was very sorry, and that was that." },
+  record:       { code: "record",
+    line: "They asked about the conviction. Afterwards they said the words 'not at this time'." },
+};
+
+/* Who the era's banks will lend to at all. Returns null when there is no
+   objection — callers treat a returned reason as disqualifying. */
+function hreLendingBar(s, law) {
+  const e = (law && law.eligibility) || {};
+  const partners = typeof activePartners === "function" ? activePartners(s) : [];
+  const joint = partners.length > 0 && !!s.spouse;
+
+  /* A woman borrowing alone was routinely refused or required a male
+     guarantor well into the 1970s in most of these countries. */
+  const female = s.profile.sex === "Female" ||
+    (s.hidden && s.hidden.gender === "Woman");
+  if (female && !joint && e.femaleSoleBorrower === false) return HRE_LOAN_REFUSAL.ineligible;
+
+  /* A same-sex couple applying jointly, where joint lending to them was not
+     recognised. They could sometimes borrow individually, which is why this
+     only bars the joint application. */
+  if (joint && e.sameSexCouple === false && typeof sameSexCouple === "function") {
+    const sp = s.romance && s.romance[s.spouse];
+    if (sp && sameSexCouple(s, sp)) return HRE_LOAN_REFUSAL.ineligible;
+  }
+
+  if (!joint && e.unmarriedCouple === false && partners.length > 0) {
+    /* unmarried partners simply could not be counted; not itself a bar */
+  }
+  return null;
+}
+
+/* The annuity payment. Zero-interest loans are a real historical case (family
+   arrangements, some state schemes), so the i===0 branch is not defensive
+   padding — it is a legitimate path that would otherwise divide by zero. */
+function hreLoanPayment(principal, periodRate, periods) {
+  const P = Number(principal), i = Number(periodRate), n = Math.round(Number(periods));
+  if (!Number.isFinite(P) || P <= 0 || !Number.isFinite(n) || n <= 0) return 0;
+  if (!Number.isFinite(i) || i <= 0) return P / n;
+  return (P * i) / (1 - Math.pow(1 + i, -n));
+}
+
+/* What the era's banks would offer this character, before they choose a house.
+   Deterministic — the rate is drawn from the band by a namespaced stream keyed
+   on the character and year, so shopping the same year twice gives the same
+   rate rather than letting a player reroll for a better one. */
+function hreLoanOffer(s, price) {
+  const law = hreLaw(s.profile.country, yearOf(s));
+  const m = (law && law.mortgage) || { exists: false };
+  if (!m.exists) return { ok: false, reason: HRE_LOAN_REFUSAL.noMarket, law: law };
+
+  const ctx = hreSearchCtx(s);
+  if (!ctx.employed) return { ok: false, reason: HRE_LOAN_REFUSAL.noIncome, law: law };
+
+  const bar = hreLendingBar(s, law);
+  if (bar) return { ok: false, reason: bar, law: law };
+
+  const record = typeof recordCount === "function" ? recordCount(s) : 0;
+  if (record >= 2) return { ok: false, reason: HRE_LOAN_REFUSAL.record, law: law };
+
+  /* Income multiple bites against REALISED income, not the nominal salary the
+     player is shown — the same correction the rest of HRE applies, and the
+     reason HRE_INCOME_REALISATION exists. */
+  const annual = hreRealisedAnnual(ctx.nominalMonthly);
+  const maxByIncome = annual * (m.incomeMultiple || 0);
+  const maxByLtv = price * (m.maxLtv || 0);
+  const principal = Math.floor(Math.min(maxByIncome, maxByLtv));
+  const deposit = Math.max(0, Math.ceil(price - principal));
+
+  if (principal <= 0) return { ok: false, reason: HRE_LOAN_REFUSAL.tooLittle, law: law, deposit: deposit };
+  if (maxByIncome < price * (m.maxLtv || 0) && maxByIncome < price * 0.35) {
+    return { ok: false, reason: HRE_LOAN_REFUSAL.tooLittle, law: law, deposit: deposit, principal: principal };
+  }
+  if (s.money < deposit) {
+    return { ok: false, reason: HRE_LOAN_REFUSAL.noDeposit, law: law, deposit: deposit, principal: principal };
+  }
+
+  const band = m.rateBand || [0.05, 0.08];
+  const r = hreRng(hreWorldSeedOf(s), "loan:" + yearOf(s), "s08c:rate");
+  const annualRate = r.range(band[0], band[1]);
+  const term = m.termYears || [25, 25];
+  const termYears = Math.round(r.range(term[0], term[1] + 0.999));
+  const periods = Math.max(1, termYears * HRE_PERIODS_PER_YEAR);
+  const periodRate = annualRate / HRE_PERIODS_PER_YEAR;
+  const payment = hreLoanPayment(principal, periodRate, periods);
+
+  return { ok: true, law: law, price: price, principal: principal, deposit: deposit,
+    annualRate: annualRate, periodRate: periodRate, termYears: termYears,
+    periods: periods, payment: Math.round(payment * 100) / 100,
+    maxByIncome: Math.floor(maxByIncome), maxByLtv: Math.floor(maxByLtv) };
+}
+
+/* Transaction costs, from the law table. Buying has never been free and the
+   fees are a real barrier at the margin — a buyer who can just afford the
+   deposit usually cannot afford the deposit plus fees, which is exactly the
+   trap first-time buyers describe. */
+function hrePurchaseCosts(s, price) {
+  const law = hreLaw(s.profile.country, yearOf(s));
+  const t = (law && law.transaction) || { buyerFeePct: 0.02, transferTaxPct: 0.01 };
+  const fees = Math.ceil(price * (t.buyerFeePct || 0));
+  const tax = Math.ceil(price * (t.transferTaxPct || 0));
+  return { fees: fees, tax: tax, total: fees + tax };
+}
+
+function hreMortgage(s) { return s.hre && s.hre.mtg ? s.hre.mtg : null; }
+function hreIsOwner(s) { const t = hreTenure(s); return t === "owning" || t === "ownOutright"; }
+
+/* Origination. Takes the money, creates the loan, moves tenure to owned. Like
+   hreStartTenancy this is a WRITER — it transfers residence authority to HRE. */
+function hreBuyProperty(s, listing, offer) {
+  hreMigrate(s);
+  const price = listing.asking;
+  const costs = hrePurchaseCosts(s, price);
+  const cashNeeded = offer.deposit + costs.total;
+  if (s.money < cashNeeded) return { ok: false, reason: HRE_LOAN_REFUSAL.noDeposit, needed: cashNeeded };
+
+  s.money = Math.max(0, s.money - cashNeeded);
+  s.hre.mtg = {
+    principal: offer.principal,
+    balance: offer.principal,
+    payment: offer.payment,
+    periodRate: offer.periodRate,
+    annualRate: offer.annualRate,
+    periods: offer.periods,
+    paid: 0,
+    owed: 0,
+    missed: 0,
+    stage: "clear",
+    start: s.ageDays || 0,
+    price: price,
+  };
+  /* A tenancy and a mortgage are mutually exclusive: buying while renting ends
+     the tenancy, and the deposit comes back through the normal settlement. */
+  if (hreTenancy(s)) hreCloseTenancy(s, "left", "owning");
+  else hreSetTenure(s, "owning", listing.crystallised || s.hre.home);
+  s.hre.everOwned = true;
+  return { ok: true, costs: costs, cash: cashNeeded, mortgage: s.hre.mtg };
+}
+
+/* One period of amortisation. Interest first, then principal — the order that
+   makes early payments almost all interest, which is the single most
+   counter-intuitive fact about mortgages and worth the player seeing. */
+function hreAmortiseOnce(mtg) {
+  if (!mtg || mtg.balance <= 0) return null;
+  const interest = mtg.balance * mtg.periodRate;
+  let principalPart = mtg.payment - interest;
+  let due = mtg.payment;
+  /* Final period: pay off exactly what remains rather than leaving a floating
+     point residue that keeps the loan alive forever. */
+  if (principalPart >= mtg.balance) {
+    principalPart = mtg.balance;
+    due = mtg.balance + interest;
+  }
+  mtg.balance = Math.max(0, mtg.balance - principalPart);
+  mtg.paid += 1;
+  return { due: due, interest: interest, principal: principalPart, balance: mtg.balance };
+}
+
+const HRE_MTG_ARREARS_AT = { late: 1, chased: 2, notice: 4, repossession: 7 };
+const HRE_MTG_LINE = {
+  late: "🏦 The direct debit bounced. The letter is polite in the way that means nothing yet.",
+  chased: "🏦 Someone from the bank rang about the account. They used your first name twice.",
+  notice: "🏦 A default notice. It explains, in numbered paragraphs, what happens next.",
+  repossession: "🏦 The word on the letter is 'possession'. There is a date, and it is soon.",
+};
+
+function hreMtgStage(owed) {
+  if (owed >= HRE_MTG_ARREARS_AT.repossession) return "repossession";
+  if (owed >= HRE_MTG_ARREARS_AT.notice) return "notice";
+  if (owed >= HRE_MTG_ARREARS_AT.chased) return "chased";
+  if (owed >= HRE_MTG_ARREARS_AT.late) return "late";
+  return "clear";
+}
+
+/* Repossession. The house is sold, the loan is cleared from the proceeds, and
+   whatever equity survives comes back — which is the real mechanism and is why
+   repossession is ruinous but not always destitution. */
+function hreRepossess(s) {
+  const mtg = hreMortgage(s);
+  if (!mtg) return null;
+  const home = s.hre.home;
+  let sale = mtg.price || 0;
+  if (home && typeof hreValue === "function") {
+    try {
+      const v = hreValue(s, home);
+      if (v && Number.isFinite(v.money)) sale = v.money;
+    } catch (e) { /* valuation is best-effort here; price is a sound fallback */ }
+  }
+  /* A forced sale does not achieve market price. */
+  const forced = Math.floor(sale * 0.85);
+  const equity = Math.max(0, forced - Math.ceil(mtg.balance));
+  s.money = Math.max(0, (s.money || 0) + equity);
+  s.hre.mtg = null;
+  s.hre.lastEnd = "repossession";
+  hreSetTenure(s, "homeless", null);
+  s.flags.homeless = s.ageDays || 0;
+  return { equity: equity, sold: forced, cleared: Math.ceil(mtg.balance) };
+}
+
+/* Called from the tick, alongside rent. Returns a line to push, or null. */
+function hreMortgageTick(s) {
+  const mtg = hreMortgage(s);
+  if (!mtg) return null;
+  if (mtg.balance <= 0) {
+    /* Paid off. A milestone worth its own line — thirty years of this. */
+    s.hre.mtg = null;
+    s.hre.ownedOutright = true;
+    /* "owning" means owning WITH a mortgage; the debt-free state is its own
+       tenure, which is why the model distinguishes them. */
+    hreSetTenure(s, "ownOutright", s.hre.home);
+    return "🔑 The last mortgage payment left your account. The house is yours, all of it.";
+  }
+  const step = hreAmortiseOnce(mtg);
+  if (!step) return null;
+  const due = Math.ceil(step.due);
+  if ((s.money || 0) >= due) {
+    s.money -= due;
+    if (mtg.owed > 0) { mtg.owed = Math.max(0, mtg.owed - 1); }
+    const stage = hreMtgStage(mtg.owed);
+    mtg.stage = stage;
+    return null;
+  }
+  /* Missed. The period still ELAPSED — that is what the caller's loop counts —
+     so `paid` must stay incremented or the loop re-enters the same period
+     forever, rolling the balance back on every pass. Measured: a balance that
+     grew from 17,875 to 45,377 in twenty steps while `paid` stayed at 0.
+     What must be undone is only the debt reduction; unpaid interest is instead
+     capitalised onto the balance, which is what actually happens in arrears. */
+  mtg.balance += step.principal + step.interest;
+  mtg.owed += 1;
+  mtg.missed += 1;
+  const prev = mtg.stage;
+  mtg.stage = hreMtgStage(mtg.owed);
+  if (mtg.stage === "repossession") {
+    const r = hreRepossess(s);
+    return r ? "🏦 They took the house. " + (r.equity > 0
+      ? "After the sale and the debt there was something left, which felt like an insult and was also rent money."
+      : "After the sale and the debt there was nothing left at all.") : null;
+  }
+  if (mtg.stage !== prev) return HRE_MTG_LINE[mtg.stage] || null;
+  return null;
+}
+
+/* ═══════════════ HRE · S08b · EVICTION, NOTICE & DEPOSIT SETTLEMENT ═══════════════ */
+/* Phase 7 step 3. Closes two gaps measured directly against the shipped build:
+ *
+ *  1. THE ARREARS LADDER WAS DECORATIVE. hreOnTick escalated a tenant to the
+ *     "eviction" stage and pushed a letter, but nothing ever acted on it. A
+ *     tenant with no income sat in the flat for 92 unpaid periods — seven years
+ *     — still tenured, still housed. Rent was therefore optional, which makes
+ *     the whole recurring-obligation argument for the B3 tick hook moot: an
+ *     obligation you can simply decline to pay is not an obligation.
+ *
+ *  2. ENDING A TENANCY LEFT CONTRADICTORY STATE. hreEndTenancy cleared
+ *     s.hre.ten but never touched tenure, so a character read as `renting`
+ *     with no tenancy — the precise class of contradiction the Phase 7 exit
+ *     gate forbids, and the same failure mode as the stale-tenure bug.
+ *
+ * WHERE AN EVICTED CHARACTER GOES. Homelessness, deliberately — the game
+ * already models the street (STREET_GROUP, shelters, asking a friend for a
+ * sofa), so eviction feeds an existing system rather than inventing a parallel
+ * one. That is the project's "new mechanics interact with existing systems"
+ * rule doing real work: eviction is not a dead end, it is an entry point to
+ * content that already exists.
+ *
+ * WHY EVICTION IS NOT IMMEDIATE. A landlord cannot evict on the day rent is
+ * late; there is a statutory process. The delay is read from the law table's
+ * noticeDaysLandlord, and `protection` buys additional periods on top. This is
+ * what makes a 1930 tenancy and a 1980 rent-regulated tenancy feel different
+ * without a single `if (country === ...)`.
+ */
+
+const HRE_S08B_V = 1;
+
+/* Extra rent periods a tenant gets before the bailiffs, as a function of the
+   statutory protection score. Piecewise on purpose: protection is not linear in
+   effect — the jump from "no protection" to "some" is worth more than the jump
+   from "good" to "excellent", because the first one introduces a process at
+   all. */
+function hreProtectionGrace(protection) {
+  const p = typeof protection === "number" ? protection : 0;
+  if (p >= 70) return 4;
+  if (p >= 45) return 3;
+  if (p >= 25) return 2;
+  if (p >= 10) return 1;
+  return 0;
+}
+
+/* How many periods of arrears before a tenancy can actually be terminated.
+   Base comes from the arrears ladder's own `eviction` threshold so the two can
+   never drift apart; the law adds grace on top. */
+function hreEvictionThreshold(s) {
+  const law = hreLaw(s.profile.country, yearOf(s));
+  const t = (law && law.tenancy) || {};
+  const noticePeriods = Math.max(1, Math.round((t.noticeDaysLandlord || 30) / HRE_RENT_PERIOD_DAYS));
+  return HRE_ARREARS_AT.eviction + noticePeriods + hreProtectionGrace(t.protection);
+}
+
+function hreEvictionDue(s) {
+  const t = hreTenancy(s);
+  if (!t) return false;
+  return t.owed >= hreEvictionThreshold(s);
+}
+
+/* Deposit settlement. Arrears are taken out of the deposit first — which is
+   what a deposit is FOR, and is why an evicted tenant usually sees none of it
+   back rather than being handed a bill they were never going to pay. */
+function hreSettleDeposit(tenancy, reason) {
+  const dep = Math.max(0, tenancy.deposit || 0);
+  const owedMoney = Math.max(0, (tenancy.owed || 0) * (tenancy.rent || 0));
+  if (reason === "eviction") {
+    /* Forfeited in full, and any shortfall is simply written off: pursuing an
+       evicted tenant for the balance is a debt-collection system this game
+       does not model, and inventing one here would be worse than omitting it. */
+    return { returned: 0, withheld: dep, shortfall: Math.max(0, owedMoney - dep) };
+  }
+  const withheld = Math.min(dep, owedMoney);
+  return { returned: dep - withheld, withheld: withheld, shortfall: Math.max(0, owedMoney - dep) };
+}
+
+/* THE SINGLE EXIT from a tenancy. Everything that ends a tenancy goes through
+   here so that tenure, the tenancy record and the deposit can never disagree.
+   `next` is where the character lands; callers that know (moving to a new let,
+   moving in with a partner) pass it, and everyone else gets homelessness,
+   because a tenancy ending without a destination IS homelessness. */
+function hreCloseTenancy(s, reason, next) {
+  const t = hreTenancy(s);
+  if (!t) return null;
+  const settlement = hreSettleDeposit(t, reason);
+  s.money = Math.max(0, (s.money || 0) + settlement.returned);
+  s.hre.ten = null;
+  s.hre.lastEnd = reason || "left";
+  const dest = next && HRE_TENURE_STATES.indexOf(next) >= 0 ? next : "homeless";
+  /* hreSetTenure is the sole writer (S09) and keeps authority with HRE, which
+     it already holds for anyone who has held a tenancy. */
+  hreSetTenure(s, dest, dest === "homeless" ? null : s.hre.home);
+  /* The legacy homelessness flag still drives STREET_GROUP's content and the
+     street POOL events, and those writers have not inverted yet. Until step 4
+     they must be kept in step or an evicted character gets the tenure but not
+     the events. */
+  if (dest === "homeless") s.flags.homeless = s.ageDays || 0;
+  return { reason: reason, settlement: settlement, tenure: dest };
+}
+
+const HRE_EVICTION_LINES = [
+  "🚪 The locks were changed while you were out. Your things were in bags by the bins, which someone had at least thought to do.",
+  "🚪 They came with a piece of paper and a man to stand behind them. There was no version of the conversation where you stayed.",
+  "🚪 You left before they could make you, which felt like a decision and wasn't.",
+];
+
+/* Called from the tick. Deliberately returns a line rather than pushing it, so
+   the tick keeps one place where feed writes happen. */
+function hreCheckEviction(s) {
+  if (!hreEvictionDue(s)) return null;
+  const t = hreTenancy(s);
+  const owed = t.owed;
+  const res = hreCloseTenancy(s, "eviction", "homeless");
+  if (!res) return null;
+  const idx = ((s.ageDays || 0) + owed) % HRE_EVICTION_LINES.length;
+  return { line: HRE_EVICTION_LINES[idx], owed: owed, settlement: res.settlement };
+}
+
+/* Tenant-side notice: leaving on purpose. Returns false when the character has
+   no tenancy to leave, so the UI can hide the option rather than offering a
+   no-op. */
+function hreGiveNotice(s, next) {
+  if (!hreTenancy(s)) return null;
+  return hreCloseTenancy(s, "left", next || "homeless");
+}
+
+/* ═══════════════ HRE · S07b · VIEWINGS, APPLICATIONS & LANDLORD DECISIONS ═══════════════ */
+/* Phase 7 step 2. The gap between "you can look at a flat" and "you live in it".
+ *
+ * DESIGN RULE, inherited from module 14 and non-negotiable here: this module is
+ * DETERMINISTIC and computes a SCORE. It does not roll dice. The caller rolls,
+ * against a namespaced sub-stream keyed on the listing and the attempt number,
+ * so that reloading a save re-runs the same decision instead of letting the
+ * player re-roll a refusal. Landlord decisions are exactly the kind of thing a
+ * player would otherwise save-scum, and determinism removes the temptation
+ * without any anti-cheat machinery.
+ *
+ * R13 — DISCRIMINATION. The architecture's rule is "compute from attributes,
+ * never flag a person as a bigot", and Part 3 §9.2 is explicit that the prose
+ * matters as much as the mechanism. So:
+ *   - No landlord carries a `bigot` field. Refusal pressure is derived from the
+ *     landlord's own acceptance/politics (module 06's scale, HIGH = accepting)
+ *     blended with the era's climate through npcDisposition's `stakes`.
+ *   - The era BOUNDS the outcome via institutionalTier("housing"): where the
+ *     law prohibits it and enforcement is real, a hostile landlord mostly has
+ *     to find another reason. Where there is no protection, they do not bother.
+ *   - The refusal a player reads is the one they would actually be given:
+ *     "it's gone", "we've had a lot of interest". Plausible deniability is the
+ *     historically accurate experience and it stings more than a slur. The
+ *     player is told what happened via the FEED, separately, only when the
+ *     climate makes the real reason legible.
+ *   - Housing discrimination is not restricted to queer characters, but that is
+ *     the axis this game models, so it is the axis computed here.
+ *
+ * Nothing in here consults an LLM: module 15's contract forbids the model from
+ * touching eligibility or probability, and a tenancy decision is both.
+ */
+
+const HRE_S07B_V = 1;
+
+/* Applications are refused for reasons. Each carries the line the player is
+   told, and whether the stated reason is the real one — which is what makes a
+   later "you were lied to" beat possible without re-deriving anything. */
+const HRE_REFUSAL = {
+  noIncome:     { code: "noIncome",     candid: true,
+    line: "They asked what you do. The answer was nothing, and that was the end of it." },
+  tooExpensive: { code: "tooExpensive", candid: true,
+    line: "They did the arithmetic in front of you, which was its own kind of answer." },
+  noDeposit:    { code: "noDeposit",    candid: true,
+    line: "The deposit was the thing. You did not have it and could not pretend otherwise." },
+  noReferences: { code: "noReferences", candid: true,
+    line: "No previous landlord to vouch for you. They said it like it was a formality. It was not." },
+  record:       { code: "record",       candid: true,
+    line: "The question about convictions was on the form, and you answered it honestly." },
+  competition:  { code: "competition",  candid: true,
+    line: "Someone else got there first with better numbers. That happens, and this time it was true." },
+  pretext:      { code: "pretext",      candid: false,
+    line: "It had just gone, they said. The advert stayed up for another fortnight." },
+};
+
+/* What a landlord weighs, as distinct from what a friend weighs. A landlord is
+   not deciding whether they like you; module 14's default weighting would read
+   this as a friendship. Warmth and loyalty barely matter. Acceptance carries
+   most of it because that is the axis on which housing discrimination runs. */
+const HRE_LANDLORD_WEIGHT = { warmth: 0.1, kindness: 0.15, loyalty: 0.05, acceptance: 0.5, politics: 0.15, rel: 0.05 };
+
+/* Housing protections historically trail the headline acceptance curve: you
+   could be legally married in places where a landlord could still refuse you.
+   Expressed as a lag rather than a separate curve, which is how module 14 was
+   designed to absorb exactly this. */
+const HRE_HOUSING_LAG = 12;
+
+/* A landlord, derived not stored (§8.1). Person-shaped so module 14 can read it
+   without a special case, from a sub-stream namespaced per listing+period so
+   the same advert always yields the same landlord. */
+function hreLandlordFor(seed, listing) {
+  const r = hreRng(seed, listing.id, "s07b:landlord:" + listing.period);
+  const acceptance = Math.round(Math.max(2, Math.min(98, r.gauss(50, 22))));
+  const politics = Math.round(Math.max(2, Math.min(98, r.gauss(50, 24))));
+  return {
+    name: "the landlord",
+    role: "landlord",
+    /* rel is genuinely neutral: they do not know you. Anchoring at 50 keeps
+       npcDisposition's rel term from pretending to a relationship. */
+    rel: 50,
+    warmth: Math.round(Math.max(5, Math.min(95, r.gauss(48, 18)))),
+    kindness: Math.round(Math.max(5, Math.min(95, r.gauss(50, 18)))),
+    loyalty: 50,
+    acceptance: acceptance,
+    politics: politics,
+    /* How much paperwork they want. High = references, guarantor, payslips. */
+    formality: Math.round(Math.max(0, Math.min(100, r.gauss(52, 23)))),
+    pet: false, g: null, known: [], lastTime: -999, lastTalk: -999, lastGift: -999,
+  };
+}
+
+/* Tenancy terms come from the law table, not from the landlord's whim — a
+   deposit of six months where the statutory cap is one is not "a harsh
+   landlord", it is a bug. */
+function hreTenancyTerms(s, listing) {
+  const law = hreLaw(s.profile.country, yearOf(s));
+  const t = (law && law.tenancy) || {};
+  return {
+    rent: listing.asking,
+    depositMonths: typeof t.depositMonths === "number" ? t.depositMonths : 1,
+    noticeDaysLandlord: t.noticeDaysLandlord || 30,
+    noticeDaysTenant: t.noticeDaysTenant || 30,
+    noFaultEviction: t.noFaultEviction !== false,
+    protection: typeof t.protection === "number" ? t.protection : 10,
+  };
+}
+
+/* Everything the decision rests on, computed once and returned so that the UI
+   can explain a refusal without recomputing it and drifting out of step. */
+function hreApplicationFactors(s, listing) {
+  const ctx = hreSearchCtx(s);
+  const terms = hreTenancyTerms(s, listing);
+  const deposit = Math.round(terms.rent * terms.depositMonths);
+  const climate = institutionalTier("housing", s, { domainLag: HRE_HOUSING_LAG });
+  const law = hreLaw(s.profile.country, yearOf(s));
+  const disc = (law && law.discrimination) || { queerProhibitedFrom: null, enforcement: "none" };
+  const year = yearOf(s);
+  const prohibited = typeof disc.queerProhibitedFrom === "number" && year >= disc.queerProhibitedFrom;
+
+  /* Enforcement is the difference between a law and a leaflet. A prohibition
+     with no enforcement barely moves the outcome, which is the historically
+     honest reading and is why the law table carries both fields. */
+  const enforceWeight = disc.enforcement === "strong" ? 1 : disc.enforcement === "partial" ? 0.5 :
+    disc.enforcement === "weak" ? 0.25 : 0;
+
+  return {
+    employed: ctx.employed,
+    nominalMonthly: ctx.nominalMonthly,
+    rentCeiling: ctx.rentCeiling,
+    rent: terms.rent,
+    deposit: deposit,
+    canPayDeposit: s.money >= deposit,
+    affordable: ctx.employed && terms.rent <= ctx.rentCeiling,
+    /* A first tenancy has no landlord to call. Tracked on s.hre so it survives
+       a save, and so "has rented before" is a fact about the character rather
+       than a guess from flags. */
+    hasReferences: !!(s.hre && s.hre.everRented),
+    record: typeof recordCount === "function" ? recordCount(s) : 0,
+    terms: terms,
+    climate: climate,
+    prohibited: prohibited,
+    enforceWeight: enforceWeight,
+    visiblyQueer: typeof visiblyQueer === "function" ? !!visiblyQueer(s) : false,
+  };
+}
+
+/* THE DECISION. Deterministic: same inputs, same verdict. Returns the score and
+   the reason; the caller decides what to do with it.
+ *
+ * Hard refusals come first and are not scored, because no amount of landlord
+ * warmth overcomes having no money for the deposit. Scoring an unaffordable
+ * application would produce the absurd case of a lovely landlord handing a flat
+ * to someone with no income. */
+function hreAssessApplication(s, listing, landlord) {
+  const f = hreApplicationFactors(s, listing);
+
+  if (!f.employed) return { accept: false, hard: true, reason: HRE_REFUSAL.noIncome, factors: f, score: 0 };
+  if (!f.canPayDeposit) return { accept: false, hard: true, reason: HRE_REFUSAL.noDeposit, factors: f, score: 0 };
+  if (!f.affordable) return { accept: false, hard: true, reason: HRE_REFUSAL.tooExpensive, factors: f, score: 0 };
+
+  /* The landlord as a person, read on the axis that matters, with the era
+     weighing in proportionally. stakes is high because tenancy decisions are
+     made by strangers: an individually warm landlord in a hostile decade is
+     still operating inside that decade's norms. */
+  const disp = npcDisposition(landlord, s, { weight: HRE_LANDLORD_WEIGHT, stakes: 55 });
+
+  let score = disp.score;
+
+  /* Financial comfort beyond the bare threshold. A tenant at 20% of income is
+     a safer bet than one at the ceiling, and landlords price that in. */
+  const headroom = f.rentCeiling > 0 ? 1 - (f.rent / f.rentCeiling) : 0;
+  score += Math.round(headroom * 22);
+
+  if (!f.hasReferences) score -= landlord.formality > 60 ? 18 : 9;
+  if (f.record > 0) score -= Math.min(24, 8 * f.record);
+
+  /* DISCRIMINATION PRESSURE. Only applies where there is something to react to,
+     and is bounded above by the legal climate: strong protection with real
+     enforcement compresses it toward nothing, absence of protection lets the
+     landlord's own disposition run unchecked. Never a flag, always a function
+     of who they are and when they are. */
+  let discriminatory = false;
+  if (f.visiblyQueer) {
+    const hostility = Math.max(0, 55 - landlord.acceptance) / 55;   /* 0..1 */
+    const legalBrake = f.prohibited ? f.enforceWeight : 0;
+    const climateBrake = f.climate.index / 4;                        /* 0..1 across the tier ladder */
+    const brake = Math.min(0.92, Math.max(legalBrake, climateBrake * 0.75));
+    const pressure = hostility * (1 - brake);
+    const penalty = Math.round(pressure * 46);
+    if (penalty > 0) {
+      score -= penalty;
+      /* Only counts as a discriminatory refusal if it is what tipped it. */
+      discriminatory = penalty >= 12;
+    }
+  }
+
+  score = clamp(Math.round(score));
+
+  /* Threshold rises with formality: a landlord who wants three payslips is
+     harder to satisfy than one who wants a handshake. */
+  const threshold = 38 + Math.round((landlord.formality - 50) * 0.22);
+
+  if (score >= threshold) {
+    return { accept: true, hard: false, score: score, threshold: threshold,
+      factors: f, disposition: disp, discriminatory: false };
+  }
+
+  /* Refused. Which reason the player is TOLD depends on whether the real one is
+     sayable. A landlord discriminating in a decade where that is illegal and
+     enforced does not say so; one in a decade where nobody minds may as well
+     be candid, and the pretext is what the player would actually hear. */
+  let reason;
+  if (discriminatory) {
+    reason = HRE_REFUSAL.pretext;
+  } else if (!f.hasReferences && landlord.formality > 60) {
+    reason = HRE_REFUSAL.noReferences;
+  } else if (f.record > 0) {
+    reason = HRE_REFUSAL.record;
+  } else {
+    reason = HRE_REFUSAL.competition;
+  }
+  return { accept: false, hard: false, score: score, threshold: threshold,
+    factors: f, disposition: disp, reason: reason, discriminatory: discriminatory };
+}
+
+/* A viewing. Cheap, informative, and the thing that upgrades disclosure from
+   `listing` to `viewing` — which is the whole reason S02's disclosure ladder
+   has more than one rung. Deterministic per listing+period. */
+function hreViewingReport(seed, s, listing) {
+  const bp = listing.bp;
+  const shown = typeof hreVisibleDefects === "function" ? hreVisibleDefects(bp.defects, "viewing") : [];
+  const newly = shown.filter(function (d) {
+    return !listing.defects.some(function (x) { return x.id === d.id; });
+  });
+  return { defects: shown, newlyVisible: newly, disclosure: "viewing" };
+}
+
+/* Records that a viewing happened, so the application can know it and so the
+   engagement carries the richer disclosure forward. */
+function hreDoViewing(s, eng, listing) {
+  if (!eng) return null;
+  const seed = hreWorldSeedOf(s);
+  const rep = hreViewingReport(seed, s, listing);
+  eng.viewing = { at: s.ageDays || 0, seen: rep.newlyVisible.map(function (d) { return d.id; }) };
+  if (hreStageRank("viewed") > hreStageRank(eng.stage)) eng.stage = "viewed";
+  eng.touched = s.ageDays || 0;
+  return rep;
+}
+
+/* Resolve an application end to end and MUTATE state accordingly. This is the
+   one function here that writes: on acceptance it forms the tenancy, which is
+   what transfers residence authority to HRE (see hreSetTenure). */
+function hreResolveApplication(s, eng, listing) {
+  const seed = hreWorldSeedOf(s);
+  const landlord = hreLandlordFor(seed, listing);
+  const verdict = hreAssessApplication(s, listing, landlord);
+
+  eng.decision = { at: s.ageDays || 0, accept: verdict.accept,
+    reason: verdict.reason ? verdict.reason.code : null,
+    discriminatory: !!verdict.discriminatory, score: verdict.score };
+  if (hreStageRank("applied") > hreStageRank(eng.stage)) eng.stage = "applied";
+  eng.touched = s.ageDays || 0;
+
+  if (!verdict.accept) return verdict;
+
+  const terms = verdict.factors.terms;
+  const started = hreStartTenancy(s, terms.rent, terms.depositMonths, listing.crystallised || null);
+  if (!started) {
+    /* Deposit affordability was checked above, so this can only fire if the
+       terms changed underneath us. Degrade to a refusal rather than reporting
+       an acceptance that did not happen. */
+    eng.decision.accept = false;
+    eng.decision.reason = HRE_REFUSAL.noDeposit.code;
+    return { accept: false, hard: true, reason: HRE_REFUSAL.noDeposit, factors: verdict.factors, score: 0 };
+  }
+  eng.stage = "accepted";
+  s.hre.everRented = true;
+  return verdict;
+}
+
+/* ═══════════════ ENGINE ═══════════════ */
+
+function advance(state, totalDays) {
+  const s = JSON.parse(JSON.stringify(state));
+  if (!s.alive) return s;
+  let remaining = totalDays;
+  while (remaining > 0 && !s.pending && s.alive) {
+    const step = Math.min(7, remaining);
+    remaining -= step;
+    const prevAgeY = ageYears(s), prevYear = yearOf(s);
+    s.ageDays += step;
+    const nowY = ageYears(s), nowYear = yearOf(s);
+
+    if (Math.random() < 0.25) {
+      const key = pick(["health", "happiness", "smarts", "looks"]);
+      s.stats[key] = clamp(s.stats[key] + rnd(-1, 1));
+    }
+    if (nowY >= 52 && Math.random() < 0.1) s.stats.health = clamp(s.stats.health - 1);
+
+    if (nowY > prevAgeY) {
+      push(s, `🎂 You turned ${nowY}.`);
+      if (mortalityCheck(s, nowY)) break;
+    }
+
+    // degrees finish on schedule, not on a dice roll
+    if (s.education.college) {
+      const need = s.education.college.major === "Medicine" ? 2190 : 1460;
+      if (s.ageDays - s.education.college.startDay >= need) gainDegree(s);
+    }
+
+    for (let y = prevYear; y <= nowYear; y++) {
+      if (WORLD_EVENTS[y] && !s.flags["w_" + y]) {
+        s.flags["w_" + y] = true;
+        WORLD_EVENTS[y].forEach((t) => s.feed.push({ date: `${y}`, text: t, world: true }));
+      }
+    }
+
+    /* HRE B3 tick hook (option b). Placed HERE deliberately: after WORLD_EVENTS
+       and before the MILESTONES scan, because a firing milestone `continue`s
+       past the rest of the step — a hook below this point would silently skip
+       rent in exactly the months something notable happened. hreOnTick never
+       sets s.pending, so it cannot clobber a popup. */
+    hreOnTick(s);
+
+    let milestoneFired = false;
+    for (const m of MILESTONES) {
+      if (s.flags["m_" + m.id]) continue;
+      const at = m.id === "discoverO" && s.flags.discOAt ? s.flags.discOAt * 365.25
+               : m.id === "discoverG" && s.flags.discGAt ? s.flags.discGAt * 365.25
+               : m.at;
+      if (s.ageDays >= at && (!m.cond || m.cond(s))) {
+        s.flags["m_" + m.id] = true;
+        const out = m.run(s);
+        if (out && out.auto) out.auto.forEach((t) => push(s, t));
+        if (out && out.fx) applyFx(s, out.fx);
+        if (out && out.event) s.pending = out.event;
+        milestoneFired = true;
+        break;
+      }
+    }
+    if (milestoneFired) continue;
+
+    if (Math.random() < Math.min(0.72, step * 0.09)) {
+      const age = nowY;
+      const eligible = POOL.filter((e) => {
+        if (age < e.minAge || age > e.maxAge) return false;
+        if (e.once && s.flags["cd_" + e.id] !== undefined) return false;
+        if (!!e.prison !== inPrison(s)) return false;
+        if (e.cond && !e.cond(s)) return false;
+        const last = s.flags["cd_" + e.id];
+        return last === undefined || s.ageDays - last >= (e.cd || 0);
+      });
+      if (eligible.length) {
+        // 60% of the time, prefer events that actually ask you something
+        const inter = eligible.filter((e) => e.i);
+        const base = inter.length && Math.random() < 0.35 ? inter : eligible;
+        const total = base.reduce((a, e) => a + e.w, 0);
+        let r = Math.random() * total;
+        let chosen = base[0];
+        for (const e of base) { r -= e.w; if (r <= 0) { chosen = e; break; } }
+        s.flags["cd_" + chosen.id] = s.ageDays;
+        const out = chosen.run(s);
+        if (out && out.auto) out.auto.forEach((t) => push(s, t));
+        if (out && out.fx) applyFx(s, out.fx);
+        if (out && out.event) s.pending = out.event;
+      }
+    }
+  }
+  return s;
+}
+
+function chooseOption(state, opt) {
+  const s = JSON.parse(JSON.stringify(state));
+  s.pending = null;
+  applyFx(s, opt.fx);
+  return s;
+}
+
+/* ═══════════════ ACTIVITIES ═══════════════ */
+
+function studyMenu(s) {
+  if (s.education.college) {
+    return { emoji: "🎓", title: "Study session", text: `${s.education.college.major}. The pile of reading regenerates nightly.`, options: [
+      { label: "Deep focus session", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 4); }, stats: { happiness: -1 }, feed: `🎓 A brutal, productive study block. College GPA climbing.` } },
+      { label: "Study group (half work, half snacks)", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 2); }, stats: { happiness: +2 }, feed: `🎓 Study group: 60% studying, 40% excellent company. Net positive.` } },
+    ] };
+  }
+  const last = (s.school && s.school.lastStudy) || {};
+  return { emoji: "🎓", title: "Study session", text: "Which subject gets the attention? Cramming the same one over and over stops paying.", options: Object.entries(SUBJECTS).map(([k, n]) => {
+    const since = s.ageDays - (last[k] ?? -9999);
+    const fresh = since >= 60;
+    const partial = since >= 25;
+    return { label: `${n} (${s.education.subjects[k]})${fresh ? "" : partial ? " · diminishing" : " · needs a break"}`,
+      fx: { run: (st) => {
+        const gain = fresh ? rnd(4, 7) : partial ? rnd(1, 3) : 0;
+        st.education.subjects[k] = clamp(st.education.subjects[k] + gain);
+        if (st.school) { if (!st.school.lastStudy) st.school.lastStudy = {}; st.school.lastStudy[k] = st.ageDays; }
+        if (gain === 0) { st.stats.happiness = clamp(st.stats.happiness - 3); push(st, `🎓 You sat with ${n} again and absorbed nothing. Your brain has had enough of this subject for now.`); }
+        else if (!fresh) push(st, `🎓 More ${n}. The returns are thinning — you know most of this already.`);
+        else push(st, `🎓 You put real hours into ${n}. It's sticking.`);
+      } } };
+  }) };
+}
+
+function prideMenu(s) {
+  const era = eraAcceptance(yearOf(s));
+  const t = era < 30
+    ? { d: "The gathering is small and watched. Showing up is itself the statement.", a: ["March, visible", { stats: { happiness: +5 }, emergent: { courage: +6 }, feed: "🏳️‍🌈 You marched where it cost something to march. Every step, a sentence in a story bigger than you." }], b: ["Support from the edges", { stats: { happiness: +3 }, feed: "🏳️‍🌈 You brought water and held coats at the edge of the march. Logistics is also love." }] }
+    : era < 65
+    ? { d: "Parade season — floats, noise, some jeers across the barricades, joy louder.", a: ["March in the parade", { stats: { happiness: +6 }, emergent: { courage: +4 }, feed: "🏳️‍🌈 You marched. Somewhere between the drums and the flags, your shoulders dropped two inches you didn't know they'd been holding." }], b: ["Cheer from the sidewalk", { stats: { happiness: +4 }, feed: "🏳️‍🌈 You cheered yourself hoarse from the curb. The parade waved back like it knew you." }] }
+    : { d: "Pride is a full festival now. Glitter has infrastructure.", a: ["Full festival mode", { stats: { happiness: +6 }, feed: "🏳️‍🌈 Music, chosen family, sunburn, joy. You danced for yourself and for everyone who couldn't, once." }], b: ["The community tent with the elders", { stats: { happiness: +4 }, emergent: { selfAwareness: +4 }, feed: "🏳️‍🌈 You spent Pride listening to the generation that fought for it. Better than any main stage." }] };
+  return { emoji: "🏳️‍🌈", title: "Pride", text: t.d, options: [
+    { label: t.a[0], fx: t.a[1] }, { label: t.b[0], fx: t.b[1] },
+  ] };
+}
+
+const ACT_GROUPS = [
+  { id: "body", emoji: "🧘", name: "Mind & body", items: [
+    { id: "salon", minAge: 5, emoji: "💆", label: "Salon & spa", cost: 1, special: "salon" },
+    { id: "masckit", minAge: 10, emoji: "🧢", label: "Passing (binder, packer, voice)", cost: 1, special: "masckit", cond: (s) => s.discovered.gender && isQueerG(s) && presTarget(s) < 50 },
+    { id: "workout", minAge: 12, emoji: "💪", label: "Work out", cost: 2, sub: { emoji: "💪", title: "Training day", text: "What's the session?", opts: [
+      { label: "🏃 Go for a run", fx: { stats: { health: +3 } }, feed: "🏃 A long run. Lungs on fire, head finally quiet." },
+      { label: "🏋️ Lift weights", fx: { stats: { health: +2, looks: +2 } }, feed: "🏋️ Weights day. Everything hurts in the correct way." },
+      { label: "🧘 Yoga & stretching", fx: { stats: { health: +2, happiness: +2 } }, feed: "🧘 An hour of yoga. Your spine sent a formal thank-you." },
+      { label: "🏊 Swimming", fx: { stats: { health: +3, happiness: +1 } }, feed: "🏊 Laps until your arms unionized. Slept like a stone." },
+    ] } },
+    { id: "checkup", minAge: 18, emoji: "🩺", label: "Doctor check-up", cost: 1, price: 60, fx: { stats: { health: +5 } }, lines: ["🩺 Full check-up. Caught the small stuff early — worth every cent.", "🩺 Bloodwork, questions, a lollipop you were too old for and took anyway. All clear."] },
+    { id: "sleepin", minAge: 6, emoji: "😴", label: "Sleep in", cost: 1, fx: { stats: { health: +2, happiness: +2 } }, lines: ["😴 You slept until the day gave up on rushing you.", "😴 Twelve hours. You woke up a new person with the same problems and more patience."] },
+    { id: "spa", minAge: 16, emoji: "🧖", label: "Spa day", cost: 1, price: 40, fx: { stats: { looks: +2, happiness: +3 } }, lines: ["🧖 Steam, scrubs, cucumber water. You emerged glowing and lighter in every sense."] },
+  ] },
+  { id: "mind", emoji: "🧠", name: "Mind", items: [
+    { id: "study", minAge: 6, maxAge: 40, emoji: "🎓", label: "Study", cost: 2, special: "study", cond: (s) => inSchool(s) || !!s.education.college },
+    { id: "library", minAge: 5, emoji: "📚", label: "Hit the library", cost: 2, fx: { stats: { smarts: +2 } }, lines: ["📚 You disappeared into a book for an afternoon.", "📚 You read about something completely useless and completely fascinating.", "📚 The librarian greets you by name now. Elite status."] },
+    { id: "journal", minAge: 10, emoji: "📓", label: "Journal", cost: 1, fx: { emergent: { selfAwareness: +2 }, stats: { happiness: +1 } }, lines: ["📓 You wrote until the tangle in your head became sentences. Cheaper than therapy, adjacent results.", "📓 Three pages of honesty. Future you will cringe and be grateful."] },
+    { id: "museum", minAge: 8, emoji: "🖼", label: "Museum day", cost: 1, price: 12, fx: { stats: { smarts: +2, happiness: +1 } }, lines: ["🖼 You stood in front of one painting for fifteen minutes and couldn't say why.", "🖼 Museum day. You now have Opinions about a century you'd never considered."] },
+    { id: "language", minAge: 12, emoji: "🗣", label: "Practice a language", cost: 2, fx: { stats: { smarts: +2 }, emergent: { discipline: +1 } }, lines: ["🗣 You practiced your extra language. Today you successfully ordered food and accidentally insulted a chair.", "🗣 Language practice. The grammar fought back. You're winning, slowly."] },
+  ] },
+  { id: "fun", emoji: "🎉", name: "Fun", items: [
+    { id: "movies", minAge: 6, emoji: "🎬", label: "Catch a movie", cost: 1, price: 10, linesDyn: (s) => { const y = yearOf(s); return y < 1990 ? ["🎬 The big screen, the big sound, the guy in row three who explained the plot to his date. Magic anyway."] : y < 2010 ? ["🎬 You caught the blockbuster everyone's quoting. Now you get the jokes at lunch.", "🎬 Video-store-and-couch double feature. The rewind fee was worth it."] : ["🎬 Big screen, giant popcorn, phone OFF like an animal. Restorative.", "🎬 You saw the film everyone's arguing about online. Your take: unnecessarily correct."]; }, fx: { stats: { happiness: +3 } } },
+    { id: "nightout", minAge: 18, emoji: "🌃", label: "Night out", cost: 1, price: 30, sub: { emoji: "🌃", title: "Where to tonight?", text: "The evening is unwritten.", opts: [
+      { label: "🕺 Dancing till late", fx: { stats: { happiness: +5, health: -1 } }, feed: "🕺 You danced like the rent was paid and the morning was theoretical." },
+      { label: "🍸 A good bar, good talk", fx: { stats: { happiness: +4 } }, feed: "🍸 A corner table, unhurried conversation, one round too many of laughing." },
+      { label: "🎤 Karaoke, no mercy", fx: { stats: { happiness: +5 }, emergent: { courage: +2 } }, feed: "🎤 You performed a ballad with your whole chest. The room had no choice but respect." },
+    ] } },
+    { id: "gaming", minAge: 8, emoji: "🎮", label: "Gaming session", cost: 2, cond: (s) => yearOf(s) >= 1980, fx: { stats: { happiness: +3 } }, lines: ["🎮 A proper session. Time became a rumor.", "🎮 You finally beat the part. THE part. Shouting occurred.", "🎮 Online chaos with strangers who became a squad for exactly one evening."] },
+    { id: "concert", minAge: 15, emoji: "🎫", label: "See live music", cost: 1, price: 35, fx: { stats: { happiness: +4 }, emergent: { music: +2 } }, lines: ["🎫 A small venue, a band that gave everything to sixty people. You left buzzing.", "🎫 Live music did its old trick: made everything feel briefly, completely fine."] },
+    { id: "trip", minAge: 18, emoji: "🧳", label: "Weekend trip", cost: 3, price: 120, sub: { emoji: "🧳", title: "Weekend escape", text: "Bag's packed. Where to?", opts: [
+      { label: "⛰ Mountains — air and silence", fx: { stats: { health: +3, happiness: +4 } }, feed: "⛰ Two days of trails and a view that reset something. Your legs complained; your head thanked you." },
+      { label: "🏖 Water — sun and nothing", fx: { stats: { happiness: +5 } }, feed: "🏖 You did aggressively nothing near water for 48 hours. Doctor-recommended, probably." },
+      { label: "🏙 A city you don't know", fx: { stats: { smarts: +2, happiness: +4 } }, feed: "🏙 You wandered a strange city with no plan and found the exact café, alley and view a plan would've missed." },
+    ] } },
+  ] },
+  { id: "social", emoji: "👥", name: "Social", items: [
+    { id: "callfolks", minAge: 18, emoji: "📞", label: "Call your parents", cost: 1, fxDyn: () => ({ run: (st) => { st.family.mom.rel = clamp(st.family.mom.rel + 2); st.family.dad.rel = clamp(st.family.dad.rel + 2); } }), lines: ["📞 You called home. Twenty minutes of news, weather, and 'are you eating properly'. Grounding.", "📞 Called your parents. Dad said four sentences, all of them somehow warm."] },
+    { id: "dinnerparty", minAge: 18, emoji: "🍝", label: "Host a dinner", cost: 2, price: 35, cond: (s) => Object.keys(s.friends).some((k) => !s.friends[k].pet), fxDyn: () => ({ run: (st) => { Object.keys(st.friends).forEach((k) => { if (!st.friends[k].pet) st.friends[k].rel = clamp(st.friends[k].rel + 3); }); }, stats: { happiness: +4 } }), lines: ["🍝 You cooked for your people. The food was fine; the table full of the right faces was the point.", "🍝 Dinner party: one dish slightly burnt, three hours of talk, everyone stayed too late. Perfect."] },
+    { id: "volunteer", minAge: 13, emoji: "🤝", label: "Volunteer", cost: 2, fx: { emergent: { kindness: +3 }, stats: { happiness: +2 } }, lines: ["🤝 An afternoon of useful. The kind of tired that sits well.", "🤝 You volunteered. Small dent, real dent."] },
+    { id: "party", minAge: 16, emoji: "🎉", label: "Throw a party", cost: 2, special: "party", cond: (s) => Object.keys(s.friends).some((k) => !s.friends[k].pet) },
+    { id: "pride", minAge: 15, emoji: "🏳️‍🌈", label: "Go to Pride", cost: 1, special: "pride", cond: (s) => isOutQueer(s) },
+  ] },
+  { id: "love", emoji: "💘", name: "Love", items: [
+    { id: "dating", minAge: 18, emoji: "💘", label: "Meet someone new", cost: 2, special: "dating", cond: (s) => s.discovered.orientation && activePartners(s).length < 3 },
+  ] },
+  { id: "money", emoji: "💼", name: "Money & work", items: [
+    { id: "jobhunt", minAge: 16, maxAge: 75, emoji: "💼", label: "Look for work", cost: 4, special: "jobs", cond: (s) => !s.education.college && !inSchool(s) && !s.career.job },
+    { id: "workhard", minAge: 16, maxAge: 80, emoji: "🔥", label: "Put in extra hours", cost: 3, cond: (s) => !!s.career.job, fxDyn: () => ({ run: (st) => { if (st.career.job) st.career.job.perf = clamp(st.career.job.perf + 4); } }), lines: ["🔥 You stayed late and shipped something you're proud of.", "🔥 Extra hours, visible results. The boss noticed.", "🔥 You untangled the problem nobody wanted to touch."] },
+    { id: "hustle", minAge: 18, maxAge: 80, emoji: "🚀", label: "Start a side hustle", cost: 4, price: 200, special: "hustle", cond: (s) => !s.career.sideHustle },
+    { id: "lottery", minAge: 18, emoji: "🎟", label: "Lottery ticket", cost: 1, price: 5, special: "lottery" },
+    { id: "budget", minAge: 16, emoji: "🧾", label: "Budget night", cost: 1, fx: { emergent: { prudence: +3 } }, lines: ["🧾 You faced the numbers. The numbers faced back. A truce was signed and a plan was born.", "🧾 Spreadsheet night. Grim, then weirdly satisfying, then empowering."] },
+  ] },
+  { id: "self", emoji: "✨", name: "Self", items: [
+    { id: "style", minAge: 8, emoji: "💇", label: "Work on your look", cost: 1, fx: { stats: { looks: +2 } }, lines: ["💇 New haircut. Every reflective surface got checked on the way home.", "💇 Style experiment. Mostly a success. Mostly.", "💇 You rebuilt the look. Confidence +1, unofficially."] },
+    { id: "shopping", minAge: 16, emoji: "🛍", label: "Shopping spree", cost: 1, price: 80, fx: { stats: { looks: +3, happiness: +3 } }, lines: ["🛍 New clothes that feel like YOU. The bag swung all the way home.", "🛍 You bought the thing you kept circling back to. Zero regrets, maximum outfit."] },
+    { id: "therapy", minAge: 16, emoji: "🛋", label: "Therapy session", cost: 1, price: 90, cond: (s) => yearOf(s) >= 1995, fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +3 } }, lines: ["🛋 Fifty minutes of guided honesty. You left with one reframe that changed the whole week.", "🛋 Therapy. You said the thing out loud. It shrank on contact with air."] },
+    { id: "meditate", minAge: 12, emoji: "🧘", label: "Meditate", cost: 1, fx: { stats: { happiness: +2, health: +1 } }, lines: ["🧘 Ten minutes of breathing. Your thoughts kept talking; you finally stopped answering.", "🧘 Meditation: 20% enlightenment, 80% grocery list. The 20% carried the day."] },
+  ] },
+];
+
+function doActivity(state, act) {
+  let s = JSON.parse(JSON.stringify(state));
+  if (act.price) { if (s.money < act.price) return s; s.money -= act.price; }
+  if (act.special === "study") { s.pending = studyMenu(s); return s; }
+  if (act.special === "classmates") { return Object.assign(s, { pending: classmatesMenu(s).pending }); }
+  if (act.special === "room") { return Object.assign(s, { pending: roomMenu(s).pending }); }
+  if (act.special === "salon") { return Object.assign(s, { pending: salonMenu(s).pending }); }
+  if (act.special === "aiSettings") { return Object.assign(s, { pending: aiSettingsMenu(s) }); }
+  if (act.special === "stxBoard") { s.pending = stxBoardMenu(s); return s; }
+  if (act.special === "hreHome") { s.pending = hreHomeMenu(s); return s; }
+  if (act.special === "hreMarket") {
+    /* Market memory is written HERE, on the draft the engine keeps — never
+       inside the menu builder, whose clone would be discarded (Gotcha #2). */
+    if (s.hre) { if (!s.hre.mem) s.hre.mem = { ch: null, filt: "all" }; }
+    s.pending = hreMarketMenu(s);
+    return s;
+  }
+  if (act.special === "socialhub") { return Object.assign(s, { pending: socialMenu(s).pending }); }
+  if (act.special === "workhard") {
+    const j = s.career.job; if (!j) return s;
+    j.perf = clamp((j.perf ?? 60) + rnd(4, 9));
+    s.stats.health = clamp(s.stats.health - rnd(1, 3));
+    s.stats.happiness = clamp(s.stats.happiness - rnd(0, 3));
+    Object.values(s.romance).forEach((p) => { if (["serious", "engaged", "married"].includes(p.status) && Math.random() < 0.35) p.rel = clamp(p.rel - 2); });
+    push(s, pick([`💪 Late nights and a visible effort. Your manager noticed, which was the point, and your evenings paid for it.`, `💪 You took on the thing nobody wanted and did it properly. Performance up, sleep down.`]));
+    return advance(s, 5);
+  }
+  if (act.special === "coast") {
+    const j = s.career.job; if (!j) return s;
+    j.perf = clamp((j.perf ?? 60) - rnd(3, 7));
+    s.stats.happiness = clamp(s.stats.happiness + rnd(3, 7));
+    s.stats.health = clamp(s.stats.health + 1);
+    push(s, pick([`😌 You did exactly your job and not one thing more. Revolutionary. Restful.`, `😌 Cameras off, tasks done to spec, evenings entirely your own.`]));
+    return advance(s, 3);
+  }
+  if (act.special === "masckit") { return Object.assign(s, { pending: mascKitMenu(s).pending }); }
+  if (act.special === "parentsroom") { return Object.assign(s, { pending: parentsRoomMenu(s).pending }); }
+  if (act.special === "faculty") { return Object.assign(s, { pending: facultyMenu(s).pending }); }
+  if (act.special === "clubs") { return Object.assign(s, { pending: clubsMenu(s).pending }); }
+  if (act.special === "schoolpresent") { return Object.assign(s, { pending: schoolPresentMenu(s).pending }); }
+  if (act.special === "schooltrans") { return Object.assign(s, { pending: schoolTransMenu(s).pending }); }
+  if (act.special === "selftrans") { return Object.assign(s, { pending: selfTransMenu(s).pending }); }
+  if (act.special === "skipschool") { return skipSchool(s); }
+  if (act.special === "dropschool") { return dropOutSchool(s); }
+  if (act.special === "jobs") { s.pending = jobBoard(s); return s; }
+  if (act.special === "pride") { s.pending = prideMenu(s); return s; }
+  if (act.special === "dating") {
+    const attached = activePartners(s).filter(([, p]) => ["serious", "engaged", "married"].includes(p.status));
+    if (attached.length && !attached.every(([, p]) => p.openOk)) {
+      const [, p] = attached[0];
+      return Object.assign(s, { pending: { emoji: "⚠️", title: "You're already with someone", text: `You're ${p.status === "married" ? "married to" : p.status === "engaged" ? "engaged to" : "serious with"} ${p.name}. Looking for someone new means going behind their back — unless you've agreed otherwise.`, options: [
+        { label: "Go looking anyway", fx: { run: (st) => { st.flags.cheating = true; st.pending = datingMenu(st).pending; } } },
+        { label: "Ask them about opening it up instead", fx: { run: (st) => { st.pending = openTalk(st).pending; } } },
+        { label: "Don't", fx: { stats: { happiness: +1 }, feed: "💭 You thought about it, and didn't. That counts for something." } },
+      ] } });
+    }
+    return Object.assign(s, { pending: datingMenu(s).pending });
+  }
+  if (act.special === "party") { return Object.assign(s, { pending: partyMenu(s).pending }); }
+  if (act.special === "crime") { return Object.assign(s, { pending: crimeMenu(s).pending }); }
+  if (act.special === "askhome") { return Object.assign(s, { pending: askForHomeMenu(s).pending }); }
+  if (act.special === "shelter") { return shelterAction(s); }
+  if (act.special === "prison") { return Object.assign(s, { pending: prisonMenu(s).pending }); }
+  if (act.special === "expunge") { return Object.assign(s, { pending: expungeMenu(s).pending }); }
+  if (act.special === "hrt") { return Object.assign(s, { pending: hrtMenu(s).pending }); }
+  if (act.special === "blockers") { return Object.assign(s, { pending: blockersMenu(s).pending }); }
+  if (act.special === "srgTop") { return Object.assign(s, { pending: surgeryMenu(s, "top").pending }); }
+  if (act.special === "srgGcs") { return Object.assign(s, { pending: surgeryMenu(s, "gcs").pending }); }
+  if (act.special === "srgFace") { return Object.assign(s, { pending: surgeryMenu(s, "face").pending }); }
+  if (act.special === "legalName") { return Object.assign(s, { pending: legalMenu(s, "name").pending }); }
+  if (act.special === "legalMarker") { return Object.assign(s, { pending: legalMenu(s, "marker").pending }); }
+  if (act.special === "lottery") {
+    const r = Math.random();
+    if (r < 0.03) { s.money += 500; push(s, `🎟 THE NUMBERS CAME UP. ${s.profile.curSym}500! You have already mentally spent it four different ways.`); s.stats.happiness = clamp(s.stats.happiness + 6); }
+    else if (r < 0.15) { s.money += 20; push(s, `🎟 Small win — ${s.profile.curSym}20. The system works! (It does not work.)`); }
+    else push(s, `🎟 Not this time. The dream cost ${s.profile.curSym}5 and was briefly worth it.`);
+    s = advance(s, act.cost);
+    return s;
+  }
+  if (act.special === "hustle") {
+    const y = yearOf(s);
+    const types = ["tutoring kids", "repair work", "a weekend food stall", ...(y >= 2004 ? ["an online store"] : []), ...(y >= 2015 ? ["content creation"] : [])];
+    s.pending = { emoji: "🚀", title: "The side hustle", text: `${s.profile.curSym}200 of seed money and your free hours. What's the play?`, options: types.map((t) => ({ label: t[0].toUpperCase() + t.slice(1), fx: { run: (st) => { st.career.sideHustle = { type: t, level: 1 }; }, feed: `🚀 You launched ${t} on the side. Small, scrappy, yours.` } })) };
+    return s;
+  }
+  if (act.sub) {
+    s.pending = { emoji: act.sub.emoji, title: act.sub.title, text: act.sub.text, options: act.sub.opts.map((o) => ({ label: o.label, fx: { ...o.fx, feed: o.feed } })) };
+    return s;
+  }
+  const fx = act.fxDyn ? act.fxDyn(s) : act.fx;
+  applyFx(s, fx);
+  const lines = act.linesDyn ? act.linesDyn(s) : act.lines;
+  if (lines && lines.length) push(s, pick(lines));
+  s = advance(s, act.cost);
+  return s;
+}
+
+function jobBoard(s) {
+  const y = yearOf(s); const deg = s.education.degree; const rec = (s.flags.record || []).length;
+  const avail = Object.entries(INDUSTRIES).filter(([, ind]) => y >= ind.minYear && (!ind.degRequired || ind.deg === deg));
+  const picks = [];
+  const shuffled = avail.sort(() => Math.random() - 0.5);
+  for (const [k, ind] of shuffled) {
+    if (picks.length >= 4) break;
+    let tier = 1;
+    if (deg && ind.deg === deg) tier = deg === "Medicine" ? 3 : rnd(2, 3);
+    else if (deg) tier = 2;
+    const rw = recWeight(s);
+    if (rw >= 2) tier = Math.max(1, tier - (rw > 5 ? 2 : 1));
+    if (["law", "medicine", "education", "finance"].includes(k)) {
+      if (hasDeg(s, "violent")) continue;
+      if (rw >= 2 && Math.random() < 0.8) continue;
+      if (rw > 0 && Math.random() < 0.3) continue;
+    }
+    const salary = Math.round(rnd(...TIER_SALARY[tier]) * Math.max(0.55, 1 - rw * 0.07));
+    picks.push({ k, ind, tier, salary });
+  }
+  if (!picks.length) return { emoji: "💼", title: "Job hunt", text: rec ? "Every application asks the same question, and your answer ends the conversation. Nothing this month." : "Nothing on the board this week. The market shrugs.", options: [{ label: "Keep looking later", fx: { feed: rec ? "💼 Another round of doors closing politely. The box you have to tick follows you everywhere." : "💼 Nothing this round. The search continues." } }] };
+  return { emoji: "💼", title: "The job board", text: `Openings this month${deg ? ` (your ${deg} degree opens doors)` : ""}${rec ? ` — and ${rec} conviction${rec > 1 ? "s" : ""} closing others` : ""}:`, options: [
+    ...picks.map((p) => ({ label: `${p.ind.name} — ${p.ind.titles[p.tier - 1]} · ${s.profile.curSym}${p.salary}/mo`, fx: { run: (st) => {
+      st.career.job = { industry: p.k, title: p.ind.titles[p.tier - 1], tier: p.tier, salary: p.salary, boss: pick(BOSS_NAMES), perf: 55, since: st.ageDays };
+      st.flags.job = null;
+      push(st, `💼 Hired: ${p.ind.titles[p.tier - 1]} in ${p.ind.name}, ${st.profile.curSym}${p.salary}/mo. Day one: find the good coffee machine.`);
+      st.stats.happiness = clamp(st.stats.happiness + 4);
+    } } })),
+    { label: "None of these — keep looking", fx: { feed: "💼 You passed on this batch. Standards are a strategy too." } },
+  ] };
+}
+
+/* ═══════════════ RELATIONSHIP ACTIONS ═══════════════ */
+
+const TRAIT_ORDER = ["warmth", "kindness", "loyalty", "acceptance", "politics"];
+function traitText(key, v, name) {
+  if (key === "warmth") return v > 65 ? `${name} is openly affectionate.` : v > 40 ? `${name} shows love in quiet, practical ways.` : `${name} keeps everyone at arm's length — even you.`;
+  if (key === "kindness") return v > 65 ? `${name} is genuinely kind, even when nobody's watching.` : v > 40 ? `${name} is fair, if not exactly soft.` : `${name} can be harsh, and doesn't always notice.`;
+  if (key === "loyalty") return v > 65 ? `${name} is fiercely loyal — ride or die.` : v > 40 ? `${name} is dependable, within reason.` : `${name} follows shiny things. Keep your eyes open.`;
+  if (key === "acceptance") return v > 65 ? `${name} truly believes people should live as who they are.` : v > 40 ? `${name} says "live and let live" — but you sense limits.` : `${name} has firm, narrow ideas about how people should be.`;
+  if (key === "politics") return v > 65 ? `${name} leans progressive — talks about how the world should change.` : v > 40 ? `${name} sits in the middle, suspicious of loud opinions.` : `${name} is traditional — "the old ways worked fine."`;
+  return "";
+}
+function spendTime(state, group, key) {
+  const s = JSON.parse(JSON.stringify(state));
+  const p = s[group][key];
+  if (s.ageDays - p.lastTime < 30) return s;
+  p.lastTime = s.ageDays;
+  p.rel = clamp(p.rel + rnd(2, 4));
+  s.stats.happiness = clamp(s.stats.happiness + 1);
+  push(s, group === "romance" ? `💘 Date night with ${p.name}. ${pick(["You closed the place down talking.", "You cooked together; the kitchen survived, barely.", "A walk that took three hours longer than planned."])}` : `🕰 You spent real time with ${p.name}. (+bond)`);
+  return s;
+}
+function deepTalk(state, group, key) {
+  const s = JSON.parse(JSON.stringify(state));
+  const p = s[group][key];
+  if (s.ageDays - p.lastTalk < 60 || p.pet) return s;
+  p.lastTalk = s.ageDays;
+  const unknown = TRAIT_ORDER.find((t) => !p.known.includes(t));
+  if (unknown) {
+    p.known.push(unknown);
+    p.rel = clamp(p.rel + 1);
+    push(s, `💬 A long talk with ${p.name}. ${traitText(unknown, p[unknown], p.name)}`);
+  } else {
+    p.rel = clamp(p.rel + 2);
+    push(s, `💬 Another long talk with ${p.name}. You know them well by now.`);
+  }
+  return s;
+}
+/* ═══════════════ GIFTS ═══════════════ */
+
+const GIFTS = [
+  { id: "choc", label: "🍫 Chocolates", price: 12 },
+  { id: "flowers", label: "💐 Flowers", price: 18 },
+  { id: "book", label: "📖 A carefully-chosen book", price: 28 },
+  { id: "hand", label: "🧶 Something handmade", price: 0 },
+  { id: "tickets", label: "🎟 Tickets to a show together", price: 85 },
+  { id: "jewel", label: "💎 Jewelry", price: 160 },
+];
+
+function resolveGift(st, group, key, g) {
+  const p = st[group][key];
+  st.money = Math.max(0, st.money - g.price);
+  p.lastGift = st.ageDays;
+  let score = rnd(1, 100);
+  if (g.id === "hand") score += p.warmth > 55 ? 35 : 5;
+  if (g.id === "book") score += (p.politics > 60 || p.kindness > 60) ? 25 : 0;
+  if (g.id === "jewel") score += p.warmth > 60 ? 20 : -15;
+  if (g.id === "tickets") score += p.loyalty > 55 ? 25 : 10;
+  if (g.id === "choc") score += 10;
+  if (g.id === "flowers") score += p.warmth > 45 ? 15 : 0;
+  const ADORE = { choc: `the fancy chocolates vanished in one sitting, shared bite by bite with you`, flowers: `they kept the flowers alive two weeks past their natural lifespan out of sheer devotion`, book: `they read it in two days and now quote it AT you, which is the highest honor`, hand: `something you MADE? They got quiet, then held it like evidence that they matter`, tickets: `the show became an instant core memory — they still hum the encore`, jewel: `they wear it constantly and touch it absent-mindedly when you're mentioned` };
+  const LIKE = { choc: `solid choice, happily received`, flowers: `they smiled and found a vase`, book: `it went on the to-read pile — the good pile`, hand: `they were charmed by the effort`, tickets: `a lovely night out together`, jewel: `they were flattered, if a bit stunned` };
+  const MISS = { choc: `turns out they're 'not really a sweets person'. Noted forever.`, flowers: `allergies. ALLERGIES. The sneeze fit was heroic.`, book: `they thanked you twice, which somehow made it worse`, hand: `they said 'you MADE this?' in the wrong tone`, tickets: `the show was, by mutual silent agreement, terrible`, jewel: `too much, too fast — they went quiet and formal` };
+  if (score >= 95) {
+    p.rel = clamp(p.rel + rnd(7, 10));
+    push(st, `🎁 ${g.label.slice(2).trim().charAt(0).toUpperCase() + g.label.slice(3)} for ${p.name} — direct hit: ${ADORE[g.id]}.`);
+    st.stats.happiness = clamp(st.stats.happiness + 3);
+  } else if (score >= 45) {
+    p.rel = clamp(p.rel + rnd(3, 5));
+    push(st, `🎁 You gave ${p.name} ${g.label.slice(3).toLowerCase()} — ${LIKE[g.id]}.`);
+  } else {
+    p.rel = clamp(p.rel + (g.id === "jewel" ? -2 : 1));
+    push(st, `🎁 You gave ${p.name} ${g.label.slice(3).toLowerCase()}... ${MISS[g.id]}`);
+  }
+}
+
+function giftMenu(state, group, key) {
+  const s = JSON.parse(JSON.stringify(state));
+  const p = s[group][key];
+  if (p.pet) {
+    s.pending = { emoji: "🎁", title: `Spoil ${p.name}`, text: "The pet store beckons.", options: [
+      { label: `🎾 New toy — ${s.profile.curSym}8`, cond: (st) => st.money >= 8, fx: { money: -8, relF: { pet: +5 }, stats: { happiness: +2 }, feed: `🎾 ${p.name} received the toy with a level of joy humans reserve for lottery wins.` } },
+      { label: `🛏 Luxury bed — ${s.profile.curSym}35`, cond: (st) => st.money >= 35, fx: { money: -35, relF: { pet: +7 }, feed: `🛏 A premium bed for ${p.name}, who inspected it thoroughly and then slept in the box. Money well spent.` } },
+      { label: "Not today", fx: { feed: "" } },
+    ] };
+    return s;
+  }
+  s.pending = { emoji: "🎁", title: `A gift for ${p.name}`, text: "What do you bring? (What lands depends on who they are.)", options: [
+    ...GIFTS.map((g) => ({ label: `${g.label} — ${g.price ? s.profile.curSym + g.price : "your time"}`, cond: (st) => st.money >= g.price, fx: { run: (st) => resolveGift(st, group, key, g) } })),
+    { label: "Actually — not today", fx: {} },
+  ] };
+  return s;
+}
+
+/* ═══════════════ RELATIONSHIP ACTIONS (BitLife-style stacked popups) ═══════════════ */
+
+const CANCEL = { label: "Never mind", fx: {} };
+const pClone = (state) => JSON.parse(JSON.stringify(state));
+
+/* — Compliment: pick a topic; whether it lands depends on who they are — */
+function complimentMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const mk = (label, hit, missText, hitText) => ({ label, fx: { run: (st) => {
+    const q = st[group][key];
+    q.lastComp = st.ageDays;
+    const lands = hit(q) || Math.random() < 0.35;
+    if (lands) { q.rel = clamp(q.rel + rnd(3, 5)); st.stats.happiness = clamp(st.stats.happiness + 1); push(st, `😊 You told ${q.name} ${hitText} ${pick(["They lit up.", "They pretended to wave it off and glowed anyway.", "They brought it up again an hour later, casually. It landed."])}`); }
+    else { q.rel = clamp(q.rel + 1); push(st, `😊 You told ${q.name} ${hitText} ${missText}`); }
+  } } });
+  s.pending = { emoji: "😊", title: `Compliment ${p.name}`, text: "What do you want them to hear?", options: [
+    mk("Their looks", (q) => q.warmth > 50, `"Ha. Okay." Not everyone knows what to do with that one.`, `they look great lately.`),
+    mk("Their mind", (q) => q.politics > 55 || q.prudence > 55, `They squinted, suspicious of flattery.`, `they're one of the sharpest people you know.`),
+    mk("Their kindness", (q) => q.kindness > 50, `"...thanks?" It came out weirder than you meant.`, `the way they treat people doesn't go unnoticed.`),
+    mk("Their style", (q) => q.warmth > 40, `They checked if you were being sarcastic. Hm.`, `their style is genuinely enviable.`),
+    mk("Something they did", (q) => q.loyalty > 45, `They deflected instantly. Compliments are hard for some people.`, `that thing they did really mattered.`),
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* — Insult: confirmed upstream; picking the knife still costs you — */
+function insultMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const mk = (label, line) => ({ label, fx: { run: (st) => {
+    const q = st[group][key];
+    const cuts = Math.random() < 0.7;
+    q.rel = clamp(q.rel - rnd(8, 14));
+    st.emergent.kindness = clamp((st.emergent.kindness ?? 50) - 3);
+    if (cuts) push(st, `😠 You told ${q.name} ${line} It landed hard. The silence afterward had furniture in it.`);
+    else { q.rel = clamp(q.rel - 4); push(st, `😠 You told ${q.name} ${line} They laughed in your face — which somehow made it worse for everyone.`); }
+    if (group === "romance" && q.rel < 20) push(st, `💔 ${q.name} is looking at you like they're doing math. The relationship math.`);
+  } } });
+  s.pending = { emoji: "😠", title: `Insult ${p.name}`, text: "This will not be taken back. What's the line?", options: [
+    mk("Their taste", `their taste is a cry for help.`),
+    mk("Their opinions", `their opinions are secondhand and overpriced.`),
+    mk("Their habits", `living with their habits should count as community service.`),
+    mk("Brutal honesty, no jokes", `exactly what you think of them, plainly.`),
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* — Conversation: pick a topic; some topics open people up — */
+function conversationMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const reveal = (st, q) => {
+    if (group === "romance" && !q.known.includes("orientation") && Math.random() < 0.45) {
+      partnerOrientation(st, q);
+      q.known.push("orientation");
+      return ` It came up without ceremony: ${q.name} is ${q.orientation.toLowerCase()}. You'd half-guessed; it's good to actually know.`;
+    }
+    const hidden = TRAIT_ORDER.filter((t) => !q.known.includes(t));
+    if (hidden.length && Math.random() < 0.6) { const t = hidden[0]; q.known.push(t); return ` Somewhere in there, you learned something real: ${traitText(t, q[t], q.name).toLowerCase()}`; }
+    return "";
+  };
+  s.pending = { emoji: "💬", title: `Talk with ${p.name}`, text: "What's the conversation?", options: [
+    { label: "Catch up on life", fx: { run: (st) => { const q = st[group][key]; q.lastTalk = st.ageDays; q.rel = clamp(q.rel + rnd(2, 4)); push(st, `💬 You and ${q.name} traded life updates until the drinks went cold.${reveal(st, q)}`); } } },
+    { label: "Trade gossip", fx: { run: (st) => { const q = st[group][key]; q.lastTalk = st.ageDays; q.rel = clamp(q.rel + 2); st.stats.happiness = clamp(st.stats.happiness + 2); push(st, `💬 Forty minutes of high-grade neighborhood intel with ${q.name}. Scandalous. Delicious. Mostly unverified.`); } } },
+    { label: "Ask their advice", fx: { run: (st) => { const q = st[group][key]; q.lastTalk = st.ageDays; q.rel = clamp(q.rel + rnd(3, 5)); push(st, `💬 You asked ${q.name} for advice on something real. Being needed suits them.${reveal(st, q)}`); } } },
+    { label: "Share what's weighing on you", fx: { run: (st) => { const q = st[group][key]; q.lastTalk = st.ageDays; if (q.warmth > 45) { q.rel = clamp(q.rel + rnd(4, 7)); st.stats.happiness = clamp(st.stats.happiness + 3); push(st, `💬 You let ${q.name} see the heavy thing. They carried a corner of it without being asked.${reveal(st, q)}`); } else { q.rel = clamp(q.rel + 1); push(st, `💬 You opened up to ${q.name}. They changed the subject gently — not everyone can hold weight. Noted.`); } } } },
+    { label: "Debate politics", fx: { run: (st) => { const q = st[group][key]; q.lastTalk = st.ageDays; if (!q.known.includes("politics")) q.known.push("politics");
+      if (q.politics > 55) { q.rel = clamp(q.rel + rnd(3, 6)); push(st, `💬 You and ${q.name} went three rounds on the state of the world and came out closer. ${traitText("politics", q.politics, q.name)}`); }
+      else { q.rel = clamp(q.rel - rnd(2, 5)); push(st, `💬 Politics with ${q.name} was a mistake you'll make again anyway. ${traitText("politics", q.politics, q.name)}`); } } } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* — Spend time: pick a place — */
+function distanceNote(s, p) { return p && p.distant ? " (a long way away now)" : ""; }
+
+function timeMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  if (p.pet) return spendTime(s, group, key);
+  const isRom = group === "romance";
+  const mk = (label, line, fx2) => ({ label, fx: { run: (st) => { const q = st[group][key]; q.lastTime = st.ageDays; q.rel = clamp(q.rel + rnd(3, 6)); push(st, line.replace("{n}", q.name)); }, ...fx2 } });
+  s.pending = { emoji: isRom ? "💘" : "🕰", title: isRom ? `A date with ${p.name}` : `Time with ${p.name}`, text: "Where to?", options: [
+    mk("☕ A café", isRom ? `☕ Coffee with {n} that outlived three refills. The staff started giving you looks. Worth it.` : `☕ You and {n} closed down a café table with talk.`),
+    mk("🌳 A long walk", `🌳 You and {n} walked until the conversation found its real subject. It always does around the third kilometer.`, { stats: { health: +1 } }),
+    mk("🏠 Their place", `🏠 An evening at {n}'s place — no plan, no shoes, the good kind of nothing.`),
+    mk("🍽 Somewhere nice", `🍽 You took {n} somewhere with cloth napkins. Everyone sat up straighter and laughed anyway.`, { money: -30 }),
+    CANCEL,
+  ].filter((o) => !o.fx || o.fx.money === undefined || s.money >= -o.fx.money) };
+  return s;
+}
+
+/* — Movie theater: genre matters — */
+function movieMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const cost = 16;
+  const mk = (label, hit, hitLine, missLine) => ({ label, cond: (st) => st.money >= cost, fx: { money: -cost, run: (st) => {
+    const q = st[group][key]; q.lastTime = st.ageDays;
+    if (hit(q) || Math.random() < 0.3) { q.rel = clamp(q.rel + rnd(4, 6)); st.stats.happiness = clamp(st.stats.happiness + 3); push(st, hitLine.replace("{n}", q.name)); }
+    else { q.rel = clamp(q.rel + 1); push(st, missLine.replace("{n}", q.name)); }
+  } } });
+  s.pending = { emoji: "🎬", title: `Movies with ${p.name}`, text: `Two tickets, ${s.profile.curSym}${cost}. What's showing?`, options: [
+    mk("😂 Comedy", (q) => q.warmth > 40, `😂 You and {n} laughed at the same dumb parts, which is the entire test of a person.`, `😂 The comedy was fine. {n} smiled politely. Tough crowd.`),
+    mk("👻 Horror", (q) => q.courage === undefined || q.loyalty > 50, `👻 {n} grabbed your arm at every jump scare. Excellent film. The film was irrelevant.`, `👻 {n} watched the horror unmoved and explained the practical effects. Romance is dead but the trivia was good.`),
+    mk("💘 Romance", (q) => q.warmth > 55, `💘 {n} pretended not to tear up at the ending and failed beautifully.`, `💘 {n} checked the time twice during the love story. Duly noted.`),
+    mk("💥 Action", (q) => q.politics < 60, `💥 Explosions, one-liners, shared popcorn strategy. You and {n} left quoting it.`, `💥 {n} called the plot "a physics crime". Fun anyway.`),
+    mk("🎨 Arthouse", (q) => q.politics > 55 || q.prudence > 55, `🎨 Three hours, two subtitles tracks, one long silence after — the good kind. {n} is still thinking about it.`, `🎨 {n} fell asleep at minute forty of the arthouse film. You finished it out of spite and pretzels.`),
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* — Money: two-stage (give/ask → amount) — */
+function moneyMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  s.pending = { emoji: "💵", title: `Money & ${p.name}`, text: "Money between people is never just money.", options: [
+    { label: "Give them money", fx: { run: (st) => { st.pending = giveMoneyMenu(st, group, key); } } },
+    { label: "Ask them for money", fx: { run: (st) => { st.pending = askMoneyMenu(st, group, key); } } },
+    CANCEL,
+  ] };
+  return s;
+}
+function giveMoneyMenu(st, group, key) {
+  const p = st[group][key];
+  const cur = st.profile.curSym;
+  const mk = (amt) => ({ label: `${cur}${amt}`, cond: (x) => x.money >= amt, fx: { money: -amt, run: (x) => { const q = x[group][key]; q.rel = clamp(q.rel + Math.min(12, 2 + Math.round(amt / 60))); push(x, amt >= 300 ? `💵 You gave ${q.name} ${cur}${amt}. They protested twice and teared up once. This one goes in the permanent record of who showed up.` : `💵 You slipped ${q.name} ${cur}${amt}. "You didn't have to." They kept it. Both things were right.`); } } });
+  return { emoji: "💵", title: `Give ${p.name} money`, text: `You have ${cur}${st.money}.`, options: [mk(20), mk(100), mk(300), mk(800), CANCEL] };
+}
+function askMoneyMenu(st, group, key) {
+  const p = st[group][key];
+  const cur = st.profile.curSym;
+  const mk = (amt) => ({ label: `${cur}${amt}`, fx: { run: (x) => { const q = x[group][key];
+    const odds = (q.rel / 150) + (q.kindness > 55 ? 0.2 : 0) - (amt >= 300 ? 0.25 : 0);
+    if (Math.random() < odds) { x.money += amt; q.rel = clamp(q.rel - 2); push(x, `💵 ${q.name} lent you ${cur}${amt} without making it weird. Almost without making it weird.`); }
+    else { q.rel = clamp(q.rel - rnd(3, 6)); push(x, `💵 ${q.name} said no to the ${cur}${amt} — kindly, but no. The next few conversations will be 4% more polite than usual.`); } } } });
+  return { emoji: "💵", title: `Ask ${p.name} for money`, text: "How much do you need?", options: [mk(20), mk(100), mk(300), CANCEL] };
+}
+
+/* — Apologize: only shows when things are broken — */
+function apologizeAction(state, group, key) {
+  const s = pClone(state);
+  const q = s[group][key];
+  if (q.warmth > 35 || Math.random() < 0.4) {
+    q.rel = clamp(q.rel + rnd(6, 10));
+    delete s.flags["rift_" + key];
+    push(s, `🕊 You apologized to ${q.name} — the real kind, no "but". They took a breath you could hear, and something reopened.`);
+  } else {
+    q.rel = clamp(q.rel + 2);
+    push(s, `🕊 You apologized to ${q.name}. "Okay," they said. Not forgiveness yet — a receipt. It's a start.`);
+  }
+  return s;
+}
+
+/* — Spy: confirmed upstream; risky — */
+function spyAction(state, group, key) {
+  const s = pClone(state);
+  const q = s[group][key];
+  q.lastSpy = s.ageDays;
+  const r = Math.random();
+  if (r < 0.25) {
+    q.rel = clamp(q.rel - rnd(10, 16));
+    push(s, `🕵 ${q.name} CAUGHT you going through their ${pick(["messages", "mail", "bag", "search history"])}. The conversation that followed used your full name. Trust took real damage.`);
+  } else if (r < 0.6) {
+    push(s, `🕵 You snooped on ${q.name} and found... grocery lists, a half-finished playlist, and a photo of you two they'd saved. Now the guilt is yours to keep.`);
+  } else {
+    const hidden = TRAIT_ORDER.filter((t) => !q.known.includes(t));
+    if (hidden.length) { const t = pick(hidden); q.known.push(t); push(s, `🕵 Your little surveillance operation on ${q.name} turned something up: ${traitText(t, q[t], q.name).toLowerCase()} You can never say how you know.`); }
+    else push(s, `🕵 You spied on ${q.name} and learned nothing you didn't already know. The shame, however, is new.`);
+  }
+  s.emergent.kindness = clamp((s.emergent.kindness ?? 50) - 2);
+  return s;
+}
+
+/* — Unfriend: confirmed upstream — */
+function unfriendAction(state, key) {
+  const s = pClone(state);
+  const q = s.friends[key];
+  if (!q) return s;
+  push(s, `👋 You closed the book on ${q.name}. No fight, no speech — you just stopped watering it. Some endings are quiet.`);
+  delete s.friends[key];
+  delete s.outTo[key];
+  return s;
+}
+
+/* ═══════════════ DATING (app / site / personals, by era) ═══════════════ */
+
+function datingLabel(y) {
+  return y >= 2012 ? { name: "the dating app", emoji: "📱", open: "You open the app. The algorithm has opinions." }
+       : y >= 1995 ? { name: "the dating site", emoji: "💻", open: "Dial-up hums. The dating site loads, one profile photo at a time." }
+       : { name: "the personals column", emoji: "📰", open: "You spread the newspaper personals on the table, pen in hand. Everyone here is 'fun-loving'." };
+}
+
+function datingBio(p, y) {
+  const bits = [];
+  bits.push(p.warmth > 60 ? pick(["ends every message with a heart", "asks how your day ACTUALLY was", "radiates golden-retriever energy"]) : p.warmth < 35 ? pick(["dry wit, drier replies", "mysterious to a fault", "allergic to small talk"]) : pick(["easygoing", "solid brunch companion energy", "reads people well"]));
+  bits.push(p.loyalty > 60 ? pick(["still friends with everyone from school", "shows up. Always.", "the designated emergency contact"]) : p.loyalty < 35 ? pick(["'not looking for anything serious'", "three exes, zero closure", "commitment-curious at best"]) : pick(["takes things at their own pace", "keeps their circle small"]));
+  bits.push(p.politics > 60 ? pick(["reads the news AND the corrections", "will march for you", "quotes writers at brunch"]) : p.politics < 35 ? pick(["'let's not talk politics'", "traditional, and firm about it", "thinks things were better before"]) : pick(["picks battles carefully", "more listener than debater"]));
+  return bits.join(" · ");
+}
+
+function openTalk(state) {
+  const s = pClone(state);
+  const list = activePartners(s).filter(([, p]) => ["serious", "engaged", "married"].includes(p.status));
+  if (!list.length) { s.pending = { emoji: "🗝", title: "Nobody to ask", text: "You're not attached to anyone right now.", options: [{ label: "Right", fx: {} }] }; return s; }
+  const [k, p] = list[0];
+  s.pending = { emoji: "🗝", title: `Talk to ${p.name}`, text: `Asking whether the two of you could be open. A real conversation, with a real chance of going badly.`, options: [
+    { label: "Ask honestly", fx: { run: (st) => {
+      const q = st.romance[k];
+      const odds = 0.15 + (q.loyalty < 45 ? 0.2 : 0) + q.rel / 400 + (localAcceptance(st) > 60 ? 0.15 : 0);
+      if (Math.random() < odds) { q.openOk = true; q.rel = clamp(q.rel + 4); st.stats.happiness = clamp(st.stats.happiness + 6);
+        push(st, `🗝 ${q.name} thought about it for a week and came back with conditions, which you agreed to. It's open now, on terms you both wrote down.`); }
+      else { q.rel = clamp(q.rel - rnd(8, 16)); st.stats.happiness = clamp(st.stats.happiness - 7);
+        push(st, `🗝 "Is this you telling me you already have?" It went badly. ${q.name} believed you eventually, mostly, and the question is in the room permanently now.`); }
+    } } },
+    { label: "Leave it", fx: {} },
+  ] };
+  return s;
+}
+
+function datingMenu(state) {
+  const s = pClone(state);
+  const y = yearOf(s);
+  const dl = datingLabel(y);
+  const mk = () => {
+    const g = candidateGender(s);
+    const name = candidateName(s, g);
+    const person = makePerson(name, g === "M" ? "Man" : g === "F" ? "Woman" : "Person", { rel: rnd(30, 45) });
+    return { name, g, person };
+  };
+  const cands = [mk(), mk(), mk()];
+  s.pending = { emoji: dl.emoji, title: dl.name[0].toUpperCase() + dl.name.slice(1), text: dl.open, layout: "grid", options: [
+    ...cands.map((c) => ({
+      card: { emoji: c.g === "M" ? "🙋‍♂️" : c.g === "F" ? "🙋‍♀️" : "🙋", name: c.name, sub: datingBio(c.person, y) },
+      fx: { run: (st) => {
+        if (activePartners(st).length >= 3) { push(st, `${dl.emoji} You matched with ${c.name}, then counted your existing entanglements and quietly unmatched. Even you have limits. Apparently.`); return; }
+        const spark = Math.random();
+        if (spark < 0.62) {
+          const key = "r" + (st.flags.rSeq = (st.flags.rSeq || 0) + 1);
+          st.romance[key] = { ...c.person, g: c.g, status: "dating", openOk: activePartners(st).length > 0, met: dl.name };
+          push(st, `${dl.emoji} You and ${c.name} matched on ${dl.name}. First ${y >= 1995 ? "date" : "letter exchange, then a date"}: nervous, funny, promising. You're seeing each other.`);
+          st.stats.happiness = clamp(st.stats.happiness + 4);
+        } else if (spark < 0.85) {
+          push(st, `${dl.emoji} You met ${c.name} for coffee. Perfectly pleasant, zero electricity. You both performed "we should do this again" beautifully and never did.`);
+        } else {
+          push(st, `${dl.emoji} ${c.name} ${pick(["showed up 40 minutes late with no apology and one excuse involving a parrot", "spent the whole date talking about their ex's new partner", "was a solid decade older than their photo and lied about literally everything else too"])}. The bar remains underground.`);
+          st.stats.happiness = clamp(st.stats.happiness - 2);
+        }
+      } },
+    })),
+    { label: y >= 1995 ? "Keep swiping (another day, another batch)" : "Circle nothing, try next week's paper", fx: { run: (st) => { st.pending = datingMenu(st).pending; } } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* ═══════════════ PROPOSE (ring → place → time → answer) ═══════════════ */
+
+const RINGS = [
+  { id: "none", emoji: "🤲", name: "No ring", sub: "just the question, bare and honest", price: 0, bonus: -0.05 },
+  { id: "modest", emoji: "💍", name: "A modest ring", sub: "simple, saved-for, sincere", price: 150, bonus: 0.06 },
+  { id: "dazzle", emoji: "💎", name: "A dazzling ring", sub: "the jeweler shook your hand", price: 900, bonus: 0.12 },
+];
+const PROP_PLACES = [
+  { id: "home", emoji: "🏠", name: "At home", sub: "where the life actually happens", fit: (p) => p.warmth > 45 },
+  { id: "resto", emoji: "🍽", name: "A nice restaurant", sub: "witnesses and dessert", fit: () => true },
+  { id: "view", emoji: "🌄", name: "Somewhere with a view", sub: "the spot that means something", fit: (p) => p.loyalty > 45 },
+  { id: "public", emoji: "🎪", name: "Big public gesture", sub: "crowd, spectacle, no exit", fit: (p) => p.warmth > 60 && p.loyalty > 55, risky: true },
+];
+const PROP_TIMES = [
+  { id: "sunrise", emoji: "🌅", name: "Sunrise", sub: "for the brave and the caffeinated" },
+  { id: "golden", emoji: "🌇", name: "Golden hour", sub: "cinematographer-approved" },
+  { id: "midnight", emoji: "🌙", name: "Midnight", sub: "just you two and the quiet" },
+];
+
+function proposeMenu(state, pkey) {
+  const s = pClone(state);
+  const p = s.romance[pkey];
+  s.pending = { emoji: "💍", title: `Proposing to ${p.name}`, text: "You've decided. Now the details — starting with the ring.", layout: "grid", options: [
+    ...RINGS.map((r) => ({
+      card: { emoji: r.emoji, name: r.name, sub: r.sub, tag: r.price ? s.profile.curSym + r.price : "free" },
+      cond: (st) => st.money >= r.price,
+      fx: { run: (st) => { st.money -= r.price; st.pending = proposePlace(st, pkey, r).pending; } },
+    })),
+    { label: "Not yet — the moment isn't ripe", fx: {} },
+  ] };
+  return s;
+}
+function proposePlace(state, pkey, ring) {
+  const s = pClone(state);
+  const p = s.romance[pkey];
+  s.pending = { emoji: "💍", title: "Where do you ask?", text: `${p.name} will remember this place forever — choose like it.`, layout: "grid", options: PROP_PLACES.map((pl) => ({
+    card: { emoji: pl.emoji, name: pl.name, sub: pl.sub, tag: pl.risky ? "bold" : undefined },
+    fx: { run: (st) => { st.pending = proposeTime(st, pkey, ring, pl).pending; } },
+  })) };
+  return s;
+}
+function proposeTime(state, pkey, ring, place) {
+  const s = pClone(state);
+  s.pending = { emoji: "💍", title: "When?", text: "Every proposal is a scene. Pick the light.", layout: "grid", options: PROP_TIMES.map((t) => ({
+    card: { emoji: t.emoji, name: t.name, sub: t.sub },
+    fx: { run: (st) => resolveProposal(st, pkey, ring, place, t) },
+  })) };
+  return s;
+}
+function resolveProposal(st, pkey, ring, place, time) {
+  const p = st.romance[pkey];
+  if (!p) return;
+  const fitB = place.fit(p) ? 0.08 : place.risky ? -0.12 : 0;
+  let odds = 0.35 + p.rel / 160 + (p.loyalty > 55 ? 0.1 : 0) + ring.bonus + fitB;
+  if (p.status === "serious") odds += 0.1;
+  if (p.status === "dating") odds -= 0.34; // too soon, and they will say so
+  odds = Math.min(0.94, odds); // never a certainty
+  const scene = `${place.name.toLowerCase()}, ${time.name.toLowerCase()}, ${ring.id === "none" ? "no ring — just your two hands and the question" : ring.name.toLowerCase()}`;
+  const legal = marriageLegal(st, p);
+  const same = sameSexCouple(st, p);
+  if (Math.random() < odds) {
+    p.status = "engaged";
+    st.stats.happiness = clamp(st.stats.happiness + 10);
+    push(st, `💍 ${scene[0].toUpperCase() + scene.slice(1)}. You asked. ${p.name} said YES — ${pick(["before you finished the sentence", "through immediate tears", "so loudly a stranger applauded", "twice, to be sure it counted"])}.${same && !legal ? " Marriage isn't legal here yet — so you'll promise each other everything anyway, your own way, and dare the law to catch up." : ""}`);
+    if (place.risky) push(st, `🎪 The crowd's cheer is a memory now — the gamble paid off, and the story will only grow with retelling.`);
+  } else {
+    p.rel = clamp(p.rel - rnd(6, 12));
+    st.stats.happiness = clamp(st.stats.happiness - 8);
+    push(st, `💍 ${scene[0].toUpperCase() + scene.slice(1)}. You asked. ${p.name} went quiet — the wrong quiet. "${pick(["I'm not there yet", "I love you, and I can't say yes today", "Can we... talk about this at home"])}." ${place.risky ? "The crowd dispersed with terrible gentleness. " : ""}The walk home was long. Not over — but bruised.`);
+    if (ring.price) { st.money += Math.round(ring.price * 0.7); push(st, `💍 The jeweler took the ring back at 70%. He'd seen that face before and asked no questions.`); }
+  }
+}
+
+/* ═══════════════ GIFT SHOP (visual grid) ═══════════════ */
+
+function giftShop(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const cur = s.profile.curSym;
+  if (p.pet) {
+    s.pending = { emoji: "🎁", title: `Spoil ${p.name}`, text: "The pet store beckons.", layout: "grid", options: [
+      { card: { emoji: "🎾", name: "New toy", tag: cur + "8" }, cond: (st) => st.money >= 8, fx: { money: -8, relF: { [key]: +5 }, stats: { happiness: +2 }, feed: `🎾 ${p.name} received the toy with joy humans reserve for lottery wins.` } },
+      { card: { emoji: "🦴", name: "Fancy treats", tag: cur + "15" }, cond: (st) => st.money >= 15, fx: { money: -15, relF: { [key]: +5 }, feed: `🦴 Gourmet treats for ${p.name}, gone in eleven seconds, remembered forever.` } },
+      { card: { emoji: "🛏", name: "Luxury bed", tag: cur + "35" }, cond: (st) => st.money >= 35, fx: { money: -35, relF: { [key]: +7 }, feed: `🛏 A premium bed for ${p.name}, who inspected it thoroughly and then slept in the box. Money well spent.` } },
+      { card: { emoji: "🎀", name: "Little outfit", tag: cur + "20" }, cond: (st) => st.money >= 20, fx: { money: -20, relF: { [key]: +4 }, stats: { happiness: +3 }, feed: `🎀 ${p.name} wore the outfit for four minutes of photos and one minute of betrayal-eyes. Archived forever.` } },
+      { label: "Not today", fx: {} },
+    ] };
+    return s;
+  }
+  const HINT = { choc: "sweet & safe", flowers: "classic", book: "for the thoughtful", hand: "warmth wins hearts", tickets: "an experience together", jewel: "high stakes" };
+  s.pending = { emoji: "🎁", title: `A gift for ${p.name}`, text: "What lands depends on who they are. Choose with what you know.", layout: "grid", options: [
+    ...GIFTS.map((g) => ({
+      card: { emoji: g.label.slice(0, 2).trim(), name: g.label.slice(2).trim(), sub: HINT[g.id], tag: g.price ? cur + g.price : "your time" },
+      cond: (st) => st.money >= g.price,
+      hi: g.id === "hand" && p.warmth > 55,
+      fx: { run: (st) => resolveGift(st, group, key, g) },
+    })),
+    { label: "Actually — not today", fx: {} },
+  ] };
+  return s;
+}
+
+/* ═══════════════ CONCERTS (era lineups) & PARTIES ═══════════════ */
+
+function eraActs(y) {
+  const T = (name, genre, emoji, price, big) => ({ name, genre, emoji, price, big: !!big });
+  if (y < 1980) return [T("The Velvet Corridor", "arena rock", "🎸", 30, 1), T("Miss Genevieve & The Heat", "disco", "🪩", 24), T("Cobalt Season", "prog rock", "🌀", 18), T("The Union Hall Ramblers", "folk", "🪕", 10)];
+  if (y < 1990) return [T("Neon Arcade", "synth-pop", "🎹", 32, 1), T("Iron Chalice", "metal", "🤘", 26), T("The Paper Kites Club", "new wave", "🕶", 18), T("Sister Morning", "soul", "🎷", 14)];
+  if (y < 2000) return [T("Dustbowl Cathedral", "grunge", "🎸", 28, 1), T("MC Vertigo", "hip-hop", "🎤", 26), T("Candy Static", "pop", "🍭", 30, 1), T("The Quiet Failures", "indie", "📻", 12)];
+  if (y < 2010) return [T("Exit Wound Kids", "pop-punk", "🛹", 26), T("Aria Blaze", "R&B", "💫", 34, 1), T("Los Imparables", "latin pop", "🔥", 28, 1), T("Whale Song Collective", "indie folk", "🐋", 14)];
+  if (y < 2020) return [T("DJ Meridian", "EDM", "🎛", 38, 1), T("The Lumen Sisters", "indie pop", "✨", 24), T("Cassius Vale", "rap", "🎤", 36, 1), T("Old Growth", "folk revival", "🌲", 16)];
+  return [T("glitchgarden", "hyperpop", "🌐", 30), T("Ayo Kingdom", "afrobeats", "🥁", 34, 1), T("Mothlight", "bedroom indie", "🦋", 14), T("The Hologram Ex", "synthwave revival", "📼", 22)];
+}
+
+function concertMenu(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const cur = s.profile.curSym;
+  const acts = eraActs(yearOf(s));
+  s.pending = { emoji: "🎤", title: `A show with ${p.name}`, text: "Who's playing? (Two tickets.)", layout: "grid", options: [
+    ...acts.map((a) => ({
+      card: { emoji: a.emoji, name: a.name, sub: a.genre + (a.big ? " · stadium" : " · small venue"), tag: cur + a.price * 2 },
+      cond: (st) => st.money >= a.price * 2,
+      fx: { run: (st) => {
+        const q = st[group][key];
+        st.money -= a.price * 2;
+        q.lastTime = st.ageDays;
+        const vibe = Math.random() + (q.warmth > 50 ? 0.15 : 0) + (a.big ? 0.05 : 0.1);
+        if (vibe > 0.45) {
+          q.rel = clamp(q.rel + rnd(5, 8));
+          st.stats.happiness = clamp(st.stats.happiness + 4);
+          st.emergent.music = clamp((st.emergent.music ?? 0) + 2);
+          push(st, `🎤 ${a.name} with ${q.name} — ${a.big ? pick([`a stadium singing one chorus with one voice, and you two inside it`, `lights like weather, bass in your ribs, ${q.name} screaming the words beside you`]) : pick([`a tiny venue, sweat on the walls, the band close enough to make eye contact`, `sixty people and a band playing like it was six thousand — ${q.name} bought the shirt`])}. Ears rang for two days. Cheap at twice the price.`);
+        } else {
+          q.rel = clamp(q.rel + 2);
+          push(st, `🎤 You took ${q.name} to see ${a.name}. ${pick([`The opener played for ninety minutes. NINETY.`, `${q.name} spent the encore checking the bus schedule.`, `Great show, wrong company for ${a.genre} — you enjoyed it separately, together.`])}`);
+        }
+      } },
+    })),
+    CANCEL,
+  ] };
+  return s;
+}
+
+function partyMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const friendKeys = (st) => Object.keys(st.friends).filter((k) => !st.friends[k].pet);
+  const boostAll = (st, amt) => friendKeys(st).forEach((k) => { st.friends[k].rel = clamp(st.friends[k].rel + amt); });
+  const maybeNewFriend = (st, chance) => {
+    if (Math.random() < chance) {
+      const kk = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1);
+      const nm = candidateName(st, "NB");
+      st.friends[kk] = makePerson(nm, "Friend from that party", { rel: rnd(35, 50) });
+      push(st, `🫶 Somewhere between the kitchen and 2 a.m., a friend-of-a-friend named ${nm} became YOUR friend. Parties are how the circle grows.`);
+    }
+  };
+  s.pending = { emoji: "🎉", title: "Throw a party", text: "Your place, your people, your call.", layout: "grid", options: [
+    { card: { emoji: "🎲", name: "Games night", sub: "close circle, snacks, competitive betrayal", tag: cur + 20 }, cond: (st) => st.money >= 20, fx: { run: (st) => {
+      st.money -= 20; boostAll(st, 3); st.stats.happiness = clamp(st.stats.happiness + 3);
+      push(st, `🎲 Games night. One alliance was formed, two were broken, and someone flipped the board "accidentally". A perfect evening; the group chat is still litigating it.`);
+    } } },
+    { card: { emoji: "🏠", name: "House party", sub: "the whole circle plus strays", tag: cur + 60 }, cond: (st) => st.money >= 60, fx: { run: (st) => {
+      st.money -= 60; boostAll(st, 4); st.stats.happiness = clamp(st.stats.happiness + 4);
+      const r = Math.random();
+      if (r < 0.2) push(st, `🏠 House party — great until the neighbor's third knock. You turned it down, they stayed for a drink, and now THEY'RE invited next time. Diplomacy.`);
+      else if (r < 0.35) { st.money -= 25; push(st, `🏠 A legendary house party with one casualty: the lamp. Nobody knows how. Everybody knows how. ${cur}25 and a great story.`); }
+      else push(st, `🏠 The house party hit that rare perfect frequency — every room a good conversation, the kitchen a dance floor by eleven. Your place is now "the place".`);
+      maybeNewFriend(st, 0.45);
+    } } },
+    { card: { emoji: "🎆", name: "The big blowout", sub: "all-out, all night, all in", tag: cur + 150 }, cond: (st) => st.money >= 150, fx: { run: (st) => {
+      st.money -= 150; boostAll(st, 5); st.stats.happiness = clamp(st.stats.happiness + 6); st.stats.health = clamp(st.stats.health - 2);
+      const r = Math.random();
+      if (r < 0.15) push(st, `🎆 The blowout achieved local-legend status AND a noise complaint delivered by an officer who stayed for cake. Your name means something on this street now.`);
+      else push(st, `🎆 The blowout: a dance floor in the living room, a singalong on the stairs, sunrise from the roof with the survivors. People will claim they were there who weren't.`);
+      maybeNewFriend(st, 0.65);
+    } } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* ═══════════════ TRANSITION (social · medical · legal) ═══════════════ */
+
+// rough per-country year when legal gender-marker change becomes possible
+function markerLegalYear(country) { return clamp2(COUNTRIES[country].ssm - 22, 1972, 2060); }
+function clamp2(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function hrtMenu(state) {
+  const s = pClone(state);
+  const y = yearOf(s);
+  const era = y < 1990
+    ? "Information travels hand to hand — a sympathetic doctor two towns over, a photocopied guide, a friend of a friend who walked this road first. The path exists. It just isn't lit."
+    : y < 2012
+    ? "There's a clinic, a waiting list, and a gatekeeping process that asks you to prove what you already know. Tedious — but the door is real and it opens."
+    : "Informed-consent clinics, doctors who've done this a thousand times, and people posting maps of every step. The road is paved now.";
+  s.pending = { emoji: "🌱", title: "Starting HRT", text: `Hormone therapy — the slow, patient chemistry of coming home. ${era}`, options: [
+    { label: `Begin (${s.profile.curSym}60 consult)`, cond: (st) => st.money >= 60, fx: { money: -60, run: (st) => {
+      st.flags.hrt = st.ageDays;
+      st.stats.happiness = clamp(st.stats.happiness + 8);
+      st.emergent.courage = clamp((st.emergent.courage ?? 50) + 6);
+      push(st, `🌱 First dose. Nothing visible changes for weeks — and everything changes immediately. Your body is finally getting the memo you've been sending for years.`);
+    } } },
+    { label: "Not yet — your timeline is yours", fx: { feed: "🌱 You left the pamphlet on the desk where you can see it. Not yet isn't never." } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+function blockersMenu(state) {
+  const s = pClone(state);
+  const supportive = Math.max(s.family.mom.acceptance ?? 50, s.family.dad.acceptance ?? 50);
+  const who = (s.family.mom.acceptance ?? 50) >= (s.family.dad.acceptance ?? 50) ? s.family.mom : s.family.dad;
+  s.pending = { emoji: "⏸", title: "The puberty blockers conversation", text: `Fully reversible, buys time to be sure — but it needs a parent in the room. ${who.name} is the likeliest ally.`, options: [
+    { label: `Ask ${who.name} to help`, fx: { run: (st) => {
+      if (supportive > 55) {
+        st.flags.blockers = true;
+        st.stats.happiness = clamp(st.stats.happiness + 9);
+        st.family[who === st.family.mom ? "mom" : "dad"].rel = clamp(st.family[who === st.family.mom ? "mom" : "dad"].rel + 8);
+        push(st, `⏸ ${who.name} listened, asked real questions, and made the appointment. In the car home: "We figure this out together." The relief was physical — a held breath, finally released.`);
+      } else {
+        st.stats.happiness = clamp(st.stats.happiness - 4);
+        push(st, `⏸ ${who.name} wasn't ready to hear it. "You're too young to know." You are exactly old enough to know — that's the whole point. The door stays shut for now; you stay you regardless. At 18, every door is yours.`);
+      }
+    } } },
+    { label: "Wait — not the right moment", fx: {} },
+  ] };
+  return s;
+}
+
+function surgeryMenu(state, kind) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const CFG = {
+    top: { emoji: "🌈", name: "Top surgery", price: 4500, text: "A date, a surgeon, a consultation folder thick with before-and-afters that look like relief.", after: "🌈 Recovery hurt and itched and took its time — and then one ordinary morning you caught yourself in the mirror mid-yawn and just... kept walking. That's the whole miracle: it stopped being an event." },
+    gcs: { emoji: "🦋", name: "Gender-affirming surgery", price: 9000, text: "The big one. Consultations, letters, logistics — and on the far side, congruence.", after: "🦋 The recovery was long, the pillow fort was legendary, and your chosen family ran a meal train with military precision. Months later the overwhelming feeling isn't drama at all. It's quiet. It's yours." },
+    face: { emoji: "✨", name: "Facial surgery", price: 7000, text: "Small structural changes with enormous downstream peace — the face in photos finally agreeing with the one inside.", after: "✨ The swelling faded over weeks, revealing — you. Just more so. Strangers gender you correctly without a flicker now, and every unremarkable interaction is a small parade." },
+  }[kind];
+  const wait = yearOf(s) < 2000 ? " (After a waitlist measured in seasons — fewer surgeons walked this specialty then.)" : "";
+  s.pending = { emoji: CFG.emoji, title: CFG.name, text: CFG.text + wait, options: [
+    { label: `Book it — ${cur}${CFG.price}`, cond: (st) => st.money >= CFG.price, fx: { money: -CFG.price, run: (st) => {
+      st.flags["srg_" + kind] = true;
+      if (kind === "top" && st.body && st.body.binder) { st.body.binder.use = "none"; st.body.binder.strain = 0; }
+      st.stats.health = clamp(st.stats.health - 3);
+      st.stats.happiness = clamp(st.stats.happiness + 10);
+      st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 4);
+      push(st, CFG.after);
+    } } },
+    { label: "Not now", fx: {} },
+    CANCEL,
+  ] };
+  return s;
+}
+
+function legalMenu(state, kind) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  if (kind === "name") {
+    s.pending = { emoji: "📜", title: "Legal name change", text: `Forms, a fee, a stamp — and every document finally saying ${usedName(s)}.`, options: [
+      { label: `File the paperwork — ${cur}120`, cond: (st) => st.money >= 120, fx: { money: -120, run: (st) => {
+        st.flags.legalName = true;
+        st.stats.happiness = clamp(st.stats.happiness + 6);
+        push(st, `📜 The certificate arrived in a stiff envelope: ${usedName(st)} ${st.profile.last}, official. You showed the cashier your new card for no reason at all. She said "have a great day, ${usedName(st)}" and you did.`);
+      } } },
+      CANCEL,
+    ] };
+  } else {
+    s.pending = { emoji: "🪪", title: "Gender marker change", text: `${s.profile.country} recognizes marker changes as of ${markerLegalYear(s.profile.country)}. One more queue, one more form, one letter that matters.`, options: [
+      { label: `Update your documents — ${cur}60`, cond: (st) => st.money >= 60, fx: { money: -60, run: (st) => {
+        st.flags.marker = true;
+        st.stats.happiness = clamp(st.stats.happiness + 7);
+        push(st, `🪪 New ID in hand. One letter changed; the whole document finally telling the truth. At the next border/bank/bar-with-a-bouncer, nothing happened. Gloriously, boringly nothing.`);
+      } } },
+      CANCEL,
+    ] };
+  }
+  return s;
+}
+
+const TRANSITION_GROUP = { id: "journey", emoji: "🦋", name: "Transition", items: [
+  { id: "present", minAge: 13, emoji: "🪞", label: "Style & presentation", cost: 1, price: 25, fx: { stats: { looks: +2, happiness: +3 } }, lines: [
+    "🪞 A wardrobe pass with intent. Every piece that leaves takes a costume with it; every piece that stays is testimony.",
+    "🪞 A new haircut that made the mirror agree with you. You walked home the long way, catching your reflection in shop windows on purpose.",
+    "🪞 Small changes — a jacket, a stance, a name on a coffee cup — each one a brick in a house you actually live in." ] },
+  { id: "voice", minAge: 14, emoji: "🗣", label: "Voice training", cost: 2, fx: { emergent: { voiceTraining: +4 }, stats: { happiness: +2 } }, lines: [
+    "🗣 Resonance drills in the shower, pitch practice in the car. Your voice is an instrument and you're finally the one tuning it.",
+    "🗣 A phone call today where the stranger on the line got it right, unprompted. You did a small silent fist-pump against the wall." ] },
+  { id: "hrt", minAge: 18, emoji: "🌱", label: "Start HRT", cost: 2, special: "hrt", cond: (s) => !s.flags.hrt },
+  { id: "blockers", minAge: 12, maxAge: 16, emoji: "⏸", label: "Puberty blockers talk", cost: 1, special: "blockers", cond: (s) => yearOf(s) >= 2005 && !s.flags.blockers && !s.flags.hrt },
+  { id: "top", minAge: 18, emoji: "🌈", label: "Top surgery", cost: 3, special: "srgTop", cond: (s) => yearOf(s) >= 1980 && !s.flags.srg_top },
+  { id: "gcs", minAge: 18, emoji: "🦋", label: "Gender-affirming surgery", cost: 3, special: "srgGcs", cond: (s) => yearOf(s) >= 1980 && !s.flags.srg_gcs && !!s.flags.hrt },
+  { id: "face", minAge: 18, emoji: "✨", label: "Facial surgery", cost: 3, special: "srgFace", cond: (s) => yearOf(s) >= 1995 && !s.flags.srg_face },
+  { id: "lname", minAge: 18, emoji: "📜", label: "Legal name change", cost: 1, special: "legalName", cond: (s) => !s.flags.legalName && usedName(s) !== s.profile.first },
+  { id: "marker", minAge: 18, emoji: "🪪", label: "Gender marker change", cost: 1, special: "legalMarker", cond: (s) => !s.flags.marker && yearOf(s) >= markerLegalYear(s.profile.country) },
+] };
+ACT_GROUPS.splice(ACT_GROUPS.findIndex((g) => g.id === "self"), 0, TRANSITION_GROUP);
+
+const TRANS_POOL = [
+  { id: "hrtGlow", w: 3, minAge: 18, maxAge: 90, cd: 320, cond: (s) => !!s.flags.hrt, run: (s) => ({ auto: [pick([
+    "🌱 Month by month, the mirror keeps quietly updating. Today a stranger's casual glance read you exactly right, and the whole afternoon glowed.",
+    "🌱 Old photos are becoming someone you're gentle with — a person who was doing their best without the map you have now.",
+    "🌱 The changes are slow the way seasons are slow: invisible daily, undeniable in retrospect. Spring is coming in on schedule.",
+    "🌱 Refill day at the pharmacy. Routine now — and there's a specific joy in the most important thing in your life being boring paperwork.",
+  ])], fx: { stats: { looks: +1, happiness: +2 }, emergent: { selfAwareness: +1 } } }) },
+  { id: "markerLaw", w: 8, minAge: 16, maxAge: 90, cd: 100, once: true, cond: (s) => s.discovered.gender && isQueerG(s) && !s.flags.marker && yearOf(s) === markerLegalYear(s.profile.country), run: (s) => ({ auto: [
+    `⚖️ The law changed: ${s.profile.country} now allows legal gender marker changes. Somewhere, clerks are updating forms; somewhere, people are crying in registry-office parking lots. The queue starts forming — and you're eligible to join it (🦋 Transition menu).`,
+  ], fx: { stats: { happiness: +4 } } }) },
+];
+POOL.push(...TRANS_POOL);
+
+/* ═══════════════ INTIMACY · WEDDING · CHILDREN ═══════════════ */
+
+function canConceive(s, p) {
+  const meF = s.profile.sex === "Female", meM = s.profile.sex === "Male";
+  const themF = p.g === "F", themM = p.g === "M";
+  const bio = (meF && themM) || (meM && themF);
+  if (!bio) return false;
+  if (typeof isSterile === "function" && isSterile(s)) return false;
+  return true;
+}
+
+function childName(s) {
+  const kind = pick(["m", "f", "n"]);
+  return pick(nameList(s.profile.country, kind));
+}
+
+function makeLoveMenu(state, pkey) {
+  const s = pClone(state);
+  const p = s.romance[pkey];
+  const fertile = canConceive(s, p) && ageYears(s) >= 16 && ageYears(s) <= 48;
+  const kids = Object.keys(s.children || {}).length;
+  const opts = [];
+  opts.push({ label: "💞 Spend the night together", fx: { run: (st) => {
+    const q = st.romance[pkey];
+    q.rel = clamp(q.rel + rnd(4, 8));
+    q.lastLove = st.ageDays;
+    st.stats.happiness = clamp(st.stats.happiness + rnd(3, 6));
+    st.stats.health = clamp(st.stats.health + 1);
+    push(st, pick([
+      `💞 A slow evening with ${q.name} that made the rest of the week feel survivable.`,
+      `💞 You and ${q.name} stayed in. The world could wait, and did.`,
+      `💞 Closeness with ${q.name} — the ordinary, enormous kind that doesn't make it into stories.`,
+    ]));
+  } } });
+  if (fertile) {
+    opts.push({ label: "🛡 Take precautions", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      q.rel = clamp(q.rel + rnd(3, 6)); q.lastLove = st.ageDays;
+      st.stats.happiness = clamp(st.stats.happiness + 3);
+      if (Math.random() < 0.03) { st.flags.pregnant = st.ageDays; st.flags.pregWith = pkey;
+        push(st, `💞 A close night with ${q.name} — careful, as always. Careful is 97%, and weeks later a test will explain what the other 3% means.`); }
+      else push(st, `💞 A night with ${q.name}, handled sensibly. Sensible is deeply underrated.`);
+    } } });
+    opts.push({ label: `🍼 Try for a baby${kids ? " (another one)" : ""}`, fx: { run: (st) => {
+      const q = st.romance[pkey];
+      q.rel = clamp(q.rel + rnd(5, 9)); q.lastLove = st.ageDays;
+      const age = ageYears(st);
+      const odds = age < 30 ? 0.42 : age < 38 ? 0.28 : age < 44 ? 0.12 : 0.04;
+      if (Math.random() < odds) { st.flags.pregnant = st.ageDays; st.flags.pregWith = pkey;
+        push(st, `🍼 You and ${q.name} decided to try. Some weeks later: two lines, a long silence, then laughing and crying at the same time.`);
+        st.stats.happiness = clamp(st.stats.happiness + 8); }
+      else push(st, `🍼 You and ${q.name} are trying. Not yet — but the trying has its own warmth, and you're closer for having decided together.`);
+    } } });
+  } else if (canConceiveBio(s, p) && isSterile(s)) {
+    opts.push({ label: "🍼 Talk about children", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      q.rel = clamp(q.rel + 5);
+      st.flags.parenthoodTalk = true;
+      push(st, `🍼 You talked about children. ${fertilityNote(st, q)} ${yearOf(st) >= 1990 ? "Adoption, fostering, donor options — the long way round, and a real one." : "The options in this decade are few, and mostly closed to people like you."}`);
+      if (recEntries(st).some((r) => r.deg !== "misdemeanor")) push(st, `📋 Adoption boards run background checks. Your record closes most of those doors.`);
+    } } });
+  } else if (ageYears(s) >= 20 && !s.flags.parenthoodTalk) {
+    opts.push({ label: "👨‍👩‍👧 Talk about having kids", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      st.flags.parenthoodTalk = true;
+      q.rel = clamp(q.rel + 6);
+      st.stats.happiness = clamp(st.stats.happiness + 3);
+      push(st, `👨‍👩‍👧 You and ${q.name} talked about children — the long way round for people like you: adoption, fostering, IVF, a friend who's offered. ${yearOf(st) < 2000 ? "Half those doors are legally shut to you in this decade, and you both said the quiet part: it will take fighting." : "It'll take paperwork, money and patience. You wrote a list. It's a real plan now."}`);
+      if (recEntries(st).some((r) => r.deg !== "misdemeanor")) push(st, `📋 One hard truth surfaced with the paperwork: adoption and fostering boards run background checks, and your record closes most of those doors. What remains is narrower, slower, and needs a lawyer of its own.`);
+    } } });
+  }
+  opts.push(CANCEL);
+  s.pending = { emoji: "💞", title: `An evening with ${p.name}`, text: fertile ? "How do you spend it?" : "How do you spend it?", options: opts };
+  return s;
+}
+
+function weddingMenu(state, pkey) {
+  const s = pClone(state);
+  const p = s.romance[pkey];
+  const cur = s.profile.curSym;
+  const same = sameSexCouple(s, p);
+  const legal = marriageLegal(s, p);
+  const momIn = s.family.mom.deceased ? null : (s.family.mom.acceptance > 45 || !same || !isOutQueer(s));
+  const dadIn = s.family.dad.deceased ? null : (s.family.dad.acceptance > 45 || !same || !isOutQueer(s));
+  const guests = momIn && dadIn ? "Both your parents were there — your dad even cried, badly disguised as allergies."
+    : momIn ? `Your mom came. ${s.family.dad.deceased ? "Your dad's chair sat empty, and everyone understood why." : "Your dad's chair sat empty, and you decided the day was too full to stare at it."}`
+    : dadIn ? `Your dad showed up stiff but present. ${s.family.mom.deceased ? "Your mom's chair sat empty, and everyone understood why." : "Your mom's absence was its own guest."}`
+    : "Your parents didn't come. Your real family — the chosen kind — filled every seat that mattered.";
+  const wed = (st, line, cost) => { st.money = Math.max(0, st.money - cost); marry(st, pkey); push(st, line); st.stats.happiness = clamp(st.stats.happiness + 12); };
+  s.pending = { emoji: "👰", title: legal ? `Marrying ${p.name}` : `Committing to ${p.name}`, layout: "grid",
+    text: legal ? (same ? "A marriage people fought decades for — and now it's simply yours. How do you do it?" : "Flowers, logistics, and one enormous yes. How do you do it?")
+                : `Marriage isn't legal in ${s.profile.country} yet. You can still stand up in front of everyone and mean every word.`,
+    options: [
+      { card: { emoji: "🎉", name: "Big celebration", sub: "everyone you've ever met", tag: cur + "3000" }, cond: (st) => st.money >= 3000,
+        fx: { run: (st) => wed(st, `👰 A loud, glowing ${legal ? "wedding" : "commitment ceremony"}. ${guests} You danced until your feet filed formal complaints.`, 3000) } },
+      { card: { emoji: "🏡", name: "Small & intimate", sub: "twelve people, fairy lights", tag: cur + "500" }, cond: (st) => st.money >= 500,
+        fx: { run: (st) => wed(st, `👰 Twelve people, one backyard, infinite fairy lights. ${guests}`, 500) } },
+      { card: { emoji: "📋", name: legal ? "Courthouse" : "Just the vows", sub: "paperwork, then pancakes", tag: cur + "40" }, cond: (st) => st.money >= 40,
+        fx: { run: (st) => wed(st, `👰 ${legal ? "Ten minutes of paperwork, then pancakes. Married is married." : "No paperwork available to you — so you said the vows anyway, in a friend's living room, and every person there treated it as exactly what it was."} ${guests}`, 40) } },
+      { card: { emoji: "✈️", name: "Elope", sub: "just the two of you, somewhere else", tag: cur + "900" }, cond: (st) => st.money >= 900,
+        fx: { run: (st) => wed(st, `✈️ You told nobody. A borrowed witness, a coastline, ${p.name} laughing at the wind ruining every photo. The family found out by postcard and forgave you eventually.`, 900) } },
+      { label: "Not yet", fx: {} },
+    ] };
+  return s;
+}
+
+const BABY_POOL = [
+  { id: "pregNews", i: 1, w: 9, minAge: 16, maxAge: 50, cd: 30, cond: (s) => s.flags.pregnant && s.ageDays - s.flags.pregnant >= 120 && !s.flags.pregTold, run: (s) => {
+    const p = s.romance[s.flags.pregWith];
+    s.flags.pregTold = true;
+    return { event: { emoji: "🤰", title: "Halfway there", text: `The pregnancy is showing now. ${p ? p.name + " has read three books and bought a terrible amount of tiny socks." : "You're doing this on your own, and you're doing it."}`, options: [
+      { label: "Find out what you're having", fx: { run: (st) => { st.flags.babySex = pick(["m", "f"]); push(st, `🤰 It's a ${st.flags.babySex === "m" ? "boy" : "girl"}. You've started saying the name out loud to see how it sounds in a room.`); }, stats: { happiness: +4 } } },
+      { label: "Keep it a surprise", fx: { stats: { happiness: +3 }, feed: "🤰 You decided not to find out. The nursery is a committee of yellows and greens." } },
+    ] } }; } },
+  { id: "birth", i: 1, w: 20, minAge: 16, maxAge: 52, cd: 20, cond: (s) => s.flags.pregnant && s.ageDays - s.flags.pregnant >= 270, run: (s) => {
+    const pkey = s.flags.pregWith;
+    const p = s.romance[pkey];
+    const kind = s.flags.babySex || pick(["m", "f"]);
+    const names = [pick(nameList(s.profile.country, kind)), pick(nameList(s.profile.country, kind)), pick(nameList(s.profile.country, "n"))];
+    const uniq = [...new Set(names)];
+    return { event: { emoji: "👶", title: "A person arrives", text: `After a long night${p ? ` with ${p.name} holding your hand hard enough to bruise` : ""}, someone new is here — furious, tiny, entirely real. What do you name them?`,
+      options: uniq.map((nm) => ({ label: nm, fx: { run: (st) => {
+        if (!st.children) st.children = {};
+        const ck = "c" + (st.flags.cSeq = (st.flags.cSeq || 0) + 1);
+        st.children[ck] = { name: nm, role: "Your child", rel: 90, born: st.ageDays, kind, known: [], lastTime: 0, lastTalk: 0, lastGift: 0, status: "",
+          warmth: rnd(40, 90), kindness: rnd(40, 90), loyalty: rnd(40, 90), acceptance: rnd(50, 95), politics: rnd(30, 80) };
+        st.flags.pregnant = null; st.flags.pregTold = false; st.flags.babySex = null;
+        if (p) p.rel = clamp(p.rel + 10);
+        st.stats.happiness = clamp(st.stats.happiness + 14);
+        st.stats.health = clamp(st.stats.health - 4);
+        push(st, `👶 ${nm} was born${p ? ` — you and ${p.name} are somebody's parents now` : " — and you are somebody's parent now"}. You did not sleep. You did not care.`);
+      } } })) } }; } },
+  { id: "kidMilestone", w: 3, minAge: 18, maxAge: 90, cd: 300, cond: (s) => s.children && Object.keys(s.children).length > 0, run: (s) => {
+    const ck = pick(Object.keys(s.children));
+    const c = s.children[ck];
+    const age = Math.floor((s.ageDays - c.born) / 365);
+    const line = age < 1 ? `👶 ${c.name} slept through the night. You woke at 3 a.m. anyway, to check.`
+      : age < 4 ? pick([`🧸 ${c.name} has learned the word "no" and deploys it like a lawyer.`, `🧸 ${c.name} called you by name today instead of "mama/dada" and it was somehow devastating.`])
+      : age < 12 ? pick([`🎒 ${c.name} came home with a drawing of your family. You're the tallest, apparently, and orange.`, `⚽ ${c.name} has a whole social life now, with politics you're not cleared for.`])
+      : age < 18 ? pick([`🎧 ${c.name} has opinions about your music and no filter about them.`, `📚 ${c.name} argued a point at dinner so well you conceded. Terrifying. Wonderful.`])
+      : pick([`📞 ${c.name} called just to talk. Just to talk!`, `🌍 ${c.name} is out building a life you only partly understand, and doing it well.`]);
+    return { auto: [line], fx: { stats: { happiness: +3 }, run: (st) => { st.children[ck].rel = clamp(st.children[ck].rel + 2); } } }; } },
+];
+POOL.push(...BABY_POOL);
+
+function childAgeLabel(s, c) {
+  const y = Math.floor((s.ageDays - c.born) / 365);
+  return y < 1 ? "Baby" : y < 13 ? `Child, ${y}` : y < 20 ? `Teenager, ${y}` : `Grown, ${y}`;
+}
+
+/* ═══════════════ CRIME · ARREST · PRISON ═══════════════ */
+
+const inPrison = (s) => !!s.flags.prisonUntil;
+const recordCount = (s) => (s.flags.record || []).length;
+
+// odds: base, then modified by who you've become
+function crimeOdds(s, c) {
+  // being clever and brave helps — but far less as the job gets bigger
+  let skill = ((s.stats.smarts ?? 50) - 50) / 600 + ((s.emergent.courage ?? 40) - 40) / 700 + ((s.emergent.prudence ?? 40) - 40) / 900;
+  skill = Math.max(-0.15, Math.min(0.22, skill)) * (1 - c.heat / 8);
+  let o = c.base + skill;
+  o -= recordCount(s) * 0.045;          // known to police
+  if ((s.stats.health ?? 50) < 35) o -= 0.06;
+  if (c.needsCar && !s.flags.license) o -= 0.12;
+  const ceiling = 0.92 - c.heat * 0.055; // nobody robs banks with certainty
+  return Math.max(0.05, Math.min(ceiling, o));
+}
+
+const CRIMES = [
+  { id: "pickpocket", deg: "misdemeanor", emoji: "🤏", name: "Pickpocket", sub: "quick hands, small money", minAge: 10, base: 0.72, pay: [15, 90], jail: [30, 150], heat: 1,
+    targets: [["A distracted tourist", 0.08, 1], ["Someone on a packed train", 0, 1.2], ["A drunk outside a bar", 0.05, 1.5]] },
+  { id: "shoplift", deg: "misdemeanor", emoji: "🛍", name: "Shoplift", sub: "the five-finger discount", minAge: 10, base: 0.7, pay: [20, 140], jail: [30, 180], heat: 1,
+    targets: [["Corner shop", 0.1, 0.7], ["Big chain store", 0, 1.3], ["Boutique — expensive taste", -0.12, 2.2]] },
+  { id: "porch", deg: "misdemeanor", emoji: "📦", name: "Porch piracy", sub: "someone else's delivery", minAge: 12, base: 0.68, pay: [25, 220], jail: [60, 240], heat: 1, minYear: 1998,
+    targets: [["A quiet street at noon", 0.06, 1], ["A gated building", -0.14, 1.8], ["Follow the delivery van", -0.05, 1.5]] },
+  { id: "mischief", deg: "misdemeanor", emoji: "🎨", name: "Mischief", sub: "vandalism, graffiti, chaos", minAge: 10, base: 0.75, pay: [0, 0], jail: [20, 120], heat: 1,
+    targets: [["Tag a wall", 0.08, 0], ["Smash a window", -0.05, 0], ["Egg the worst neighbor's car", 0, 0]] },
+  { id: "burglary", deg: "felony", emoji: "🔦", name: "Burglary", sub: "empty house, open window", minAge: 14, base: 0.5, pay: [200, 2200], jail: [365, 1460], heat: 2,
+    targets: [["A modest house", 0.1, 0.6], ["A rich house across town", -0.12, 2.4], ["Your old school", 0.02, 0.5]] },
+  { id: "gta", deg: "felony", emoji: "🚗", name: "Grand theft auto", sub: "borrow it permanently", minAge: 15, base: 0.44, pay: [600, 5000], jail: [540, 2200], heat: 3, needsCar: true,
+    targets: [["An old car, engine running", 0.14, 0.5], ["Something modern in a car park", -0.08, 1.6], ["A luxury car outside a hotel", -0.2, 3]] },
+  { id: "hack", deg: "felony", emoji: "💻", name: "Hacking", sub: "quiet money, loud sentences", minAge: 14, base: 0.42, pay: [300, 9000], jail: [730, 2900], heat: 3, minYear: 1990, smart: 1,
+    targets: [["Phish a few hundred inboxes", 0.1, 0.6], ["Drain one fat corporate account", -0.14, 2.6], ["Ransom a hospital's files", -0.24, 4] ] },
+  { id: "scam", deg: "felony", emoji: "☎️", name: "Run a scam", sub: "confidence is the weapon", minAge: 16, base: 0.5, pay: [150, 3000], jail: [365, 1800], heat: 2,
+    targets: [["Fake charity drive", 0.05, 1], ["Romance scam online", -0.06, 2], ["Fleece your own acquaintances", -0.02, 1.6, "social"]] },
+  { id: "embezzle", deg: "felony", emoji: "🧾", name: "Embezzle", sub: "the company's money, your account", minAge: 20, base: 0.46, pay: [800, 14000], jail: [730, 2900], heat: 3, needsJob: true,
+    targets: [["Skim slowly, small amounts", 0.16, 0.7], ["One large transfer, then quiet", -0.1, 2.2], ["Cook the books wholesale", -0.22, 4]] },
+  { id: "arson", deg: "violent", emoji: "🔥", name: "Arson", sub: "insurance, revenge, or worse", minAge: 16, base: 0.4, pay: [0, 4000], jail: [1095, 4380], heat: 4,
+    targets: [["An empty warehouse", 0.06, 1], ["Your own business, for the payout", -0.08, 2.5, "needsBiz"], ["Someone's car", -0.02, 0]] },
+  { id: "bank", deg: "violent", emoji: "🏦", name: "Bank robbery", sub: "the big one", minAge: 18, base: 0.24, pay: [4000, 60000], jail: [2190, 7300], heat: 5,
+    targets: [["Pass a note to the teller", 0.14, 0.5], ["Armed, in and out in ninety seconds", -0.06, 1.6], ["The vault — you brought a crew", -0.16, 3.5]] },
+  { id: "train", deg: "violent", emoji: "🚂", name: "Train robbery", sub: "gloriously anachronistic", minAge: 18, base: 0.26, pay: [3000, 40000], jail: [1825, 6570], heat: 5,
+    targets: [["A freight car, no guards", 0.12, 0.8], ["The mail car", -0.04, 1.8], ["Stop the whole train", -0.2, 3.2]] },
+  { id: "hitman", deg: "violent", emoji: "🔪", name: "Hire a hitman", sub: "a line you don't uncross", minAge: 18, base: 0.34, pay: [0, 0], jail: [5475, 12775], heat: 6, grave: 1,
+    targets: [["Through a shady contact", -0.06, 0], ["Someone who advertises online", -0.22, 0], ["A professional, properly vetted", 0.1, 0, "costly"]] },
+  { id: "murder", deg: "violent", emoji: "🩸", name: "Murder", sub: "there is no undo", minAge: 16, base: 0.3, pay: [0, 0], jail: [7300, 14600], heat: 6, grave: 1,
+    targets: [["In the heat of the moment", -0.14, 0], ["Planned, carefully", 0.12, 0], ["Make it look like an accident", 0.04, 0]] },
+];
+
+function crimeAvailable(s, c) {
+  if (ageYears(s) < c.minAge) return false;
+  if (c.minYear && yearOf(s) < c.minYear) return false;
+  if (c.needsJob && !s.career.job) return false;
+  return true;
+}
+
+function crimeMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const list = CRIMES.filter((c) => crimeAvailable(s, c));
+  s.pending = { emoji: "🕶", title: "Crime", text: recordCount(s) ? `You have ${recordCount(s)} conviction${recordCount(s) > 1 ? "s" : ""} on record — the police know your face, and every job gets harder.` : "Nobody's watching. That's usually how it starts.", layout: "grid",
+    options: [
+      ...list.map((c) => {
+        const o = crimeOdds(s, c);
+        const risk = o > 0.65 ? "low risk" : o > 0.45 ? "risky" : o > 0.3 ? "very risky" : "reckless";
+        return { card: { emoji: c.emoji, name: c.name, sub: c.sub, tag: risk }, hi: c.grave,
+          fx: { run: (st) => { st.pending = crimeTargets(st, c).pending; } } };
+      }),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function crimeTargets(state, c) {
+  const s = pClone(state);
+  const opts = c.targets.map(([label, mod, mult]) => ({ label, fx: { run: (st) => { st.pending = resolveCrime(st, c, mod, mult).pending; } } }));
+  if (c.heat >= 2 && !c.grave) {
+    const ck = Object.keys(s.friends).find((k) => !s.friends[k].pet && s.friends[k].rel > 55);
+    if (ck) opts.push({ label: `Bring ${s.friends[ck].name} in on it (better odds, split take)`, fx: { run: (st) => { st.pending = resolveCrime(st, c, c.targets[0][1] + 0.12, (c.targets[0][2] || 1) * 0.6, ck).pending; } } });
+  }
+  opts.push({ label: "Change your mind", fx: { feed: "🕶 You thought better of it. The thought itself is worth noticing." } });
+  s.pending = { emoji: c.emoji, title: c.name, text: "How do you go about it?", options: opts };
+  return s;
+}
+
+function resolveCrime(state, c, mod, mult, accKey) {
+  const s = pClone(state);
+  const odds = Math.max(0.04, Math.min(0.94, crimeOdds(s, c) + mod));
+  const win = Math.random() < odds;
+  const payout = c.pay[1] ? Math.round(rnd(c.pay[0], c.pay[1]) * (mult || 1)) : 0;
+  const cur = s.profile.curSym;
+  if (win) {
+    s.money += payout;
+    if (accKey && s.friends[accKey]) { s.friends[accKey].rel = clamp(s.friends[accKey].rel + 6); }
+    s.emergent.notoriety = clamp((s.emergent.notoriety ?? 0) + c.heat * 2);
+    s.emergent.courage = clamp((s.emergent.courage ?? 40) + 2);
+    s.emergent.kindness = clamp((s.emergent.kindness ?? 50) - c.heat);
+    if (c.grave) s.stats.happiness = clamp(s.stats.happiness - 12);
+    const line = c.grave
+      ? pick([`You got away with it. Nobody is looking for you. You will be looking for yourself for a long time.`,
+              `It's done and undiscovered. The world carried on exactly as before, which is somehow the worst part.`])
+      : payout
+      ? pick([`Clean. In and out, nobody the wiser, ${cur}${payout} richer.`,
+              `Your hands didn't even shake. That should probably worry you more than it does. ${cur}${payout}.`,
+              `A perfect job. You walked home the long way, buzzing, ${cur}${payout} heavier.`])
+      : pick([`Nobody saw. Your work will be discovered in the morning by someone very annoyed.`, `Done, and gone before the first light came on.`]);
+    s.pending = { emoji: c.emoji, title: "You got away with it", text: line, options: [
+      { label: "Walk away casually", fx: {} },
+      ...(payout ? [{ label: "Celebrate — you earned it (allegedly)", fx: { stats: { happiness: +4 }, money: -Math.min(40, payout), feed: "🥂 You bought a round for people who'll never know what they were toasting." } }] : []),
+    ] };
+  } else {
+    const caught = Math.random() < 0.72;
+    if (!caught) {
+      s.stats.health = clamp(s.stats.health - rnd(2, 6));
+      s.stats.happiness = clamp(s.stats.happiness - 4);
+      s.pending = { emoji: "💨", title: "Too close", text: pick([
+        `It went wrong fast. You ran — over a fence, through someone's garden, lungs burning — and lost them in the dark. No money, one badly turned ankle, and a heartbeat you can still feel in your teeth.`,
+        `An alarm you didn't plan for. You were three streets away before you stopped sprinting. Nothing gained except a very clear memory of your own bad judgment.`,
+      ]), options: [{ label: "Never again (probably)", fx: { emergent: { prudence: +4 } } }, { label: "Next time you'll be smarter", fx: { emergent: { courage: +2 } } }] };
+    } else {
+      if (accKey && s.friends[accKey] && Math.random() < 0.5) {
+        const fr = s.friends[accKey];
+        fr.rel = clamp(fr.rel - 40);
+        s.flags.flipMult = 1.15;
+        push(s, `🐍 ${fr.name} flipped. Sat across a table from a detective and traded your name for a lighter sentence. You found out from the charge sheet.`);
+      } else if (accKey && s.friends[accKey]) {
+        s.friends[accKey].rel = clamp(s.friends[accKey].rel + 8);
+        push(s, `🤝 ${s.friends[accKey].name} said nothing — not one word, through hours of questioning. Whatever else happens, you know what they're made of now.`);
+      }
+      s.pending = arrestEvent(s, c);
+    }
+  }
+  return s;
+}
+
+function arrestEvent(s, c) {
+  const cur = s.profile.curSym;
+  const sentence = (st, mult, note) => {
+    const flip = st.flags.flipMult || 1; st.flags.flipMult = null;
+    const days = Math.round(rnd(c.jail[0], c.jail[1]) * mult * flip);
+    st.flags.prisonUntil = st.ageDays + days;
+    st.flags.prisonReason = c.name;
+    st.flags.record = [...(st.flags.record || []), { id: c.id, deg: c.deg || "felony", day: st.ageDays }];
+    if (st.career.job) { push(st, `💼 You lost your job as ${st.career.job.title}. They didn't wait for the verdict.`); st.career.job = null; }
+    st.stats.happiness = clamp(st.stats.happiness - 15);
+    push(st, `⛓ Sentenced for ${c.name.toLowerCase()}: ${(days / 365).toFixed(1)} years. ${note}`);
+  };
+  const acquit = (st, note) => {
+    st.stats.happiness = clamp(st.stats.happiness - 5);
+    push(st, `⚖️ ${note}`);
+  };
+  if (s.flags.parole) {
+    return { emoji: "🚔", title: "Parole revoked", text: `Arrested for ${c.name.toLowerCase()} — while on parole. There is no hearing worth having: the violation alone sends you back, and the new charge rides along.`, options: [
+      { label: "Hold out your wrists", fx: { run: (st) => { st.flags.parole = null; sentence(st, 1.2, "Parole revoked — the system doesn't forgive twice."); } } },
+    ] };
+  }
+  const bail = 300 + c.heat * 350;
+  return { emoji: "🚔", title: "Caught", text: `Hands against the wall, the click of cuffs, a ride you don't get to choose. You're being charged with ${c.name.toLowerCase()}. ${c.grave ? "This is the kind of charge that eats the rest of a life." : "What now?"}`, options: [
+    { label: `Post bail (${cur}${bail}) and fight it from outside`, cond: (st) => st.money >= bail && !c.grave, fx: { money: -bail, run: (st) => {
+      if (Math.random() < 0.25) { push(st, `⚖️ Weeks later, the charges quietly collapsed — a witness moved away, the paperwork frayed. The bail money is gone; the record stayed clean. You got lucky and you spent it well: free.`); st.stats.happiness = clamp(st.stats.happiness - 2); }
+      else sentence(st, 0.7, "Fighting from outside bought a better plea, at least.");
+    } } },
+    { label: "Plead guilty — take the deal", fx: { run: (st) => sentence(st, 0.6, "Cooperation shaved it down.") } },
+    { label: `Hire a real lawyer (${cur}2500)`, cond: (st) => st.money >= 2500, fx: { money: -2500, run: (st) => {
+      if (Math.random() < (c.grave ? 0.3 : 0.55)) acquit(st, `Your lawyer was worth every cent — the case fell apart on a technicality and you walked out into daylight, ${cur}2500 poorer and unconvicted.`);
+      else sentence(st, 0.75, "Even a good lawyer can only bend it so far.");
+    } } },
+    { label: "Take it to trial yourself", fx: { run: (st) => {
+      if (Math.random() < 0.25) acquit(st, "Against all sense, the jury believed you. You have never been so lucky and you know it.");
+      else sentence(st, 1.15, "The jury took forty minutes. The judge took less.");
+    } } },
+  ] };
+}
+
+/* — prison life — */
+function prisonMenu(state) {
+  const s = pClone(state);
+  const left = Math.max(0, s.flags.prisonUntil - s.ageDays);
+  s.pending = { emoji: "⛓", title: "Doing time", text: `${(left / 365).toFixed(1)} years left for ${s.flags.prisonReason ? s.flags.prisonReason.toLowerCase() : "your conviction"}. How do you serve it?`, options: [
+    { label: "Keep your head down", fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness - 1); push(st, "⛓ Another quiet week. Library, yard, count, lights out. Time is the only currency and you're rich in it."); } } },
+    { label: "Take classes inside", fx: { run: (st) => { st.stats.smarts = clamp(st.stats.smarts + 3); st.emergent.discipline = clamp((st.emergent.discipline ?? 50) + 3); push(st, "📚 You enrolled in the prison education program. Turns out you're good at this. Nobody's more surprised than you."); } } },
+    { label: "Work out relentlessly", fx: { run: (st) => { st.stats.health = clamp(st.stats.health + 3); st.stats.looks = clamp(st.stats.looks + 1); push(st, "🏋️ The yard weights, every day, without fail. Your body becomes the one thing in here you control."); } } },
+    { label: "Get in with the right people", fx: { run: (st) => {
+      if (Math.random() < 0.6) { st.emergent.notoriety = clamp((st.emergent.notoriety ?? 0) + 6); push(st, "🕶 You found protection, and a debt you'll be paying long after release."); }
+      else { st.stats.health = clamp(st.stats.health - 8); st.flags.prisonTrouble = (st.flags.prisonTrouble || 0) + 1; push(st, "🩸 You picked the wrong table. The infirmary has a view of the yard, at least."); }
+    } } },
+    { label: "Attempt escape", fx: { run: (st) => {
+      const odds = 0.12 + ((st.emergent.courage ?? 40) / 500) + ((st.stats.smarts ?? 50) / 700);
+      if (Math.random() < odds) { st.flags.prisonUntil = null; st.flags.fugitive = true; st.stats.happiness = clamp(st.stats.happiness + 10);
+        push(st, "🏃 You went over the fence at shift change and did not stop running for two days. You're out — and you'll never be entirely un-hunted again."); }
+      else { st.flags.prisonUntil += 730; st.stats.health = clamp(st.stats.health - 10); st.flags.prisonTrouble = (st.flags.prisonTrouble || 0) + 1;
+        push(st, "🚨 You made it forty metres. They added two years and took the yard privileges. Everyone here has now heard about it."); }
+    } } },
+  ] };
+  return s;
+}
+
+const PRISON_POOL = [
+  { id: "prisonRelease", w: 30, prison: 1, minAge: 10, maxAge: 105, cd: 5, cond: (s) => s.flags.prisonUntil && s.ageDays >= s.flags.prisonUntil, run: (s) => {
+    s.flags.prisonUntil = null;
+    const worst = recEntries(s).some((r) => r.deg !== "misdemeanor");
+    if (worst) s.flags.parole = s.ageDays + rnd(365, 730);
+    const yrs = recEntries(s).length;
+    return { auto: [`🕊 Released${worst ? " — on parole" : ""}. The air outside smells like everything at once. You have ${s.profile.curSym}${s.money} to your name, a record with ${yrs} conviction${yrs > 1 ? "s" : ""} on it${worst ? ", a parole officer with your schedule," : ""} and a world that moved on without asking.`], fx: { stats: { happiness: +8 } } }; } },
+  { id: "prisonDay", w: 8, prison: 1, i: 1, minAge: 10, maxAge: 105, cd: 90, cond: (s) => true, run: (s) => ({ event: { emoji: "⛓", title: "Inside", text: pick([
+      "A new arrival is getting shaken down for their commissary. Everyone's watching what everyone does.",
+      "Someone left a shiv under your mattress. Yours now, whether you want it or not.",
+      "The guard who's decent to you is being transferred. The replacement has a reputation.",
+    ]), options: [
+      { label: "Step in / do the right thing", fx: { emergent: { kindness: +4, courage: +3 }, stats: { health: -3 }, feed: "⛓ You stepped in. It cost you skin, and bought you something harder to name." } },
+      { label: "Look away — survive", fx: { emergent: { prudence: +3 }, stats: { happiness: -3 }, feed: "⛓ You looked at your tray until it was over. That's how most people get through this place, and it still sits badly." } },
+    ] } }) },
+  { id: "prisonVisit", w: 6, prison: 1, minAge: 10, maxAge: 105, cd: 200, cond: (s) => true, run: (s) => {
+    const who = Math.random() < 0.5 ? s.family.mom : s.family.dad;
+    const warm = who.rel > 55;
+    return { auto: [warm
+      ? `👋 ${who.name} visited. Forty minutes through glass, mostly small talk, and at the end they pressed their hand to the divider. You did too.`
+      : `👋 ${who.name} visited. It was stiff and short and neither of you knew what to say. They came anyway. That's the sentence you keep rereading.`],
+      fx: { rel: { [who === s.family.mom ? "mom" : "dad"]: warm ? +3 : +1 }, stats: { happiness: warm ? +4 : +1 } } }; } },
+];
+POOL.push(...PRISON_POOL);
+
+const DANGER_POOL = [
+  { id: "hostileStreet", i: 1, w: 4, minAge: 13, maxAge: 90, cd: 500, cond: (s) => isOutQueer(s) && criminalized(s) && (s.outTo.public || Object.keys(s.outTo).length > 2), run: (s) => ({ event: { emoji: "⚠️", title: "Word travels", text: `People are talking. In ${s.profile.country}, ${yearOf(s)}, that talk has weight — the kind that costs jobs, homes, and sometimes more.`, options: [
+    { label: "Go quiet for a while — survive it", fx: { stats: { happiness: -6 }, emergent: { prudence: +5 }, feed: "🤐 You shrank yourself back down to a size the neighbourhood could tolerate. It worked. It cost something you can't name and can't get back yet." } },
+    { label: "Refuse to shrink", fx: { run: (st) => {
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8);
+      if (Math.random() < 0.5) { st.stats.health = clamp(st.stats.health - 12); st.stats.happiness = clamp(st.stats.happiness - 8); push(st, "🩸 You refused to hide, and it found you — on a street corner, three of them, and nobody stopping it. You healed. Slowly. You did not apologise to anyone."); }
+      else { st.stats.happiness = clamp(st.stats.happiness + 4); push(st, "🛡 You refused to hide, and this time nothing happened except your own spine straightening. Some weeks that's the whole victory."); }
+    } } },
+    { label: "Leave for a bigger city", cond: (st) => st.money >= 200, fx: { money: -200, stats: { happiness: +6 }, feed: "🚌 You packed a bag for the biggest city you could afford. Anonymity is its own kind of safety, and there are people there — you've heard there are people there." } },
+  ] } }) },
+  { id: "moralityLaw", i: 1, w: 3, minAge: 16, maxAge: 90, cd: 900, cond: (s) => isOutQueer(s) && criminalized(s) && !inPrison(s) && Object.keys(s.outTo).length > 1, run: (s) => ({ event: { emoji: "🚔", title: "A knock at the door", text: `Someone reported you. In ${yearOf(s)}, ${s.profile.country} has laws for people like you, and an officer is holding a clipboard with your name on it.`, options: [
+    { label: "Deny everything", fx: { run: (st) => {
+      if (Math.random() < 0.6) { st.stats.happiness = clamp(st.stats.happiness - 6); push(st, "😶 You denied it, flatly, repeatedly, until they got bored. Denial worked. It always leaves a residue."); }
+      else { st.flags.prisonUntil = st.ageDays + rnd(180, 900); st.flags.prisonReason = "'indecency'"; st.flags.record = [...(st.flags.record || []), { id: "morality", deg: "misdemeanor", day: st.ageDays }]; push(st, "⛓ They didn't believe you. You were sentenced under a law written by people who never met you."); }
+    } } },
+    { label: `Pay what they're asking (${s.profile.curSym}400)`, cond: (st) => st.money >= 400, fx: { money: -400, feed: "💸 The bribe was called an 'administrative fee'. It bought silence for now — and told everyone you can be squeezed." } },
+    { label: "Say nothing at all", fx: { run: (st) => {
+      st.flags.prisonUntil = st.ageDays + rnd(120, 600); st.flags.prisonReason = "'indecency'"; st.flags.record = [...(st.flags.record || []), { id: "morality", deg: "misdemeanor", day: st.ageDays }];
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10);
+      push(st, "⛓ You gave them nothing — not a name, not a denial. They took what they came for anyway. You go in with your dignity and a sentence.");
+    } } },
+  ] } }) },
+];
+POOL.push(...DANGER_POOL);
+
+const CRIME_GROUP = { id: "crime", emoji: "🕶", name: "Crime", cond: (s) => !inPrison(s), items: [
+  { id: "commit", minAge: 10, emoji: "🕶", label: "Commit a crime", cost: 2, special: "crime", danger: { title: "Commit a crime?", body: "Crimes can pay — and can cost you years, your job, and people's trust. Getting caught is permanent on your record.", yes: "Choose a crime" } },
+  { id: "expunge", minAge: 18, emoji: "📂", label: "Petition to seal your record", cost: 2, special: "expunge", cond: (s) => recEntries(s).length > 0 && s.ageDays - lastConvDay(s) > 2900 },
+] };
+const PRISON_GROUP = { id: "prison", emoji: "⛓", name: "Prison", cond: (s) => inPrison(s), items: [
+  { id: "serve", minAge: 10, emoji: "⛓", label: "Serve your time", cost: 7, special: "prison" },
+] };
+ACT_GROUPS.push(CRIME_GROUP, PRISON_GROUP);
+
+/* ═══════════════ NOWHERE TO SLEEP ═══════════════ */
+
+function askForHomeMenu(state) {
+  const s = pClone(state);
+  const cands = Object.entries(s.friends).filter(([, p]) => !p.pet && p.rel > 45);
+  if (!cands.length) {
+    s.pending = { emoji: "🛏", title: "Nowhere to go", text: "You go through everyone you could call. The list is short, and none of them can help right now.", options: [{ label: "Keep going anyway", fx: { stats: { happiness: -3 } } }] };
+    return s;
+  }
+  s.pending = { emoji: "🛏", title: "Ask someone for a place", text: "It takes more courage than most things. Who do you call?", options: [
+    ...cands.map(([k, p]) => ({ label: `${p.name} (${p.role})`, fx: { run: (st) => {
+      const q = st.friends[k];
+      const odds = q.rel / 130 + (q.kindness > 55 ? 0.25 : 0) + (q.loyalty > 60 ? 0.15 : 0);
+      if (Math.random() < odds) {
+        hreSetTenure(st, "lodging", null);
+        st.flags.homeless = null; st.flags.couchAt = k;
+        st.stats.happiness = clamp(st.stats.happiness + 14);
+        st.stats.health = clamp(st.stats.health + 5);
+        q.rel = clamp(q.rel + 12);
+        push(st, `🛏 ${q.name} said "obviously" before you finished asking, and made up the couch that night. ${q.name === undefined ? "" : ""}You slept eleven hours. Chosen family isn't a metaphor — sometimes it's a spare key and a spare blanket.`);
+      } else {
+        q.rel = clamp(q.rel - 4);
+        st.stats.happiness = clamp(st.stats.happiness - 6);
+        push(st, `🛏 ${q.name} said they wished they could — the flat's too small, their parents, the money. Maybe all true. You said "no worries" in a bright voice and hung up before it cracked.`);
+      }
+    } } })),
+    CANCEL,
+  ] };
+  return s;
+}
+
+const STREET_GROUP = { id: "street", emoji: "🛏", name: "Getting by", cond: (s) => hreIsHomeless(s), items: [
+  { id: "askhome", minAge: 10, emoji: "🛏", label: "Ask a friend for a place", cost: 1, special: "askhome" },
+  { id: "shelter", minAge: 10, emoji: "🏚", label: "Find a shelter bed", cost: 1, special: "shelter" },
+  { id: "rough", minAge: 10, emoji: "🌧", label: "Sleep rough tonight", cost: 3, fx: { stats: { health: -4, happiness: -3 } }, lines: [
+    "🌧 A doorway, a stairwell, the back of a bus station. You learn which places are warm and which are watched.",
+    "🌧 You slept in ninety-minute pieces, one eye open. Morning came grey and you were still here, which counts." ] },
+  { id: "daywork", minAge: 14, emoji: "🧰", label: "Pick up day work", cost: 3, fxDyn: () => ({ money: rnd(20, 70), stats: { health: -2 } }), lines: [
+    "🧰 Cash at the end of the day, no questions, aching everything. It's money.",
+    "🧰 Unloading vans since six. Your back is furious and your pocket isn't empty." ] },
+] };
+
+function shelterAction(state) {
+  const s = pClone(state);
+  const hostile = criminalized(s);
+  if (hostile && isOutQueer(s) && Math.random() < 0.55) {
+    s.stats.happiness = clamp(s.stats.happiness - 6);
+    push(s, `🏚 The shelter had a bed until the woman at the desk worked out why you'd been thrown out. Then it didn't. You walked back into the cold understanding something permanent about this country and this year.`);
+  } else if (Math.random() < 0.6) {
+    s.stats.health = clamp(s.stats.health + 4); s.stats.happiness = clamp(s.stats.happiness + 3);
+    push(s, `🏚 A bed, a shower, a locker, someone who called you by your name. Small mercies are enormous when you're this tired.`);
+  } else {
+    push(s, `🏚 Full tonight. The volunteer was sorry, gave you a sandwich and a list of three other places, two of which have closed.`);
+    s.stats.happiness = clamp(s.stats.happiness - 2);
+  }
+  return advance(s, 1);
+}
+
+const STREET_POOL = [
+  { id: "streetGrind", w: 8, minAge: 12, maxAge: 90, cd: 45, cond: (s) => hreIsHomeless(s), run: (s) => ({ auto: [pick([
+    "🌧 Another day of carrying everything you own. The city is very good at looking through you.",
+    "🥪 Someone bought you a hot meal without making a speech about it. You'll remember their face for years.",
+    "🚿 A leisure centre let you shower for the price of a swim. You have never been so grateful for chlorine.",
+  ])], fx: { stats: { health: -2, happiness: -2 } } }) },
+  { id: "streetOut", i: 1, w: 5, minAge: 12, maxAge: 90, cd: 200, cond: (s) => hreIsHomeless(s) && s.ageDays - hreHomelessSince(s) > 200, run: (s) => ({ event: { emoji: "🪶", title: "A way back in", text: "Months of this. Something has to give, and today there's an opening — small, but real.", options: [
+    { label: "A room in a shared flat, if you can cover a month", cond: (st) => st.money >= 300, fx: { money: -300, run: (st) => { hreSetTenure(st, "renting", null); st.flags.homeless = null; st.flags.movedOut = true; st.stats.happiness = clamp(st.stats.happiness + 16); st.stats.health = clamp(st.stats.health + 8); push(st, "🔑 A key of your own, four walls, a door that locks from the inside. You sat on the bare floor and cried, then unpacked a bag that took two minutes."); } } },
+    { label: "A hostel bed and a job lead", fx: { run: (st) => { /* §5529 CORRECTION: a hostel bed was setting movedOut, which every
+        reader treated as "has their own place". Under the nine-state model a hostel
+        is lodging. The legacy flag stays FALSE here on purpose — writing movedOut
+        would re-assert the error to any reader that has not inverted. */
+        hreSetTenure(st, "lodging", null); st.flags.homeless = null; st.money += 40; st.stats.happiness = clamp(st.stats.happiness + 9); push(st, "🛏 A hostel bed for a fortnight and a name to ask for at a warehouse. It isn't stability. It's the first step-shaped thing you've seen in months."); } } },
+    { label: "Swallow it and go home", cond: (st) => st.family.mom.rel > 20 || st.family.dad.rel > 20, fx: { run: (st) => { st.flags.homeless = null; st.stats.happiness = clamp(st.stats.happiness - 4); st.stats.health = clamp(st.stats.health + 6); push(st, "🏠 You went back. Nothing was said about why you left, which is its own kind of sentence. You have a bed and a curfew and a silence at dinner. It's warm, at least."); } } },
+  ] } }) },
+];
+POOL.push(...STREET_POOL);
+ACT_GROUPS.push(STREET_GROUP);
+
+/* ═══════════════ ASK A FRIEND OUT ═══════════════ */
+
+function askOutMenu(state, key) {
+  const s = pClone(state);
+  const p = s.friends[key];
+  s.pending = { emoji: "💗", title: `Ask ${p.name} out`, text: "The question that can't be unasked. How do you do it?", options: [
+    { label: "Straight out — say what you feel", fx: { run: (st) => resolveAskOut(st, key, 0.06, "direct") } },
+    { label: "Suggest something that could be a date", fx: { run: (st) => resolveAskOut(st, key, -0.02, "soft") } },
+    { label: "Write it down and hand it over", fx: { run: (st) => resolveAskOut(st, key, 0.02, "note") } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+function resolveAskOut(st, key, mod, how) {
+  const p = st.friends[key];
+  // do they want the same thing? unknown until you ask — that's the whole risk
+  const theirO = p.likesYou !== undefined ? p.likesYou : (p.likesYou = Math.random() < 0.45);
+  const era = localAcceptance(st);
+  const same = (p.g === "F" && st.profile.sex === "Female") || (p.g === "M" && st.profile.sex === "Male");
+  let odds = (p.rel - 40) / 90 + (theirO ? 0.35 : -0.3) + mod;
+  if (same) odds -= (100 - era) / 260;
+  if (Math.random() < odds) {
+    const rk = "r" + (st.flags.rSeq = (st.flags.rSeq || 0) + 1);
+    st.romance[rk] = { ...p, status: "dating", role: p.g === "M" ? "Man" : p.g === "F" ? "Woman" : "Partner", rel: clamp(p.rel + 5), openOk: activePartners(st).length > 0, met: "years of friendship", lastLove: 0 };
+    delete st.friends[key];
+    st.stats.happiness = clamp(st.stats.happiness + 10);
+    push(st, `💗 You asked ${p.name} out${how === "note" ? ", on paper, because your voice wouldn't have made it" : ""} — and they said yes, fast, like they'd been waiting for you to catch up. Everything is the same and completely different.`);
+  } else {
+    p.rel = clamp(p.rel - rnd(4, 12));
+    st.stats.happiness = clamp(st.stats.happiness - 7);
+    push(st, `💗 You asked ${p.name} out. ${same && era < 40 ? `They went very still, then very careful. "I'm not— we shouldn't talk about this." The friendship survived. Barely, and quieter.` : `"I love you, but not like that." They meant it kindly, which somehow made the walk home longer.`}`);
+  }
+}
+
+/* ═══════════════ COMING OUT — AS A CONVERSATION ═══════════════ */
+
+function outLabel(s) {
+  const bits = [];
+  if (s.discovered.orientation && isQueerO(s)) bits.push(s.hidden.orientation.toLowerCase());
+  if (s.discovered.gender && isQueerG(s)) bits.push(s.hidden.gender.toLowerCase());
+  return bits.join(" and ") || "yourself";
+}
+
+// step 1 — how do you open it?
+function comeOutStart(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const isPartner = group === "romance";
+  const begin = (st, bonus, style) => {
+    st.outTo[key] = true;
+    const q = st[group][key];
+    if (!q.known.includes("acceptance")) q.known.push("acceptance");
+    // H10 (stx): record WHICH axis was disclosed, on the live st — so being out
+    // as bi to your mother never pre-empts telling her you're trans.
+    stxMarkOut(st, group, key, stxCurrentAxis(st), style);
+    st.pending = comeOutReact(st, group, key, bonus, style).pending;
+  };
+  const opts = [
+    { label: "Say it plainly, no preamble", fx: { run: (st) => begin(st, 0, "plain") } },
+    { label: "Ease in — bring it up sideways first", fx: { run: (st) => begin(st, 6, "sideways") } },
+    { label: "Write it down and let them read it", fx: { run: (st) => begin(st, 3, "letter") } },
+  ];
+  if (isPartner) opts.push({ label: "Tell them somewhere safe, just the two of you", fx: { run: (st) => begin(st, 8, "private") } });
+  opts.push({ label: "Not today", fx: { feed: `🏳️‍🌈 You got as far as their name and then talked about the weather. Not today. Today you were allowed to not.` } });
+  s.pending = { emoji: "🏳️‍🌈", title: `Telling ${p.name}`,
+    text: isPartner ? `${p.name} deserves to know who they're actually with. Your hands are doing that thing. How do you begin?`
+                    : `You've decided ${p.name} should know. There's no right way and you've rehearsed six of them. How do you begin?`,
+    options: opts };
+  return s;
+}
+
+// step 2 — their reaction, and what you do with it
+function comeOutReact(state, group, key, bonus, style) {
+  const s = pClone(state);
+  const p = s[group][key];
+  const era = localAcceptance(s);
+  const eff = p.acceptance * (0.38 + era / 165);
+  const score = eff * 0.5 + era * 0.35 + p.rel * 0.15 + bonus;
+  const what = outLabel(s);
+  const isPartner = group === "romance";
+  s.outTo[key] = true;
+  if (!p.known.includes("acceptance")) p.known.push("acceptance");
+
+  const opener = style === "letter" ? `You wrote it out, sealed it, and watched ${p.name} read it with your heart going like a bird in a box.`
+    : style === "sideways" ? `You circled it — a story about someone else, a careful question — until the circling became the thing itself.`
+    : style === "private" ? `You waited until it was just the two of you and the door was shut and there was nowhere else the words could go.`
+    : style === "confronted" ? `Cornered at the kitchen table, you stopped running from the question and answered it.`
+    : style === "outed" ? `The choice of when was taken from you — so you took back the choice of how, chin up, voice steadier than you felt.`
+    : style === "ripple" ? `They already knew, secondhand and garbled — so you sat them down and told it properly, in your own words, the way it deserved.`
+    : `You said it straight out, before your nerve could file an objection.`;
+
+  /* ——— warm ——— */
+  if (score > 65) {
+    s.pending = { emoji: "🏳️‍🌈", title: `You told ${p.name}`, text: `${opener} "${isPartner ? `You're still you. I'm still here.` : `Okay. Thank you for telling me.`}" ${p.warmth > 60 ? "They reached for you before you'd finished the sentence." : "No fuss, no speech. Just steady."} What do you do?`,
+      options: [
+        { label: "Let yourself cry", fx: { run: (st) => { const q = st[group][key]; q.rel = clamp(q.rel + 14); st.stats.happiness = clamp(st.stats.happiness + 12); push(st, `🏳️‍🌈 You told ${q.name} you're ${what} — and then you cried, hard, for a while, and they just held on. Years of held breath, released in a kitchen.`); } } },
+        { label: "Make a joke to let the pressure out", fx: { run: (st) => { const q = st[group][key]; q.rel = clamp(q.rel + 10); st.stats.happiness = clamp(st.stats.happiness + 9); push(st, `🏳️‍🌈 You told ${q.name} you're ${what}, then cracked a terrible joke, and their laugh had relief in it too. You'll both remember it as the day it got easier.`); } } },
+        { label: "Ask what they're actually thinking", fx: { run: (st) => { const q = st[group][key];
+          q.rel = clamp(q.rel + 12); st.stats.happiness = clamp(st.stats.happiness + 8); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 4);
+          push(st, `🏳️‍🌈 You told ${q.name} you're ${what}, then asked them to say the real thing, not the polite thing. ${q.name} admitted they were worried — not about you, ${isPartner ? "about whether they'd be enough for you now" : "about the world getting to you"}. You talked until late. It held.`); } } },
+      ] };
+    return s;
+  }
+
+  /* ——— uneasy ——— */
+  if (score > 40) {
+    s.pending = { emoji: "🏳️‍🌈", title: `${p.name} goes quiet`, text: `${opener} A long silence. "${isPartner ? "I need to think. That's not a no. I just... need to think." : "I need some time with this."}" It isn't a door slamming. It isn't open arms either.`,
+      options: [
+        { label: "Give them room", fx: { run: (st) => { const q = st[group][key]; q.rel = clamp(q.rel - 2); st.flags["thaw_" + key] = st.ageDays; st.stats.happiness = clamp(st.stats.happiness - 3);
+          push(st, `🏳️‍🌈 You told ${q.name} you're ${what}. You gave them room instead of arguing. It's a slow thaw — but it is a thaw, and slow is not the same as never.`); } } },
+        { label: "Press for an answer now", fx: { run: (st) => { const q = st[group][key];
+          if (Math.random() < 0.4) { q.rel = clamp(q.rel + 8); st.stats.happiness = clamp(st.stats.happiness + 4); push(st, `🏳️‍🌈 You pushed, gently, and it broke something open. ${q.name} said the frightened thing out loud, heard how small it sounded, and chose you. It didn't have to go that way.`); }
+          else { q.rel = clamp(q.rel - 12); st.flags["rift_" + key] = st.ageDays; st.stats.happiness = clamp(st.stats.happiness - 8); push(st, `🏳️‍🌈 You pushed for an answer ${q.name} didn't have yet, and they gave you the wrong one to end the conversation. You both meant to talk again. It took a long time.`); } } } },
+        { label: "Reassure them nothing's changed", fx: { run: (st) => { const q = st[group][key]; q.rel = clamp(q.rel + 4); st.flags["thaw_" + key] = st.ageDays;
+          push(st, `🏳️‍🌈 You told ${q.name} you're ${what}, then spent an hour proving you're the same person who ${pick(["burns toast every single morning", "still can't parallel park", "calls them first with every bit of news"])}. Something in their shoulders dropped.`); } } },
+      ] };
+    return s;
+  }
+
+  /* ——— badly ——— */
+  const homeRisk = group === "family" && ageYears(s) >= 13 && hreAtParents(s);
+  const throwOut = (st) => {
+    if (!homeRisk) return;
+    const q = st[group][key];
+    const risk = 0.9 - (q.kindness / 300) - (era / 150);
+    if (Math.random() < risk) {
+      hreSetTenure(st, "homeless", null);
+      st.flags.homeless = st.ageDays;
+      st.stats.happiness = clamp(st.stats.happiness - 18);
+      st.stats.health = clamp(st.stats.health - 8);
+      const other = key === "mom" ? st.family.dad : st.family.mom;
+      push(st, `🚪 ${q.name} told you to get out. ${other && other.acceptance > 55 ? `${other.name} argued, then cried, then packed you a bag with shaking hands.` : "Nobody argued for you."} You left with what you could carry. ${criminalized(st) ? `In ${st.profile.country} in ${yearOf(st)}, there is nowhere official to turn.` : "The shelter list is short and the waiting lists are long."}`);
+    }
+  };
+  s.pending = { emoji: "🏳️‍🌈", title: `It goes badly`, text: `${opener} ${p.kindness > 55 ? `${p.name} doesn't shout. Worse — they look away and change the subject, and a wall goes up while you're still standing there.` : isPartner ? `"I can't do this. I'm sorry — I can't." ${p.name} is already gathering their coat.` : `"Not in this house." The words land like furniture being rearranged forever.`} What do you do?`,
+    options: [
+      { label: "Hold your ground — you're not taking it back", fx: { run: (st) => { const q = st[group][key];
+        q.rel = clamp(q.rel - 25); st.stats.happiness = clamp(st.stats.happiness - 8);
+        st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8);
+        st.flags["rift_" + key] = st.ageDays;
+        push(st, `🏳️‍🌈 You told ${q.name} you're ${what}, and when it went wrong you did not take one word of it back. That cost you something enormous today. It also means you never have to un-say it.`);
+        throwOut(st);
+        if (isPartner) { q.status = "ex"; q.role = "Ex"; push(st, `💔 ${q.name} ended it. You are not what they thought they signed up for, and they were honest about that, which is its own small mercy in a very bad week.`); }
+      } } },
+      { label: "Say you're confused — walk it back", fx: { run: (st) => { const q = st[group][key];
+        q.rel = clamp(q.rel - 6); st.outTo[key] = false;
+        st.stats.happiness = clamp(st.stats.happiness - 14);
+        st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) - 3);
+        push(st, `🏳️‍🌈 You said you were confused, that you'd got it wrong, that forget it. The temperature in the room dropped back to normal. You went upstairs and sat very still for a long time. The closet door closed from the inside, and you were the one who closed it.`);
+      } } },
+      { label: "Leave the room. Say nothing else.", fx: { run: (st) => { const q = st[group][key];
+        q.rel = clamp(q.rel - 18); st.stats.happiness = clamp(st.stats.happiness - 10);
+        st.flags["rift_" + key] = st.ageDays;
+        push(st, `🏳️‍🌈 You walked out mid-sentence and shut the door quietly, which was louder than slamming it. Nothing was resolved. You survived the day, which was the only goal left.`);
+        throwOut(st);
+        if (isPartner) { q.status = "ex"; q.role = "Ex"; push(st, `💔 Neither of you called. That was the end of it.`); }
+      } } },
+    ] };
+  return s;
+}
+
+/* ═══════════════ HEALTH · CONDITIONS · CARE ═══════════════ */
+
+// what a doctor's visit costs where you live (1.0 = US-style out of pocket)
+const HC = { "United States": 1, "Switzerland": 0.55, "Ireland": 0.35, "Israel": 0.25, "Mexico": 0.3, "Brazil": 0.25,
+  "China": 0.35, "India": 0.3, "Nigeria": 0.4, "Kenya": 0.4, "Egypt": 0.3, "Indonesia": 0.35, "Philippines": 0.4,
+  "South Korea": 0.3, "Japan": 0.25, "Turkey": 0.2, "Russia": 0.2, "Poland": 0.12, "Greece": 0.15, "Italy": 0.1,
+  "Spain": 0.08, "Portugal": 0.1, "France": 0.08, "Germany": 0.1, "Austria": 0.1, "Netherlands": 0.15,
+  "Belgium": 0.12, "Denmark": 0.05, "Sweden": 0.05, "Norway": 0.05, "Finland": 0.05, "United Kingdom": 0.04,
+  "Canada": 0.06, "Australia": 0.12, "New Zealand": 0.1, "Cuba": 0.02, "Argentina": 0.12, "Chile": 0.3,
+  "Colombia": 0.2, "Thailand": 0.15, "Vietnam": 0.25, "Ukraine": 0.2, "South Africa": 0.35 };
+const careCost = (s, base) => Math.max(4, Math.round(base * (HC[s.profile.country] ?? 0.3)));
+
+const CONDITIONS = {
+  myopia:    { name: "Short-sightedness", emoji: "👓", minAge: 8, chronic: 1, drain: 0, mood: -1, treat: 90, treatLabel: "Get glasses", cured: "Glasses. The world has EDGES. Leaves are individual objects. You had no idea." },
+  anxiety:   { name: "Anxiety", emoji: "🌀", minAge: 12, chronic: 1, drain: 0, mood: -4, treat: 400, treatLabel: "Start therapy", cured: "Therapy and, if you needed them, meds. The volume came down. It's still there — but it's a passenger now, not the driver." },
+  depression:{ name: "Depression", emoji: "🌧", minAge: 13, chronic: 1, drain: -1, mood: -6, treat: 500, treatLabel: "Get treatment", cured: "Treatment took months to bite. Then one morning the colour came back into things, and you noticed you'd noticed." },
+  asthma:    { name: "Asthma", emoji: "🫁", minAge: 3, chronic: 1, drain: -1, mood: -1, treat: 150, treatLabel: "Get an inhaler", cured: "An inhaler in every coat pocket. Breathing became boring again, which is the goal." },
+  backPain:  { name: "Chronic back pain", emoji: "🦴", minAge: 28, chronic: 1, drain: -1, mood: -3, treat: 350, treatLabel: "Physiotherapy", cured: "Twelve weeks of physio and a stack of exercises you'll actually keep doing. Mostly." },
+  migraine:  { name: "Migraines", emoji: "⚡", minAge: 14, chronic: 1, drain: 0, mood: -3, treat: 300, treatLabel: "See a neurologist", cured: "The right prescription, finally. You still get warning auras — but now they're a signal, not a sentence." },
+  bp:        { name: "High blood pressure", emoji: "🩸", minAge: 38, chronic: 1, drain: -2, mood: -1, treat: 300, treatLabel: "Start medication", risk: 0.4, cured: "One small pill a day, checked every six months. Unglamorous. Life-extending." },
+  diabetes:  { name: "Type 2 diabetes", emoji: "🍬", minAge: 40, chronic: 1, drain: -2, mood: -2, treat: 600, treatLabel: "Begin management", risk: 0.5, cured: "A management plan, a monitor, and a new relationship with breakfast. Manageable — as long as you keep managing it." },
+  arthritis: { name: "Arthritis", emoji: "🖐", minAge: 55, chronic: 1, drain: -1, mood: -3, treat: 400, treatLabel: "Treat the joints", cured: "Medication and warm-water exercise. Jars remain the enemy, but you're winning more of them." },
+  hearing:   { name: "Hearing loss", emoji: "👂", minAge: 55, chronic: 1, drain: 0, mood: -3, treat: 900, treatLabel: "Get hearing aids", cured: "Hearing aids. The first time you heard a kettle again you laughed out loud in a shop." },
+  heart:     { name: "Heart disease", emoji: "❤️‍🩹", minAge: 50, chronic: 1, drain: -3, mood: -4, treat: 3500, treatLabel: "Cardiac treatment", risk: 1.6, cured: "Stents, statins, a cardiac rehab class full of people cracking jokes about their own chests. You got lucky and you know it." },
+  cancer:    { name: "Cancer", emoji: "🎗", minAge: 30, chronic: 0, drain: -6, mood: -8, treat: 6000, treatLabel: "Begin treatment", risk: 3.2, curable: 0.68, cured: "Months of treatment that took your hair, your appetite and your calendar. Then the scan came back clear, and the nurse hugged you, and you sat in the car park for an hour." },
+};
+
+function hasCond(s, id) { return !!(s.conditions && s.conditions[id]); }
+function activeConds(s) { return Object.entries(s.conditions || {}); }
+function untreated(s) { return activeConds(s).filter(([, c]) => !c.treated); }
+
+function conditionRisk(s) {
+  return untreated(s).reduce((a, [id]) => a + (CONDITIONS[id].risk || 0), 0);
+}
+
+function giveCondition(st, id, silent) {
+  if (!st.conditions) st.conditions = {};
+  if (st.conditions[id]) return;
+  const c = CONDITIONS[id];
+  st.conditions[id] = { since: st.ageDays, treated: false, known: !!silent ? false : true };
+  if (!silent) push(st, `${c.emoji} Diagnosed: ${c.name}.`);
+}
+
+/* — the doctor — */
+function doctorMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const cost = (b) => careCost(s, b);
+  const opts = [];
+  opts.push({ card: { emoji: "🩺", name: "Full check-up", sub: "find what's hiding", tag: cur + cost(120) }, cond: (st) => st.money >= cost(120),
+    fx: { run: (st) => { st.money -= cost(120); st.pending = checkUpResult(st).pending; } } });
+  opts.push({ card: { emoji: "👁", name: "Optometrist", sub: "eye test", tag: cur + cost(60) }, cond: (st) => st.money >= cost(60),
+    fx: { run: (st) => { st.money -= cost(60);
+      if (hasCond(st, "myopia")) push(st, "👁 Your prescription has crept up again. New lenses ordered.");
+      else if (ageYears(st) > 8 && Math.random() < 0.35) { giveCondition(st, "myopia"); push(st, "👁 The letters on row six were, it turns out, not supposed to be blurry."); }
+      else push(st, "👁 Twenty-twenty. The optometrist seemed almost disappointed.");
+      st.stats.health = clamp(st.stats.health + 1); } } });
+  opts.push({ card: { emoji: "🦷", name: "Dentist", sub: "the chair", tag: cur + cost(110) }, cond: (st) => st.money >= cost(110),
+    fx: { run: (st) => { st.money -= cost(110);
+      if (Math.random() < 0.4) { st.stats.health = clamp(st.stats.health - 1); st.stats.looks = clamp(st.stats.looks + 2); push(st, "🦷 Two fillings and a lecture about flossing you have already forgotten. Smile improved regardless."); }
+      else { st.stats.looks = clamp(st.stats.looks + 1); st.stats.health = clamp(st.stats.health + 1); push(st, "🦷 A clean bill and a polish. You ran your tongue over your teeth all the way home."); } } } });
+  opts.push({ card: { emoji: "🧠", name: "Psychiatrist", sub: "mind, properly examined", tag: cur + cost(200) }, cond: (st) => st.money >= cost(200),
+    fx: { run: (st) => { st.money -= cost(200);
+      const found = ["anxiety", "depression"].find((k) => hasCond(st, k) && !st.conditions[k].treated);
+      if (found) { st.conditions[found].treated = true; st.stats.happiness = clamp(st.stats.happiness + 10); push(st, `${CONDITIONS[found].emoji} ${CONDITIONS[found].cured}`); }
+      else if (st.stats.happiness < 40 && Math.random() < 0.6) { giveCondition(st, st.stats.happiness < 28 ? "depression" : "anxiety"); push(st, "🧠 Naming the thing was its own kind of relief. There's a plan now."); }
+      else { st.stats.happiness = clamp(st.stats.happiness + 4); push(st, "🧠 An hour of being properly listened to. Nothing clinical to report; you left lighter anyway."); } } } });
+  opts.push({ card: { emoji: "💉", name: "Vaccinations", sub: "boring and heroic", tag: cur + cost(40) }, cond: (st) => st.money >= cost(40),
+    fx: { money: -cost(40), stats: { health: +4 }, feed: "💉 Jabs updated. A sore arm for a day and a decade of not dying of something medieval." } });
+  opts.push({ card: { emoji: "🩸", name: "Donate blood", sub: "free · juice included", tag: "free" },
+    fx: { stats: { health: -1, happiness: +3 }, emergent: { kindness: +4 }, feed: "🩸 One pint, one biscuit, one anonymous stranger's much better week." } });
+  opts.push({ card: { emoji: "🧪", name: "Donate plasma", sub: "paid, and it takes a while", tag: "+" + cur + "35" },
+    fx: { money: +35, stats: { health: -2, happiness: +1 }, feed: "🧪 Ninety minutes hooked to a machine, watching daytime television, walking out with cash. Not glamorous. Spends the same." } });
+  const sick = untreated(s);
+  if (sick.length) opts.push({ card: { emoji: "💊", name: "Treat a condition", sub: `${sick.length} untreated`, tag: "varies" }, hi: 1,
+    fx: { run: (st) => { st.pending = treatMenu(st).pending; } } });
+  if (ageYears(s) >= 18) opts.push({ card: { emoji: "✨", name: "Cosmetic surgery", sub: "elective, permanent", tag: cur + cost(3000) }, cond: (st) => st.money >= cost(3000),
+    fx: { run: (st) => { st.money -= cost(3000);
+      if (Math.random() < 0.82) { st.stats.looks = clamp(st.stats.looks + rnd(8, 16)); st.stats.happiness = clamp(st.stats.happiness + 4); push(st, "✨ It healed well and looks like you, only rested. You keep catching your own eye in windows."); }
+      else { st.stats.looks = clamp(st.stats.looks - rnd(3, 8)); st.stats.happiness = clamp(st.stats.happiness - 8); st.stats.health = clamp(st.stats.health - 4); push(st, "✨ It did not go to plan. There's a revision surgery on the calendar and a lawyer's number in your pocket."); } } } });
+  s.pending = { emoji: "🩺", title: "The doctor", text: `Healthcare in ${s.profile.country}${(HC[s.profile.country] ?? 0.3) < 0.15 ? " is mostly covered — you pay a token and get seen." : (HC[s.profile.country] ?? 0.3) > 0.6 ? " is expensive, and the bill arrives later with friends." : " costs something, but not everything."}`, layout: "grid", options: [...opts, CANCEL] };
+  return s;
+}
+
+function checkUpResult(state) {
+  const s = pClone(state);
+  const age = ageYears(s);
+  const found = [];
+  // undiagnosed things surface here
+  for (const [id, cfg] of Object.entries(CONDITIONS)) {
+    if (found.length >= 2) break; // a check-up finds a thing or two, not a whole chart
+    if (hasCond(s, id)) continue;
+    if (age < cfg.minAge) continue;
+    let chance = 0.012 + Math.max(0, (age - cfg.minAge)) * 0.0012;
+    if (s.stats.health < 45) chance *= 2;
+    if (id === "depression" || id === "anxiety") chance = s.stats.happiness < 35 ? 0.22 : 0.02;
+    if (Math.random() < chance) { giveCondition(s, id, true); found.push(id); }
+  }
+  s.stats.health = clamp(s.stats.health + 2);
+  const text = found.length
+    ? `The doctor takes longer than usual with the results. ${found.map((f) => `${CONDITIONS[f].emoji} ${CONDITIONS[f].name}`).join(", ")} — caught early, which matters more than it sounds.`
+    : "Bloods, blood pressure, the lot. Everything where it should be. The doctor tells you to keep doing whatever you're doing.";
+  s.pending = { emoji: "🩺", title: "Check-up results", text, options: [
+    ...(found.length ? [{ label: "Ask what happens next", fx: { run: (st) => { push(st, `🩺 You asked every question you had and wrote the answers down. Knowing the shape of it makes it carryable.`); st.emergent.prudence = clamp((st.emergent.prudence ?? 50) + 3); } } }] : []),
+    { label: found.length ? "Take the paperwork and go" : "Good news, then", fx: { stats: { happiness: found.length ? -3 : +4 } } },
+  ] };
+  return s;
+}
+
+function treatMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const sick = untreated(s);
+  s.pending = { emoji: "💊", title: "Treatment", text: "What are we dealing with today?", layout: "grid", options: [
+    ...sick.map(([id]) => {
+      const cfg = CONDITIONS[id];
+      const price = careCost(s, cfg.treat);
+      return { card: { emoji: cfg.emoji, name: cfg.name, sub: cfg.treatLabel, tag: cur + price }, cond: (st) => st.money >= price,
+        fx: { run: (st) => {
+          st.money -= price;
+          if (cfg.curable !== undefined) {
+            if (Math.random() < cfg.curable) { delete st.conditions[id]; st.stats.health = clamp(st.stats.health + 10); st.stats.happiness = clamp(st.stats.happiness + 12); push(st, `${cfg.emoji} ${cfg.cured}`); }
+            else { st.conditions[id].treated = true; st.stats.health = clamp(st.stats.health - 6); push(st, `${cfg.emoji} Treatment is holding it steady, not beating it. You get scans, and the calendar between them is yours to actually live in.`); }
+          } else {
+            st.conditions[id].treated = true;
+            st.stats.health = clamp(st.stats.health + 6);
+            st.stats.happiness = clamp(st.stats.happiness + 6);
+            push(st, `${cfg.emoji} ${cfg.cured}`);
+          }
+        } } };
+    }),
+    CANCEL,
+  ] };
+  return s;
+}
+
+const HEALTH_POOL = [
+  { id: "condOnset", i: 1, w: 3, minAge: 8, maxAge: 100, cd: 1100, cond: (s) => true, run: (s) => {
+    const age = ageYears(s);
+    const pool = Object.entries(CONDITIONS).filter(([id, c]) => !hasCond(s, id) && age >= c.minAge);
+    if (!pool.length) return { auto: [] };
+    const weights = pool.map(([id, c]) => (id === "cancer" || id === "heart" ? 0.4 : 1) * (s.stats.health < 45 ? 2 : 1) * (1 + Math.max(0, age - c.minAge) / 60));
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    let chosen = pool[0];
+    for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) { chosen = pool[i]; break; } }
+    const [id, cfg] = chosen;
+    const base = 0.05 + (s.stats.health < 40 ? 0.1 : 0) + Math.max(0, age - 50) * 0.0035 - activeConds(s).length * 0.012;
+    if (Math.random() > base) return { auto: [] };
+    return { event: { emoji: cfg.emoji, title: "Something's wrong", text: `${pick(["It's been building for weeks and you've been ignoring it.", "It started small and stopped being small.", "You noticed it, then noticed you'd been noticing it for a while."])} ${cfg.name === "Cancer" ? "The GP stops being reassuring and starts being efficient, which tells you everything." : ""}`, options: [
+      { label: "Get it looked at", fx: { run: (st) => { giveCondition(st, id); st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `${cfg.emoji} Diagnosed with ${cfg.name.toLowerCase()}. There's a treatment path (🩺 Health tab) — and knowing beats not knowing.`); } } },
+      { label: "Ignore it — it'll pass", fx: { run: (st) => { giveCondition(st, id, true); st.stats.health = clamp(st.stats.health - 5); push(st, `🤷 You decided it was nothing. It is not nothing, and it is now unmonitored.`); } } },
+    ] } }; } },
+  { id: "condFlare", w: 5, minAge: 8, maxAge: 105, cd: 120, cond: (s) => untreated(s).length > 0, run: (s) => {
+    const [id] = pick(untreated(s));
+    const cfg = CONDITIONS[id];
+    return { auto: [`${cfg.emoji} ${pick([`Your ${cfg.name.toLowerCase()} flared up and took the week hostage.`, `A bad stretch with your ${cfg.name.toLowerCase()}. Untreated things do not stay politely still.`, `The ${cfg.name.toLowerCase()} made itself known again, loudly, at the worst possible moment.`])}`],
+      fx: { stats: { health: cfg.drain || -1, happiness: cfg.mood || -2 } } }; } },
+  { id: "condSteady", w: 3, minAge: 8, maxAge: 105, cd: 300, cond: (s) => activeConds(s).some(([, c]) => c.treated), run: (s) => {
+    const [id] = pick(activeConds(s).filter(([, c]) => c.treated));
+    return { auto: [`${CONDITIONS[id].emoji} Routine check on your ${CONDITIONS[id].name.toLowerCase()} — stable, managed, unremarkable. Unremarkable is the whole victory.`], fx: { stats: { happiness: +2 } } }; } },
+];
+POOL.push(...HEALTH_POOL);
+
+/* ═══════════════ THE CLOSET HAS WALLS — SUSPICION · OUTING · RIPPLE ═══════════════ */
+
+function closetedFrom(s, key) {
+  if (!isOutQueer(s) || !s.family[key] || s.family[key].deceased) return false;
+  if (!s.outTo[key]) return true;
+  // H9 (stx): out on one axis is not out on the other. If you have since
+  // discovered a gender identity you haven't told them about, you're still
+  // closeted to them about that — the conversation becomes available again.
+  return stxCanComeOut(s, "family", key, stxCurrentAxis(s));
+}
+function visiblyQueer(s) {
+  // things people around you can notice
+  const sameSexDating = activePartners(s).some(([, p]) => sameSexCouple(s, p));
+  return sameSexDating || !!s.flags.transitioning || !!s.flags.hrt || (usedName(s) !== s.profile.first);
+}
+function bumpSuspicion(st, key, amt) {
+  if (!st.suspicion) st.suspicion = {};
+  st.suspicion[key] = clamp((st.suspicion[key] || 0) + amt);
+}
+
+const CLOSET_POOL = [
+  // quiet accumulation: people who see you often start to notice
+  { id: "suspGrow", w: 6, minAge: 13, maxAge: 90, cd: 70, cond: (s) => visiblyQueer(s) && ["mom", "dad"].some((k) => closetedFrom(s, k)), run: (s) => {
+    const ks = ["mom", "dad"].filter((k) => closetedFrom(s, k));
+    const k = pick(ks);
+    const p = s.family[k];
+    const grow = rnd(4, 9) + (s.flags.cohabiting ? 4 : 0) + (s.flags.hrt ? 5 : 0);
+    bumpSuspicion(s, k, grow);
+    const lvl = s.suspicion[k];
+    if (lvl > 35 && Math.random() < 0.5) {
+      return { auto: [pick([
+        `👀 ${p.name} paused at the photo on your desk a beat too long, then said nothing at all.`,
+        `👀 "${pick(["You two spend a lot of time together", "You seem different lately", "Anything you want to tell me?"])}," ${p.name} said, too lightly, and let it drop.`,
+        `👀 ${p.name} has started leaving certain sentences unfinished around you. The unfinished part has a shape.`,
+      ])] };
+    }
+    return { auto: [] }; } },
+  // the ongoing tax of hiding a real relationship
+  { id: "closetTax", w: 4, minAge: 15, maxAge: 90, cd: 220, cond: (s) => activePartners(s).some(([, p]) => sameSexCouple(s, p)) && ["mom", "dad"].some((k) => closetedFrom(s, k)), run: (s) => {
+    const [, p] = activePartners(s).find(([, q]) => sameSexCouple(s, q));
+    return { auto: [pick([
+      `🚪 You introduced ${p.name} as "my roommate" again. ${p.name} smiled through it. The smile had a cost and you both paid it.`,
+      `🚪 Family dinner, and you edited ${p.name} out of every story in real time. You're getting frighteningly good at the grammar of hiding.`,
+      `🚪 ${p.name} moved their toothbrush before your mother visited. Neither of you said anything. The toothbrush said it all.`,
+      `🚪 Two lives, one calendar. The bookkeeping of the closet is its own unpaid job.`,
+    ])], fx: { stats: { happiness: -3 }, run: (st) => { const ap = activePartners(st).find(([, q]) => sameSexCouple(st, q)); if (ap && Math.random() < 0.3) ap[1].rel = clamp(ap[1].rel - 2); } } }; } },
+  // suspicion boils over into a direct question
+  { id: "confront", i: 1, w: 8, minAge: 13, maxAge: 90, cd: 300, cond: (s) => ["mom", "dad"].some((k) => closetedFrom(s, k) && (s.suspicion?.[k] || 0) > 65), run: (s) => {
+    const k = ["mom", "dad"].find((k2) => closetedFrom(s, k2) && (s.suspicion?.[k2] || 0) > 65);
+    const p = s.family[k];
+    return { event: { emoji: "🫢", title: `${p.name} asks you directly`, text: `The table is set, the door is shut, and ${p.name} says your name in the voice that means sit down. "${pick(["I'm not stupid. Tell me the truth.", "Just tell me. Whatever it is, just tell me.", "Is there something going on that I should know about?"])}"`, options: [
+      { label: "Tell the truth — all of it", fx: { run: (st) => { st.outTo[k] = true; st.suspicion[k] = 0; const q = st.family[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.pending = comeOutReact(st, "family", k, -4, "confronted").pending; } } },
+      { label: "Deny it, flat", fx: { run: (st) => { bumpSuspicion(st, k, -30); st.stats.happiness = clamp(st.stats.happiness - 8); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) - 2); push(st, `🫢 You looked ${st.family[k].name} in the eye and lied. It worked, mostly. The room went back to normal and you did not, quite.`); } } },
+      { label: "Laugh it off, change the subject", fx: { run: (st) => { bumpSuspicion(st, k, -15); st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `🫢 You made a joke and steered hard for the weather. ${st.family[k].name} allowed it. Allowed is not the same as believed.`); } } },
+    ] } }; } },
+  // being SEEN: the conversation stops being yours to schedule
+  { id: "outedSeen", i: 1, w: 5, minAge: 14, maxAge: 90, cd: 500, cond: (s) => activePartners(s).some(([, p]) => sameSexCouple(s, p)) && ["mom", "dad"].some((k) => closetedFrom(s, k) && (s.suspicion?.[k] || 0) > 25), run: (s) => {
+    const k = ["mom", "dad"].find((k2) => closetedFrom(s, k2) && (s.suspicion?.[k2] || 0) > 25);
+    const par = s.family[k];
+    const [, p] = activePartners(s).find(([, q]) => sameSexCouple(s, q));
+    const how = pick([`${par.name} saw you and ${p.name} through a café window — holding hands, unmistakable`,
+      yearOf(s) >= 2005 ? `a message from ${p.name} lit up your phone on the kitchen table, and ${par.name} read it before thinking` : `${par.name} found a letter from ${p.name} while putting laundry away — the kind of letter that can't be explained`,
+      `a neighbour mentioned, so casually, seeing you and ${p.name} at the ${pick(["market", "cinema", "park"])} — "such a sweet couple" — and watched ${par.name}'s face while saying it`]);
+    return { event: { emoji: "🫨", title: "You've been seen", text: `${how}. By the time you get home, ${par.name} is sitting at the table waiting, and the conversation is no longer yours to schedule.`, options: [
+      { label: "Own it — this is who I am", fx: { run: (st) => { st.outTo[k] = true; if (st.suspicion) st.suspicion[k] = 0; const q = st.family[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 5); st.pending = comeOutReact(st, "family", k, -8, "outed").pending; } } },
+      { label: `"It's not what it looked like"`, fx: { run: (st) => { bumpSuspicion(st, k, -10); st.stats.happiness = clamp(st.stats.happiness - 10); const ap = activePartners(st).find(([, q]) => sameSexCouple(st, q)); if (ap) { ap[1].rel = clamp(ap[1].rel - 10); push(st, `🫨 You explained ${ap[1].name} away — a friend, a misunderstanding — with ${ap[1].name}'s name in your mouth like a stone. It bought time. ${ap[1].name} heard about it, eventually, and understood, technically.`); } else push(st, `🫨 You explained it away. It bought time and cost truth.`); } } },
+    ] } }; } },
+  // news travels inside a family
+  { id: "ripple", i: 1, w: 6, minAge: 13, maxAge: 90, cd: 200, cond: (s) => (s.outTo.mom && closetedFrom(s, "dad") && (s.family.mom.loyalty < 50 || s.family.mom.acceptance < 45)) || (s.outTo.dad && closetedFrom(s, "mom") && (s.family.dad.loyalty < 50 || s.family.dad.acceptance < 45)), run: (s) => {
+    const teller = s.outTo.mom && closetedFrom(s, "dad") ? "mom" : "dad";
+    const hearer = teller === "mom" ? "dad" : "mom";
+    const t = s.family[teller], h = s.family[hearer];
+    return { event: { emoji: "📞", title: `${t.name} told ${h.name}`, text: `You hear it in ${h.name}'s voice before any words: ${t.name} couldn't carry it alone, and now ${h.name} knows — secondhand, unprepared, on someone else's terms. Including yours.`, options: [
+      { label: `Talk to ${h.name} yourself, now`, fx: { run: (st) => { st.outTo[hearer] = true; if (st.suspicion) st.suspicion[hearer] = 0; const q = st.family[hearer]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.family[teller].rel = clamp(st.family[teller].rel - 6); st.pending = comeOutReact(st, "family", hearer, -3, "ripple").pending; } } },
+      { label: "Let it sit — deal with it later", fx: { run: (st) => { st.outTo[hearer] = true; const q = st.family[hearer]; q.rel = clamp(q.rel - 10); st.family[teller].rel = clamp(st.family[teller].rel - 8); st.flags["rift_" + hearer] = st.ageDays; st.stats.happiness = clamp(st.stats.happiness - 6); push(st, `📞 You let the silence do the talking. ${q.name} knows, you know ${q.name} knows, and the not-discussing-it settled over the family like weather.`); } } },
+    ] } }; } },
+];
+POOL.push(...CLOSET_POOL);
+
+/* ═══════════════ JAIL+ — DEGREES · PAROLE · BAIL · EXPUNGEMENT ═══════════════ */
+
+const DEG_W = { misdemeanor: 1, felony: 2.5, violent: 5 };
+function recEntries(s) { return (s.flags.record || []); }
+function recWeight(s) {
+  const now = s.ageDays;
+  return recEntries(s).reduce((a, r) => {
+    let w = DEG_W[r.deg] || 1;
+    if (r.deg === "misdemeanor" && now - (r.day || 0) > 3650) w = 0.2; // old petty stuff fades
+    return a + w;
+  }, 0);
+}
+function hasDeg(s, deg) { return recEntries(s).some((r) => r.deg === deg); }
+function lastConvDay(s) { return recEntries(s).reduce((a, r) => Math.max(a, r.day || 0), 0); }
+
+function expungeMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const fee = 1500;
+  const odds = { misdemeanor: 0.85, felony: 0.4, violent: 0.05 };
+  s.pending = { emoji: "📂", title: "Petition for expungement", text: `A lawyer, a filing fee (${cur}${fee}), and a judge who has seen a thousand of these. Which conviction do you petition to seal?`, layout: "grid", options: [
+    ...recEntries(s).map((r, idx) => {
+      const c = CRIMES.find((x) => x.id === r.id) || { name: r.id, emoji: "📄" };
+      const yrs = Math.floor((s.ageDays - (r.day || 0)) / 365);
+      return { card: { emoji: c.emoji, name: c.name || r.id, sub: `${r.deg} · ${yrs}y ago`, tag: Math.round(odds[r.deg] * 100) + "%" },
+        cond: (st) => st.money >= fee,
+        fx: { run: (st) => {
+          st.money -= fee;
+          if (Math.random() < odds[r.deg]) {
+            st.flags.record = recEntries(st).filter((_, i) => i !== idx);
+            st.stats.happiness = clamp(st.stats.happiness + 8);
+            push(st, `📂 GRANTED. The ${c.name ? c.name.toLowerCase() : r.id} conviction is sealed. On paper — the paper that matters — it never happened. You read the order three times in the car.`);
+          } else {
+            push(st, `📂 Denied. The judge was ${r.deg === "violent" ? "never going to sign this and the lawyer knew it" : "unmoved"}. The fee is gone; the record stays.`);
+          }
+        } } };
+    }),
+    CANCEL,
+  ] };
+  return s;
+}
+
+const JAIL_POOL = [
+  { id: "paroleCheck", i: 1, w: 6, prison: 0, minAge: 14, maxAge: 90, cd: 250, cond: (s) => !!s.flags.parole && !s.flags.prisonUntil, run: (s) => ({ event: { emoji: "🚔", title: "Parole check-in", text: `Your parole officer expects you at 9 a.m. sharp. ${((s.flags.parole - s.ageDays) / 365).toFixed(1)} years of this left — curfews, forms, and a leash you can feel.`, options: [
+    { label: "Show up, comply, sign", fx: { emergent: { discipline: +3 }, feed: "🚔 Forms, questions, a look over your shoulder at the clock. Clean check-in. The leash loosens a notch." } },
+    { label: "Skip it", fx: { run: (st) => {
+      if (Math.random() < 0.35) { st.flags.prisonUntil = st.ageDays + rnd(150, 400); st.flags.prisonReason = "a parole violation"; st.flags.parole = null; push(st, "🚨 They noticed the empty chair. Parole revoked — straight back inside, no trial, no speech."); }
+      else { st.stats.happiness = clamp(st.stats.happiness + 2); push(st, "🚔 You skipped the check-in and nothing happened. This time. The gamble sits in your stomach anyway."); }
+    } } },
+  ] } }) },
+  { id: "paroleEnd", w: 20, prison: 0, minAge: 14, maxAge: 95, cd: 5, cond: (s) => !!s.flags.parole && s.ageDays >= s.flags.parole && !s.flags.prisonUntil, run: (s) => { s.flags.parole = null; return { auto: ["🕊 Parole completed. No more check-ins, no more curfew, no more officer with your file. The door of your own life, fully unlocked, at last."], fx: { stats: { happiness: +7 } } }; } },
+  { id: "solitary", w: 12, prison: 1, minAge: 12, maxAge: 95, cd: 60, cond: (s) => (s.flags.prisonTrouble || 0) >= 2, run: (s) => { s.flags.prisonTrouble = 0; return { auto: ["🕳 Your name came up one too many times. Two weeks in solitary: a cot, a slot in the door, and your own head for company. You came out quieter, in every sense."], fx: { stats: { happiness: -9, health: -3 }, emergent: { discipline: +5, prudence: +5 } } }; } },
+  { id: "fugitiveKnock", i: 1, w: 5, prison: 0, minAge: 14, maxAge: 95, cd: 400, cond: (s) => !!s.flags.fugitive, run: (s) => ({ event: { emoji: "🚨", title: "They're close", text: "A car that sits too long across the street. A question asked at your work. The net is tightening — fugitives get found.", options: [
+    { label: `Move cities again (${s.profile.curSym}150)`, cond: (st) => st.money >= 150, fx: { money: -150, stats: { happiness: -4 }, feed: "🚨 New city, new name on the buzzer, same weight in the chest. Running works until it doesn't." } },
+    { label: "Sit tight and hope", fx: { run: (st) => {
+      if (Math.random() < 0.4) { st.flags.fugitive = false; st.flags.prisonUntil = st.ageDays + rnd(700, 1400); st.flags.prisonReason = "your escape"; push(st, "🚨 They came at dawn, the way they always do. Recaptured — with escape time added on top."); }
+      else push(st, "🚨 The car left. The questions stopped. You breathe for another season.");
+    } } },
+    { label: "Turn yourself in", fx: { run: (st) => { st.flags.fugitive = false; st.flags.prisonUntil = st.ageDays + rnd(365, 800); st.flags.prisonReason = "your surrender"; st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); push(st, "⚖️ You walked in and gave your name. The desk sergeant almost respected it. Reduced time, and the running is over — inside a cell, but over."); } } },
+  ] } }) },
+];
+POOL.push(...JAIL_POOL);
+
+function writeLetter(state, group, key) {
+  const s = pClone(state);
+  const p = s[group][key];
+  p.lastTalk = s.ageDays;
+  p.rel = clamp(p.rel + rnd(2, 4));
+  s.stats.happiness = clamp(s.stats.happiness + 2);
+  push(s, pick([
+    `✉️ You wrote to ${p.name} — three drafts to get the tone right, prison stationery, your best handwriting. Their reply comes creased from rereading.`,
+    `✉️ A letter to ${p.name}. On paper you can say the things the visiting-room glass swallows.`,
+  ]));
+  return s;
+}
+
+function statusChips(s) {
+  const chips = [];
+  if (s.flags.prisonUntil) chips.push(`⛓ ${Math.max(0.1, (s.flags.prisonUntil - s.ageDays) / 365).toFixed(1)}y`);
+  if (s.flags.parole && !s.flags.prisonUntil) chips.push("🚔 parole");
+  if (s.flags.fugitive) chips.push("🏃 fugitive");
+  if (s.flags.pregnant) chips.push("🤰");
+  if (s.flags.transitioning || s.flags.hrt) chips.push("🦋");
+  if ((s.emergent.notoriety ?? 0) > 45) chips.push("🕶 notorious");
+  if (hreIsHomeless(s)) chips.push("🛏 no home");
+  return chips;
+}
+
+/* ═══════════════ EXPANSION POOL A — CHILDHOOD · SCHOOL · TEENS ═══════════════ */
+const XPOOL_A = [
+  { id: "x_hideout", i: 1, w: 3, minAge: 6, maxAge: 12, cd: 900, run: (s) => ({ event: { emoji: "🌳", title: "The hideout", text: pick(["There's a gap behind the hedge that adults can't fit through. It is now a headquarters.", "You and two others have claimed a stairwell nobody uses. There are rules. You wrote them down."]), options: [
+    { label: "Make it a proper club with rules", fx: { stats: { happiness: +5, smarts: +1 }, emergent: { courage: +2 }, feed: "🌳 Membership: three. Bylaws: eleven. Snacks: mandatory." } },
+    { label: "Keep it a secret just for you", fx: { stats: { happiness: +4 }, emergent: { selfAwareness: +4 }, feed: "🌳 One place in the world where nobody wants anything from you. You went most days." } },
+    { label: "Tell an adult about it", fx: { stats: { happiness: -2 }, feed: "🌳 It got filled in for safety reasons within the week. You have never fully forgiven this." } },
+  ] } }) },
+  { id: "x_lostToy", i: 1, w: 3, minAge: 4, maxAge: 10, cd: 900, run: (s) => ({ event: { emoji: "🧸", title: "Gone", text: "The one that matters — the specific one — is not where it should be. The house is being searched by a very small, very serious person.", options: [
+    { label: "Search everywhere, refuse to give up", fx: { stats: { happiness: +3 }, emergent: { discipline: +4 }, feed: "🧸 Found it. Behind the radiator. You slept holding it like evidence." } },
+    { label: "Cry until someone helps", fx: { stats: { happiness: -1 }, rel: { mom: +4 }, feed: "🧸 Your mother turned the house upside down without complaining once. That's the part you'll remember." } },
+    { label: "Decide to be brave about it", fx: { stats: { happiness: -3 }, emergent: { courage: +5 }, feed: "🧸 You said it didn't matter. It mattered enormously. You learned something about yourself that day, and it wasn't good." } },
+  ] } }) },
+  { id: "x_schoolPlay", i: 1, w: 3, minAge: 6, maxAge: 14, cd: 1200, run: (s) => ({ event: { emoji: "🎭", title: "The school play", text: pick(["Auditions are Thursday. There's a part you actually want.", "They need someone for the lead and the teacher keeps looking at you."]), options: [
+    { label: "Audition for the lead", fx: { run: (st) => { if (Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 9); st.stats.looks = clamp(st.stats.looks + 2); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 7); push(st, "🎭 You got it. Opening night, you found the one moment where you forgot to be nervous, and it was electric."); } else { st.stats.happiness = clamp(st.stats.happiness - 4); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 4); push(st, "🎭 You didn't get it. You clapped for the person who did, which cost you more than the audition."); } } } },
+    { label: "Work backstage instead", fx: { stats: { smarts: +3, happiness: +4 }, subj: { arts: +5 }, feed: "🎭 Lighting board, stage left. You made the whole thing look magic and nobody clapped for you, which you found you didn't mind." } },
+    { label: "Skip it", fx: { stats: { happiness: -1 }, feed: "🎭 You watched from the audience. It looked fun from there. It looked fun from there for years." } },
+  ] } }) },
+  { id: "x_bikeFall", i: 1, w: 3, minAge: 5, maxAge: 13, cd: 900, run: (s) => ({ event: { emoji: "🚲", title: "Gravel", text: "The hill was steeper than it looked and the brakes were more theoretical than advertised.", options: [
+    { label: "Get back on immediately", fx: { stats: { health: -3, happiness: +3 }, emergent: { courage: +6 }, feed: "🚲 Blood, gravel, and back on within the minute. You still have the scar and you're still proud of it." } },
+    { label: "Walk the bike home crying", fx: { stats: { health: -3, happiness: -3 }, rel: { mom: +3 }, feed: "🚲 Antiseptic that stung worse than the fall, and someone blowing on it. The universal childhood ritual." } },
+    { label: "Blame the bike", fx: { stats: { health: -3 }, emergent: { selfAwareness: -2 }, feed: "🚲 It was definitely the bike's fault. The bike has been informed." } },
+  ] } }) },
+  { id: "x_firstCrushKid", i: 1, w: 4, minAge: 8, maxAge: 13, cd: 700, cond: (s) => !s.discovered.orientation, run: (s) => {
+    const q = isQueerO(s);
+    return { event: { emoji: "💭", title: "A feeling with no name", text: pick([
+      `There's someone at school you think about more than makes sense. You don't have a word for it yet — you're not sure there's supposed to be one.`,
+      `Your stomach does something specific when a certain person walks in. It's not nerves. You've catalogued nerves.`,
+    ]), options: [
+      { label: "Tell your closest friend", fx: { run: (st) => { const f = Object.values(st.friends)[0]; st.stats.happiness = clamp(st.stats.happiness + (q ? 2 : 5)); if (q) { st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); push(st, `💭 You told ${f ? f.name : "your friend"} — carefully, leaving the pronoun out. They didn't notice the gap. You noticed it enormously.`); } else push(st, `💭 You told ${f ? f.name : "your friend"} and immediately regretted it and then immediately didn't. It was nice to say out loud.`); } } },
+      { label: "Write it down and hide it", fx: { stats: { happiness: +2 }, emergent: { selfAwareness: +5 }, feed: "💭 A notebook under the mattress, in handwriting even you struggle with. The first draft of knowing yourself." } },
+      { label: "Push it down and think about something else", fx: { stats: { happiness: -2 }, emergent: { prudence: +3 }, feed: "💭 You changed the subject inside your own head. You'd get very good at this. Too good." } },
+    ] } }; } },
+  { id: "x_groupProject", i: 1, w: 2, minAge: 10, maxAge: 18, cd: 1100, run: (s) => ({ event: { emoji: "📊", title: "Group project", text: "Four names on the title page. One person doing the work. Guess which seat you're in.", options: [
+    { label: "Do it all yourself, silently furious", fx: { subj: { math: +4, science: +3 }, stats: { happiness: -4, smarts: +2 }, emergent: { discipline: +5 }, feed: "📊 You carried it. Top marks for everyone. You have kept a private ledger of this ever since." } },
+    { label: "Confront them", fx: { run: (st) => { if (Math.random() < 0.55) { st.emergent.courage = clamp((st.emergent.courage ?? 40) + 6); st.stats.happiness = clamp(st.stats.happiness + 4); push(st, "📊 You said it plainly and, astonishingly, they picked up their share. Nobody had ever asked them before."); } else { st.stats.happiness = clamp(st.stats.happiness - 5); push(st, "📊 It became A Whole Thing. The project suffered. You were right, which helped less than expected."); } } } },
+    { label: "Match their effort exactly", fx: { subj: { math: -3 }, stats: { happiness: +2 }, emergent: { prudence: +3 }, feed: "📊 You did precisely one quarter and let it be mediocre. Liberating. The grade was awful and you slept fine." } },
+  ] } }) },
+  { id: "x_detention", i: 1, w: 3, minAge: 11, maxAge: 18, cd: 600, run: (s) => ({ event: { emoji: "⏰", title: "Detention", text: pick(["Wrong place, wrong time, wrong tone of voice.", "You did do it. It was worth it. It's still detention."]), options: [
+    { label: "Serve it quietly", fx: { stats: { happiness: -2 }, emergent: { prudence: +3 }, feed: "⏰ An hour of silence and a clock that moved backwards. You wrote in the margins of your book." } },
+    { label: "Make a friend in there", fx: { run: (st) => { const nm = candidateName(st, "NB"); const k = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1); st.friends[k] = makePerson(nm, "Friend", { rel: 58 }); st.stats.happiness = clamp(st.stats.happiness + 6); push(st, `⏰ You and ${nm} spent the hour passing notes about the teacher's tie. Friendships have started on less.`); } } },
+    { label: "Argue the injustice of it", fx: { run: (st) => { if (Math.random() < 0.35) { st.stats.happiness = clamp(st.stats.happiness + 5); push(st, "⏰ You made your case and it landed. Rescinded. You walked out at a pace you'd call dignified."); } else { st.stats.happiness = clamp(st.stats.happiness - 4); push(st, "⏰ You made your case and earned a second detention for the making of it."); } st.emergent.courage = clamp((st.emergent.courage ?? 40) + 4); } } },
+  ] } }) },
+  { id: "x_sportsTeam", i: 1, w: 3, minAge: 9, maxAge: 18, cd: 900, run: (s) => ({ event: { emoji: "🏃", title: "Trials", text: "The team is holding trials. You're not sure you're good enough, which is the standard condition of trials.", options: [
+    { label: "Try out", fx: { run: (st) => { const ok = Math.random() < 0.5 + (st.stats.health - 50) / 200; if (ok) { st.stats.health = clamp(st.stats.health + 6); st.stats.happiness = clamp(st.stats.happiness + 6); st.education.subjects.pe = clamp(st.education.subjects.pe + 8); push(st, "🏃 You made the team. Training three nights a week, aching everywhere, belonging to something."); } else { st.stats.happiness = clamp(st.stats.happiness - 5); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 4); push(st, "🏃 You didn't make it. You went home the long way and told nobody for two days."); } } } },
+    { label: "Try out for a different sport instead", fx: { stats: { health: +4, happiness: +3 }, subj: { pe: +5 }, feed: "🏃 The less popular one, with a coach who actually taught. You were better at it than anyone expected, including you." } },
+    { label: "Not for you", fx: { stats: { smarts: +2 }, subj: { lit: +3 }, feed: "🏃 You spent those afternoons reading instead. Different muscles." } },
+  ] } }) },
+  { id: "x_teenJob", i: 1, w: 3, minAge: 14, maxAge: 19, cd: 800, cond: (s) => !s.career.job, run: (s) => ({ event: { emoji: "🧹", title: "First wage", text: "A job that will pay you actual money for hours of your actual life. The exchange rate feels criminal and thrilling at once.", options: [
+    { label: "Take it and save every penny", fx: { money: +260, stats: { health: -2 }, emergent: { discipline: +6 }, feed: "🧹 Long shifts, bad shoes, a savings figure you check nightly like a devotional." } },
+    { label: "Take it and spend it immediately", fx: { money: +90, stats: { happiness: +7 }, feed: "🧹 Your first wage lasted a weekend and bought a memory you still have. Arguably a better rate of return." } },
+    { label: "Turn it down — school first", fx: { subj: { math: +4, science: +4 }, stats: { smarts: +3 }, feed: "🧹 You kept your afternoons. The grades showed it, and so did the empty pockets." } },
+  ] } }) },
+  { id: "x_secretDiary", i: 1, w: 3, minAge: 11, maxAge: 19, cd: 700, run: (s) => ({ event: { emoji: "📔", title: "Read", text: pick(["Someone has been in your room, and in the notebook you keep in the specific place.", "The diary is on the desk. You left it under the mattress. Those are different places."]), options: [
+    { label: "Confront whoever did it", fx: { run: (st) => { const who = Math.random() < 0.5 ? "mom" : "dad"; st.family[who].rel = clamp(st.family[who].rel - 10); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 5); st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `📔 You said the word "private" about nine times. ${st.family[who].name} said the word "worried" about nine times. Nobody won.`); } } },
+    { label: "Say nothing, hide it better", fx: { stats: { happiness: -5 }, emergent: { prudence: +6 }, feed: "📔 A new hiding place and a new habit of writing in a code of your own devising. You got very good at not being knowable." } },
+    { label: "Burn it", fx: { stats: { happiness: -7 }, emergent: { selfAwareness: -3 }, feed: "📔 You destroyed a year of your own thoughts in a bin behind the garage. Safer. Emptier." } },
+  ] } }) },
+  { id: "x_examPanic", i: 1, w: 2, minAge: 15, maxAge: 19, cd: 900, run: (s) => ({ event: { emoji: "📝", title: "The night before", text: "The exam is at nine. It is now eleven. The material is theoretically inside your head somewhere.", options: [
+    { label: "Pull an all-nighter", fx: { run: (st) => { st.stats.health = clamp(st.stats.health - 5); if (Math.random() < 0.5) { st.stats.smarts = clamp(st.stats.smarts + 3); Object.keys(SUBJECTS).forEach((k) => { if (Math.random() < 0.4) st.education.subjects[k] = clamp(st.education.subjects[k] + 4); }); push(st, "📝 Six hours, four coffees, one genuinely miraculous act of cramming. You passed on fumes."); } else { push(st, "📝 You read every page and retained approximately none of it. Sat the exam like a ghost attending its own funeral."); st.stats.happiness = clamp(st.stats.happiness - 5); } } } },
+    { label: "Sleep instead and trust yourself", fx: { stats: { health: +3, smarts: +1 }, emergent: { prudence: +5 }, feed: "📝 Eight hours and a calm morning. You knew more than you feared. You usually do." } },
+    { label: "Bargain with the universe", fx: { stats: { happiness: +2 }, feed: "📝 Promises were made to several deities. Results were mixed. The promises were quietly retired." } },
+  ] } }) },
+  { id: "x_firstConcertTeen", i: 1, w: 3, minAge: 13, maxAge: 20, cd: 1000, run: (s) => ({ event: { emoji: "🎤", title: "Tickets", text: `A band you love is playing near ${s.profile.city}. The tickets cost more than you have and less than it's worth.`, options: [
+    { label: "Go, whatever it takes", fx: { money: -60, stats: { happiness: +12 }, emergent: { courage: +3 }, feed: "🎤 You screamed until you had no voice for two days. Best money you never really had." } },
+    { label: "Wait outside and listen through the wall", fx: { stats: { happiness: +6 }, feed: "🎤 You and forty others in an alley, hearing it muffled and perfect. Free, and somehow more of a story." } },
+    { label: "Stay home", fx: { stats: { happiness: -3 }, money: +0, feed: "🎤 You listened to the album alone in your room. It was fine. It was not the same and you knew it." } },
+  ] } }) },
+];
+POOL.push(...XPOOL_A);
+
+/* ═══════════════ EXPANSION POOL B — ADULT LIFE · WORK · MONEY · HOME ═══════════════ */
+const XPOOL_B = [
+  { id: "x_flatmate", i: 1, w: 3, minAge: 18, maxAge: 45, cd: 900, run: (s) => ({ event: { emoji: "🏠", title: "The flatmate situation", text: pick(["Your flatmate has opinions about the washing-up rota, and has written them on the fridge.", "Someone has been eating your specifically labelled food. There are only three suspects and two of them are you at 2 a.m."]), options: [
+    { label: "Call a house meeting", fx: { stats: { happiness: +2 }, emergent: { discipline: +4 }, feed: "🏠 A rota was drawn. It survived eleven days, which is a house-meeting record." } },
+    { label: "Passive-aggressive notes", fx: { stats: { happiness: -3 }, emergent: { kindness: -3 }, feed: "🏠 The fridge became a wall of increasingly baroque notes. Nobody spoke aloud for a week." } },
+    { label: "Move out", fx: { money: -400, stats: { happiness: +6 }, feed: "🏠 New place, higher rent, total silence when you want it. Worth every extra coin." } },
+  ] } }) },
+  { id: "x_promotionOffer", i: 1, w: 4, minAge: 22, maxAge: 62, cd: 900, cond: (s) => !!s.career.job, run: (s) => ({ event: { emoji: "📈", title: "A step up", text: `They're offering you more responsibility at ${s.career.job.title === "Founder" ? "your own company" : "work"} — more money, more hours, more of your evenings.`, options: [
+    { label: "Take it", fx: { run: (st) => { st.career.job.salary = Math.round(st.career.job.salary * 1.3); st.career.job.title = "Senior " + st.career.job.title; st.stats.happiness = clamp(st.stats.happiness + 4); st.stats.health = clamp(st.stats.health - 4); push(st, `📈 Promoted to ${st.career.job.title}. The money is real. So are the emails at eleven at night.`); } } },
+    { label: "Turn it down and keep your life", fx: { stats: { happiness: +7, health: +3 }, emergent: { selfAwareness: +6 }, feed: "📈 You said no, and meant it, and watched someone else take it. Your evenings remained your own. Nobody understood." } },
+    { label: "Negotiate for less hours instead", fx: { run: (st) => { if (Math.random() < 0.45) { st.career.job.salary = Math.round(st.career.job.salary * 1.15); st.stats.happiness = clamp(st.stats.happiness + 8); push(st, "📈 You asked for a smaller title and a four-day week. They blinked, then agreed. You'd found the actual lever."); } else { st.stats.happiness = clamp(st.stats.happiness - 3); push(st, "📈 'That's not how the ladder works,' they explained, about the ladder they built."); } } } },
+  ] } }) },
+  { id: "x_badBoss", i: 1, w: 3, minAge: 20, maxAge: 65, cd: 700, cond: (s) => !!s.career.job, run: (s) => ({ event: { emoji: "😤", title: "Your boss again", text: pick([`${s.career.job.boss} took credit for your work in front of everyone.`, `${s.career.job.boss} sent a "quick question" at 10:40 p.m. It was neither.`, `${s.career.job.boss} has restructured your role without mentioning it to you.`]), options: [
+    { label: "Push back, publicly", fx: { run: (st) => { if (Math.random() < 0.4) { st.career.job.perf = clamp((st.career.job.perf ?? 60) + 10); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8); st.stats.happiness = clamp(st.stats.happiness + 6); push(st, "😤 You said it in the room, calmly, with the receipts. The temperature changed permanently, in your favour."); } else { st.career.job.perf = clamp((st.career.job.perf ?? 60) - 12); st.stats.happiness = clamp(st.stats.happiness - 4); push(st, "😤 You said it in the room. It was noted. Not the way you'd hoped."); } } } },
+    { label: "Document everything quietly", fx: { emergent: { prudence: +7 }, stats: { happiness: -2 }, feed: "😤 A folder, dated entries, saved messages. It changed nothing today and everything later." } },
+    { label: "Let it go", fx: { stats: { happiness: -4 }, emergent: { discipline: +3 }, feed: "😤 You let it go the way you let a stone go into a pocket. It's still there. It has weight." } },
+  ] } }) },
+  { id: "x_windfall", i: 1, w: 2, minAge: 18, maxAge: 85, cd: 1600, run: (s) => { const amt = rnd(300, 2500); return { event: { emoji: "💰", title: "Unexpected money", text: pick([`A tax rebate you'd written off. ${s.profile.curSym}${amt}, unearned and unbudgeted.`, `An old account nobody told you about, holding ${s.profile.curSym}${amt}.`, `A relative's small legacy: ${s.profile.curSym}${amt} and a note in handwriting you'd forgotten.`]), options: [
+    { label: "Save it", fx: { money: +amt, emergent: { prudence: +6 }, feed: `💰 Straight into savings, untouched. Boring. Correct.` } },
+    { label: "Spend it on something you'll remember", fx: { money: +Math.round(amt * 0.2), stats: { happiness: +12 }, feed: `💰 It's gone and you'd do it again. Some money is better converted into a story.` } },
+    { label: "Give most of it away", fx: { money: +Math.round(amt * 0.25), emergent: { kindness: +10 }, stats: { happiness: +7 }, feed: `💰 You gave the bulk of it to someone who needed it more, and told nobody.` } },
+  ] } }; } },
+  { id: "x_scamCall", i: 1, w: 3, minAge: 20, maxAge: 95, cd: 800, cond: (s) => yearOf(s) >= 1985, run: (s) => ({ event: { emoji: "☎️", title: "Suspicious call", text: yearOf(s) >= 2010 ? "A voice claiming to be your bank, very calm, very urgent, needing just one code to secure your account." : "A caller offering an investment opportunity that closes today and cannot be discussed with anyone else.", options: [
+    { label: "Hang up immediately", fx: { emergent: { prudence: +6 }, stats: { happiness: +2 }, feed: "☎️ You hung up mid-sentence. Nothing happened, which was the entire point." } },
+    { label: "Play along to waste their time", fx: { stats: { happiness: +6 }, emergent: { courage: +2 }, feed: "☎️ Forty minutes of increasingly baroque nonsense. They hung up on you, furious. A public service." } },
+    { label: "Give them the code", fx: { run: (st) => { const loss = Math.min(st.money, rnd(200, 1400)); st.money -= loss; st.stats.happiness = clamp(st.stats.happiness - 10); push(st, `☎️ It was a scam. ${st.profile.curSym}${loss} gone before you'd put the phone down. The bank was sympathetic and unhelpful in equal measure.`); } } },
+  ] } }) },
+  { id: "x_neighborDispute", i: 1, w: 3, minAge: 20, maxAge: 90, cd: 900, run: (s) => ({ event: { emoji: "🚧", title: "Next door", text: pick(["The neighbour's building work starts at six and involves a machine that sounds like grief.", "Your neighbour's tree has decided your garden is now its garden.", "There is a dispute about a fence. There is always a dispute about a fence."]), options: [
+    { label: "Talk to them face to face", fx: { run: (st) => { if (Math.random() < 0.6) { st.stats.happiness = clamp(st.stats.happiness + 5); st.emergent.kindness = clamp((st.emergent.kindness ?? 50) + 4); push(st, "🚧 A cup of tea and ten minutes. It turns out they had no idea. Solved, and now you wave."); } else { st.stats.happiness = clamp(st.stats.happiness - 5); push(st, "🚧 They were rude in a way that was almost impressive. This will now last years."); } } } },
+    { label: "Report it officially", fx: { stats: { happiness: -2 }, emergent: { prudence: +4 }, feed: "🚧 Forms, a case number, and a neighbour who now knows exactly who filed them." } },
+    { label: "Endure it", fx: { stats: { happiness: -5, health: -2 }, feed: "🚧 You put up with it and complained only to people who couldn't help. The standard approach." } },
+  ] } }) },
+  { id: "x_carTrouble", i: 1, w: 3, minAge: 18, maxAge: 85, cd: 800, cond: (s) => !!s.flags.license, run: (s) => ({ event: { emoji: "🚙", title: "The car has opinions", text: pick(["A new noise. Rhythmic. Expensive-sounding.", "It started fine yesterday. Today it makes a sound like a cough and refuses to commit."]), options: [
+    { label: `Full repair (${s.profile.curSym}500)`, cond: (st) => st.money >= 500, fx: { money: -500, stats: { happiness: +3 }, feed: "🚙 Fixed properly. It drives like a car again, which you had begun to consider a luxury." } },
+    { label: "Cheap fix and hope", fx: { money: -90, run: (st) => { if (Math.random() < 0.5) push(st, "🚙 The cheap fix held. It has held for years. Nobody knows why."); else { st.money -= 300; st.stats.happiness = clamp(st.stats.happiness - 6); push(st, "🚙 The cheap fix lasted a fortnight and then cost triple to undo."); } } } },
+    { label: "Learn to fix it yourself", fx: { stats: { smarts: +4, happiness: +4 }, subj: { tech: +6 }, emergent: { discipline: +5 }, feed: "🚙 Two weekends, one borrowed manual, permanently blackened fingernails. It runs. You did that." } },
+  ] } }) },
+  { id: "x_movingCity", i: 1, w: 2, minAge: 20, maxAge: 60, cd: 2000, run: (s) => { const cities = COUNTRIES[s.profile.country].cities.filter((c) => c !== s.profile.city); const to = pick(cities.length ? cities : [s.profile.city]); return { event: { emoji: "📦", title: "A reason to leave", text: `Something's come up in ${to} — work, a person, or just the feeling that ${s.profile.city} has run out of new corners.`, options: [
+    { label: `Move to ${to}`, fx: { run: (st) => { st.money = Math.max(0, st.money - 300); st.stats.happiness = clamp(st.stats.happiness + 6); relocate(st, to); } } },
+    { label: "Visit first, decide later", fx: { money: -80, stats: { happiness: +3 }, emergent: { prudence: +4 }, feed: "📦 A weekend of walking unfamiliar streets pretending to live there. You went home undecided, which was itself an answer." } },
+    { label: "Stay put", fx: { stats: { happiness: +2 }, feed: "📦 You stayed. Your street, your people, the shop that knows your order. There are worse reasons." } },
+  ] } }; } },
+  { id: "x_lostFriend", i: 1, w: 3, minAge: 22, maxAge: 90, cd: 1100, cond: (s) => Object.values(s.friends).some((f) => !f.pet && f.rel < 55), run: (s) => { const e = Object.entries(s.friends).filter(([, f]) => !f.pet && f.rel < 55); const [k, f] = pick(e); return { event: { emoji: "🫥", title: "Drifting", text: `You and ${f.name} haven't spoken properly in a long time. Not a falling out — just the slow physics of separate lives.`, options: [
+    { label: "Call them out of the blue", fx: { run: (st) => { const q = st.friends[k]; if (!q) return; if (Math.random() < 0.7) { q.rel = clamp(q.rel + 18); st.stats.happiness = clamp(st.stats.happiness + 8); push(st, `🫥 You called ${q.name} with no occasion. Three hours later you were still talking. Nothing had been lost — it had just been waiting.`); } else { q.rel = clamp(q.rel + 3); st.stats.happiness = clamp(st.stats.happiness - 3); push(st, `🫥 You called ${q.name}. It was warm and polite and slightly effortful, and you both said "we should do this more" knowing.`); } } } },
+    { label: "Let it be what it is", fx: { stats: { happiness: -3 }, emergent: { selfAwareness: +5 }, feed: "🫥 Some friendships are seasons, not fixtures. You let it be a season without resenting the weather." } },
+    { label: "Send one photo, no message", fx: { run: (st) => { const q = st.friends[k]; if (q) { q.rel = clamp(q.rel + 9); push(st, `🫥 An old photo, no caption. ${q.name} replied within a minute with a single word in caps. That was the whole conversation and it was enough.`); } st.stats.happiness = clamp(st.stats.happiness + 5); } } },
+  ] } }; } },
+  { id: "x_volunteer", i: 1, w: 3, minAge: 16, maxAge: 90, cd: 900, run: (s) => ({ event: { emoji: "🤲", title: "They need hands", text: pick(["A local place needs volunteers this season — nothing glamorous, mostly carrying things and being reliable.", "A crisis line is training new people. It's four evenings and a lot of listening."]), options: [
+    { label: "Sign up properly", fx: { emergent: { kindness: +10, discipline: +4 }, stats: { happiness: +7 }, run: (st) => { st.flags.community = true; push(st, "🤲 You went every week. Unshowy, unpaid, and one of the few things you'd say you were proud of without hedging."); } } },
+    { label: "Help once and see", fx: { emergent: { kindness: +4 }, stats: { happiness: +3 }, feed: "🤲 You did one shift. It was harder and better than expected. You meant to go back." } },
+    { label: "Donate instead", fx: { money: -70, emergent: { kindness: +5 }, feed: "🤲 Money instead of hours. It counts. It counts differently, and you knew the difference." } },
+  ] } }) },
+  { id: "x_therapyStart", i: 1, w: 3, minAge: 18, maxAge: 80, cd: 1300, cond: (s) => s.stats.happiness < 55 && yearOf(s) >= 1975, run: (s) => ({ event: { emoji: "🛋", title: "Maybe talk to someone", text: pick(["Someone suggests therapy, carefully, the way people do when they've been rehearsing it.", "You catch yourself explaining, again, that you're fine. The word has started sounding foreign."]), options: [
+    { label: "Book the appointment", fx: { money: -careCost(s, 250), stats: { happiness: +9 }, emergent: { selfAwareness: +10 }, feed: "🛋 Fifty minutes a week of saying true things out loud. Slow, unspectacular, and it changed the shape of everything." } },
+    { label: "Try, then quit after two sessions", fx: { money: -careCost(s, 90), stats: { happiness: +2 }, emergent: { selfAwareness: +3 }, feed: "🛋 Two sessions and then a diary that filled up conveniently. You'd come back to it years later and wish you hadn't stopped." } },
+    { label: "Not for you", fx: { stats: { happiness: -2 }, feed: "🛋 You said you'd handle it yourself. Sometimes people do. It's a longer road with fewer signposts." } },
+  ] } }) },
+  { id: "x_bigPurchase", i: 1, w: 3, minAge: 20, maxAge: 75, cd: 1200, cond: (s) => s.money > 900, run: (s) => ({ event: { emoji: "🛒", title: "The thing you've wanted", text: pick(["You've been looking at it for months. You can, technically, afford it.", "It's expensive and unnecessary and you have opened the page eleven times this week."]), options: [
+    { label: "Buy it", fx: { money: -700, stats: { happiness: +11 }, feed: "🛒 Bought. The guilt lasted an afternoon; the pleasure lasted years. Occasionally the maths works out." } },
+    { label: "Sleep on it", fx: { run: (st) => { if (Math.random() < 0.5) { st.money -= 700; st.stats.happiness = clamp(st.stats.happiness + 9); push(st, "🛒 You slept on it and bought it anyway, with less guilt. The best of both."); } else { st.emergent.prudence = clamp((st.emergent.prudence ?? 50) + 6); st.stats.happiness = clamp(st.stats.happiness + 2); push(st, "🛒 You slept on it and the wanting quietly evaporated. That's most wanting, it turns out."); } } } },
+    { label: "Buy a cheaper version", fx: { money: -180, stats: { happiness: +4 }, emergent: { prudence: +4 }, feed: "🛒 The budget version. Perfectly fine. You thought about the real one for a while, then stopped." } },
+  ] } }) },
+];
+POOL.push(...XPOOL_B);
+
+/* ═══════════════ EXPANSION POOL C — QUEER LIFE · LOVE · AGING · MEANING ═══════════════ */
+const XPOOL_C = [
+  { id: "x_firstPride", i: 1, w: 3, minAge: 15, maxAge: 80, cd: 1400, cond: (s) => isOutQueer(s) && yearOf(s) >= 1970 && !s.flags.wentPride, run: (s) => { const era = localAcceptance(s); return { event: { emoji: "🏳️‍🌈", title: "Pride", text: era < 25 ? `There's something happening in ${s.profile.city} — small, watched, half-protest. Going would mean being counted.` : `Pride is this weekend. Whole streets of it.`, options: [
+    { label: "Go, and be counted", fx: { run: (st) => { st.flags.wentPride = true; st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10); st.stats.happiness = clamp(st.stats.happiness + (era < 25 ? 14 : 11)); if (era < 25 && Math.random() < 0.3) { st.stats.health = clamp(st.stats.health - 6); push(st, "🏳️‍🌈 You went. There were more police than marchers and someone threw something. You linked arms with a stranger and did not run. You have never felt more frightened or more real."); } else push(st, "🏳️‍🌈 You went. Thousands of people who did not have to explain themselves to each other. You cried behind your sunglasses at the sheer arithmetic of it."); } } },
+    { label: "Go, but stay at the edges", fx: { run: (st) => { st.flags.wentPride = true; st.stats.happiness = clamp(st.stats.happiness + 6); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 5); push(st, "🏳️‍🌈 You watched from a side street with your hood up, and still went home changed. Some doors you open a crack first."); } } },
+    { label: "Not this year", fx: { stats: { happiness: -2 }, feed: "🏳️‍🌈 You stayed home and followed it from a distance, telling yourself next year. Next year is a real place; some people get there." } },
+  ] } }; } },
+  { id: "x_queerElder", i: 1, w: 3, minAge: 16, maxAge: 60, cd: 1600, cond: (s) => isOutQueer(s), run: (s) => ({ event: { emoji: "🕰", title: "Someone who went first", text: pick(["An older queer person at the bar starts talking, and you realise they lived through the years you've only read about.", "A woman in her seventies tells you, offhand, about the friend she lost in the eighties and the funeral she wasn't allowed to attend."]), options: [
+    { label: "Listen for hours", fx: { stats: { happiness: +6, smarts: +3 }, emergent: { selfAwareness: +10 }, feed: "🕰 You listened until closing. Everything you have was fought for by people whose names you'll never learn. It rearranged something in you." } },
+    { label: "Ask how they survived it", fx: { emergent: { courage: +8, selfAwareness: +6 }, stats: { happiness: +4 }, feed: "🕰 'Stubbornly,' they said, 'and with other people.' You've thought about that answer ever since." } },
+    { label: "Buy them a drink and change the subject", fx: { emergent: { kindness: +5 }, stats: { happiness: +3 }, feed: "🕰 Some stories cost the teller. You bought the drink and talked about football instead, and they seemed grateful." } },
+  ] } }) },
+  { id: "x_chosenFamily", i: 1, w: 3, minAge: 18, maxAge: 90, cd: 1200, cond: (s) => isOutQueer(s) && Object.keys(s.friends).length >= 2, run: (s) => ({ event: { emoji: "🍲", title: "Chosen family dinner", text: pick(["Someone's flat, too many chairs, a table extended with an ironing board. Everyone here found each other on purpose.", "The annual orphans' dinner — for everyone whose actual family made the holidays impossible."]), options: [
+    { label: "Host it yourself next time", fx: { run: (st) => { Object.values(st.friends).forEach((f) => { if (!f.pet) f.rel = clamp(f.rel + 6); }); st.stats.happiness = clamp(st.stats.happiness + 10); st.money -= 60; push(st, "🍲 You hosted. Too much food, mismatched plates, someone's ex behaving beautifully. This is the family that answers the phone."); } } },
+    { label: "Bring the worst dish and the best stories", fx: { stats: { happiness: +8 }, emergent: { kindness: +4 }, feed: "🍲 Your contribution was structurally unsound and universally mocked. You laughed until your face hurt." } },
+    { label: "Skip it — hard year", fx: { stats: { happiness: -4 }, run: (st) => { const f = Object.values(st.friends).find((x) => !x.pet); if (f) push(st, `🍲 You couldn't face it. ${f.name} dropped leftovers at your door with a note that said 'no pressure, just food.' You ate it standing up and cried.`); } } },
+  ] } }) },
+  { id: "x_mirrorMoment", i: 1, w: 3, minAge: 14, maxAge: 80, cd: 1000, cond: (s) => s.discovered.gender && isQueerG(s), run: (s) => ({ event: { emoji: "🪞", title: "The mirror", text: pick(["You catch your reflection unexpectedly — a shop window, a dark train carriage — and for a second you see yourself as a stranger would.", "Getting ready, you stop and just look for longer than usual."]), options: [
+    { label: "Let yourself like what you see", fx: { stats: { happiness: +9, looks: +2 }, emergent: { selfAwareness: +6 }, feed: "🪞 For once you didn't audit it. You just looked, and it was you, and that was fine. Rarer and bigger than it sounds." } },
+    { label: "Catalogue everything wrong", fx: { stats: { happiness: -7 }, feed: "🪞 You went feature by feature like a hostile inspector. Nothing was gained. You know that, and did it anyway." } },
+    { label: "Take a photo of yourself", fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +4 }, feed: "🪞 A photo, kept privately, from a day you felt like yourself. Evidence for the days you won't." } },
+  ] } }) },
+  { id: "x_partnerMilestone", i: 1, w: 3, minAge: 18, maxAge: 90, cd: 900, cond: (s) => activePartners(s).some(([, p]) => p.rel > 60), run: (s) => { const [k, p] = partnerPick(s, (q) => q.rel > 60); return { event: { emoji: "🔑", title: "A bigger step", text: pick([`${p.name} leaves a toothbrush. Then a drawer's worth. Then the question arrives without being asked.`, `You and ${p.name} have been spending every night at one flat or the other. One of you is paying rent on storage.`]), options: [
+    { label: "Move in together", fx: { run: (st) => { hreSetTenure(st, "withPartner", null); st.flags.cohabiting = true; const q = st.romance[k]; q.rel = clamp(q.rel + 12); q.status = q.status === "dating" ? "serious" : q.status; st.stats.happiness = clamp(st.stats.happiness + 10); st.money -= 200; push(st, `🔑 You and ${q.name} moved in together. Two sets of everything, one very difficult conversation about a sofa, and the daily astonishment of them just being there.`); } } },
+    { label: "Not yet — keep your own place", fx: { run: (st) => { const q = st.romance[k]; q.rel = clamp(q.rel - 5); st.stats.happiness = clamp(st.stats.happiness + 2); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 4); push(st, `🔑 You said not yet, and meant it kindly. ${q.name} took it well on the surface. You both heard the surface.`); } } },
+    { label: "Suggest a place that's new to you both", fx: { run: (st) => { hreSetTenure(st, "withPartner", null); st.flags.cohabiting = true; const q = st.romance[k]; q.rel = clamp(q.rel + 16); st.money -= 500; st.stats.happiness = clamp(st.stats.happiness + 12); push(st, `🔑 Neither of your flats — a third place, chosen together, with nobody's ghosts in it. Best decision either of you made that year.`); } } },
+  ] } }; } },
+  { id: "x_argument", i: 1, w: 3, minAge: 16, maxAge: 90, cd: 1100, cond: (s) => activePartners(s).length > 0, run: (s) => { const pk = partnerPick(s, () => true); if (!pk) return { auto: [] }; const [k, p] = pk; return { event: { emoji: "⚡", title: "The argument", text: pick([`It started about the dishes and is now about something from four years ago.`, `Neither of you can remember how it started. Both of you can remember exactly what was said.`, `${p.name} said the thing they know not to say. You said the thing you know not to say, faster.`]), options: [
+    { label: "Apologise first", fx: { run: (st) => { const q = st.romance[k]; q.rel = clamp(q.rel + 10); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); st.stats.happiness = clamp(st.stats.happiness + 4); push(st, `⚡ You went first. It cost nothing and fixed most of it. ${q.name} apologised thirty seconds later, badly, which counted.`); } } },
+    { label: "Win the argument", fx: { run: (st) => { const q = st.romance[k]; q.rel = clamp(q.rel - 12); st.stats.happiness = clamp(st.stats.happiness - 5); push(st, `⚡ You won. Comprehensively. ${q.name} went quiet in the way that isn't agreement, and the win sat in the flat for days like furniture.`); } } },
+    { label: "Take a walk and come back", fx: { run: (st) => { const q = st.romance[k]; q.rel = clamp(q.rel + 6); st.emergent.prudence = clamp((st.emergent.prudence ?? 50) + 6); push(st, `⚡ You walked around the block twice. By the time you got back, both of you had lost interest in being right, which is where the actual conversation started.`); } } },
+  ] } }; } },
+  { id: "x_parentAges", i: 1, w: 3, minAge: 30, maxAge: 75, cd: 1100, cond: (s) => s.family.mom.rel > 15 || s.family.dad.rel > 15, run: (s) => { const key = s.family.mom.rel >= s.family.dad.rel ? "mom" : "dad"; const p = s.family[key]; return { event: { emoji: "🧓", title: "They're getting older", text: pick([`${p.name} needed help with something they'd have done alone last year, and didn't mention it until you noticed.`, `You caught yourself repeating things to ${p.name} at a louder volume. Neither of you commented.`]), options: [
+    { label: "Start helping regularly", fx: { run: (st) => { st.family[key].rel = clamp(st.family[key].rel + 14); st.stats.happiness = clamp(st.stats.happiness + 3); st.stats.health = clamp(st.stats.health - 2); push(st, `🧓 Weekly visits, shopping, the small administration of another person's life. Tiring, and time you'll be very glad you spent.`); } } },
+    { label: "Arrange proper help", fx: { money: -Math.max(80, careCost(s, 400)), run: (st) => { st.family[key].rel = clamp(st.family[key].rel + 7); push(st, `🧓 You arranged help and paid for it. Sensible, and it left a small guilt you couldn't argue away with logic.`); } } },
+    { label: "Not yet — they'd hate the fuss", fx: { stats: { happiness: -3 }, run: (st) => { push(st, `🧓 ${st.family[key].name} insisted they were fine, and you let them, because insisting back would have cost them something. You watched more closely after that.`); } } },
+  ] } }; } },
+  { id: "x_regret", i: 1, w: 3, minAge: 40, maxAge: 95, cd: 1400, run: (s) => ({ event: { emoji: "🍂", title: "The road not taken", text: pick(["A song, a smell, a name in the news — and suddenly you're standing in a life you didn't choose.", "You hear that someone you knew did the thing you almost did."]), options: [
+    { label: "Let yourself feel it properly", fx: { stats: { happiness: -4 }, emergent: { selfAwareness: +10 }, feed: "🍂 You sat with it for an evening instead of changing the subject. It hurt precisely, and then it was smaller." } },
+    { label: "Do something about it now", fx: { stats: { happiness: +8 }, emergent: { courage: +8 }, feed: "🍂 You made one phone call, or one booking, or one apology. Late is a real category. Too late is a smaller one than people think." } },
+    { label: "Count what you did get", fx: { stats: { happiness: +6 }, emergent: { selfAwareness: +6 }, feed: "🍂 You listed what this life gave you that the other one couldn't have. It was a long list. You'd never written it down before." } },
+  ] } }) },
+  { id: "x_lateBloom", i: 1, w: 3, minAge: 45, maxAge: 90, cd: 1500, run: (s) => ({ event: { emoji: "🌱", title: "Starting something new", text: pick(["A class, an instrument, a language — the kind of thing people say you're too old to begin.", "You've been watching other people do it and calling it 'not for me' for about a decade."]), options: [
+    { label: "Begin, badly, anyway", fx: { stats: { happiness: +10, smarts: +4 }, emergent: { courage: +8, discipline: +5 }, run: (st) => { const k = pick(["music", "lang", "arts", "tech"]); if (st.education.subjects[k] !== undefined) st.education.subjects[k] = clamp(st.education.subjects[k] + 10); push(st, "🌱 You were the worst person in the room and you kept going back. Six months later you weren't. That's the whole trick, and almost nobody does it."); } } },
+    { label: "Buy all the equipment first", fx: { money: -250, stats: { happiness: +4 }, feed: "🌱 Beautiful gear, largely untouched. It sat in the corner as a monument to intention. You did use it, occasionally, and enjoyed it every time." } },
+    { label: "Decide it's too late", fx: { stats: { happiness: -5 }, feed: "🌱 You did the arithmetic of years and talked yourself out of it. The arithmetic was wrong; it usually is." } },
+  ] } }) },
+  { id: "x_legacy", i: 1, w: 3, minAge: 55, maxAge: 100, cd: 1600, run: (s) => ({ event: { emoji: "📜", title: "What gets left", text: pick(["Sorting a cupboard, you find things that will mean nothing to anyone but you.", "Someone asks you to write down the family stories before they're gone. You are, you realise, the one who remembers."]), options: [
+    { label: "Write it all down", fx: { stats: { happiness: +9, smarts: +2 }, emergent: { selfAwareness: +8 }, run: (st) => { push(st, `📜 You wrote it out — the names, the arguments, the recipes, the two things nobody ever admitted. ${Object.keys(st.children || {}).length ? "Your children will read it and hear your voice." : "Somebody will read it and know you were here."}`); } } },
+    { label: "Record yourself telling it", fx: { stats: { happiness: +8 }, emergent: { kindness: +5 }, feed: "📜 Hours of tape, your actual voice, laughing halfway through the good bits. The most valuable object in the house." } },
+    { label: "Throw most of it away", fx: { stats: { happiness: +3 }, emergent: { prudence: +5 }, feed: "📜 You binned the bulk of it and kept six things. Anyone left behind will thank you, and the six things say plenty." } },
+  ] } }) },
+  { id: "x_grandchild", i: 1, w: 3, minAge: 50, maxAge: 100, cd: 1400, cond: (s) => Object.values(s.children || {}).some((c) => (s.ageDays - c.born) / 365 > 24), run: (s) => { const c = pick(Object.values(s.children).filter((x) => (s.ageDays - x.born) / 365 > 24)); return { event: { emoji: "👶", title: "One generation further", text: `${c.name} has news. You're going to be a grandparent — a word that lands strangely, then perfectly.`, options: [
+    { label: "Be the grandparent you wanted", fx: { stats: { happiness: +14 }, emergent: { kindness: +8 }, feed: "👶 You spoil them relentlessly and hand them back. You're better at this than you were at parenting, and you know exactly why, and it aches a little." } },
+    { label: "Offer real practical help", fx: { money: -300, stats: { happiness: +10, health: -3 }, feed: "👶 Nights, nappies, and a bank transfer nobody asked for. Being needed at this age is its own medicine." } },
+    { label: "Keep a respectful distance", fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +5 }, feed: "👶 You waited to be invited rather than assuming. It was noticed, and it made you welcome everywhere." } },
+  ] } }; } },
+  { id: "x_reunion", i: 1, w: 3, minAge: 28, maxAge: 80, cd: 1500, run: (s) => ({ event: { emoji: "🎟", title: "The reunion", text: pick(["A school reunion invitation arrives. Everyone will have become someone.", "Someone's organised a get-together of people you haven't seen since you were entirely different."]), options: [
+    { label: "Go and be exactly who you are now", fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness + (isOutQueer(st) && localAcceptance(st) > 45 ? 11 : 6)); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 6); push(st, isOutQueer(st) ? "🎟 You walked in as yourself — no editing, no pronoun gymnastics. Two people were awkward. Everyone else was delighted. The relief was physical." : "🎟 You went, and it was funny and strange and warmer than expected. Everyone had aged except, obviously, you."); } } },
+    { label: "Go and perform a better version", fx: { stats: { happiness: -3, looks: +2 }, feed: "🎟 You gave them the highlight reel. They believed it. You drove home feeling oddly lonelier than when you set out." } },
+    { label: "Don't go", fx: { stats: { happiness: +2 }, emergent: { selfAwareness: +4 }, feed: "🎟 You skipped it without guilt. The people you actually miss, you already talk to." } },
+  ] } }) },
+];
+POOL.push(...XPOOL_C);
+
+/* ═══════════════ SIBLINGS · RELATIVES · NIECES ═══════════════ */
+
+function makeSiblings(birthYear, country, sex) {
+  const out = {};
+  const n = pick([0, 1, 1, 1, 2, 2, 3]);
+  const era = eraAcceptance(birthYear + 14);
+  for (let i = 0; i < n; i++) {
+    const g = pick(["m", "f", "f", "m"]);
+    const older = Math.random() < 0.5;
+    const gap = rnd(1, 7) * (older ? 1 : -1);
+    const nm = pick(nameList(country, g));
+    if (Object.values(out).some((x) => x.name === nm)) continue;
+    out["sib" + (i + 1)] = {
+      ...makePerson(nm, older ? (g === "m" ? "Older brother" : "Older sister") : (g === "m" ? "Younger brother" : "Younger sister"),
+        { rel: rnd(45, 88), acceptance: clamp(era + rnd(-15, 40)), politics: clamp(era + rnd(-25, 30)) }),
+      g: g === "m" ? "M" : "F", ageGap: gap, kids: 0,
+    };
+  }
+  return out;
+}
+
+function makeRelatives(birthYear, country) {
+  const out = {};
+  const era = eraAcceptance(birthYear + 14);
+  // grandparents: present if you'd plausibly know them
+  if (Math.random() < 0.85) out.gran = { ...makePerson(pick(nameList(country, "f")), "Grandmother", { rel: rnd(60, 92), acceptance: clamp(era - rnd(5, 30)), politics: clamp(era - rnd(10, 35)) }), g: "F", elder: 1 };
+  if (Math.random() < 0.6) out.gramp = { ...makePerson(pick(nameList(country, "m")), "Grandfather", { rel: rnd(52, 88), acceptance: clamp(era - rnd(10, 40)), politics: clamp(era - rnd(15, 40)) }), g: "M", elder: 1 };
+  // the aunt or uncle who turns out to matter
+  if (Math.random() < 0.75) {
+    const g = pick(["f", "m"]);
+    const cool = Math.random() < 0.45;
+    out.aunt = { ...makePerson(pick(nameList(country, g)), g === "f" ? "Aunt" : "Uncle", { rel: rnd(45, 80), acceptance: cool ? clamp(era + rnd(20, 55)) : clamp(era + rnd(-25, 15)), politics: clamp(era + rnd(-20, 35)) }), g: g === "f" ? "F" : "M", cool };
+  }
+  if (Math.random() < 0.55) {
+    const g = pick(["f", "m"]);
+    out.cousin = { ...makePerson(pick(nameList(country, g)), "Cousin", { rel: rnd(40, 78), acceptance: clamp(era + rnd(-10, 45)), politics: clamp(era + rnd(-15, 40)) }), g: g === "f" ? "F" : "M" };
+  }
+  return out;
+}
+
+function sibAgeLabel(s, p) {
+  const y = ageYears(s) + (p.ageGap || 0);
+  return `${p.role}, ${Math.max(0, y)}`;
+}
+
+const FAMILY_POOL = [
+  { id: "sibRivalry", i: 1, w: 3, minAge: 6, maxAge: 25, cd: 700, cond: (s) => Object.keys(s.family).some((k) => k.startsWith("sib")), run: (s) => {
+    const k = pick(Object.keys(s.family).filter((x) => x.startsWith("sib")));
+    const p = s.family[k];
+    return { event: { emoji: "🥊", title: `You and ${p.name}`, text: pick([
+      `${p.name} has been held up as the example again. You were in the room when it happened.`,
+      `A fight with ${p.name} that started over nothing and is now, somehow, about who was loved more.`,
+      `${p.name} borrowed the thing without asking. Again. The thing is not the point and both of you know it.`,
+    ]), options: [
+      { label: "Have it out properly", fx: { run: (st) => { const q = st.family[k]; if (Math.random() < 0.55) { q.rel = clamp(q.rel + 12); st.stats.happiness = clamp(st.stats.happiness + 5); push(st, `🥊 You said the real thing. ${q.name} said theirs. You ended up laughing on the floor at 1 a.m. — closer than before.`); } else { q.rel = clamp(q.rel - 12); st.stats.happiness = clamp(st.stats.happiness - 5); push(st, `🥊 It escalated. Doors, volume, a sentence you'd take back. Weeks of careful politeness followed.`); } } } },
+      { label: "Let them win this one", fx: { run: (st) => { const q = st.family[k]; q.rel = clamp(q.rel + 5); st.emergent.prudence = clamp((st.emergent.prudence ?? 50) + 4); push(st, `🥊 You dropped it. ${q.name} noticed, and didn't say so, and was different with you for a week in a good way.`); } } },
+      { label: "Keep score silently", fx: { emergent: { prudence: +2, kindness: -3 }, stats: { happiness: -3 }, run: (st) => { st.family[k].rel = clamp(st.family[k].rel - 4); push(st, `🥊 You added it to the ledger. The ledger is long and nobody else can read it.`); } } },
+    ] } }; } },
+  { id: "sibAlly", i: 1, w: 3, minAge: 12, maxAge: 80, cd: 900, cond: (s) => Object.keys(s.family).some((k) => k.startsWith("sib") && s.family[k].rel > 55), run: (s) => {
+    const k = pick(Object.keys(s.family).filter((x) => x.startsWith("sib") && s.family[x].rel > 55));
+    const p = s.family[k];
+    const queer = isOutQueer(s) && !s.outTo[k];
+    return { event: { emoji: "🤝", title: `${p.name} covers for you`, text: queer
+      ? `${p.name} has worked something out about you. They haven't said what. What they said was: "If you ever need to not be home, you can be at mine."`
+      : pick([`${p.name} took the blame for something that was entirely yours.`, `${p.name} rang to warn you about the mood at home before you walked into it.`]),
+      options: [
+        ...(queer ? [{ label: "Tell them the truth now", fx: { run: (st) => { st.outTo[k] = true; const q = st.family[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.pending = comeOutReact(st, "family", k, 10, "sideways").pending; } } }] : []),
+        { label: "Thank them properly", fx: { run: (st) => { st.family[k].rel = clamp(st.family[k].rel + 10); st.stats.happiness = clamp(st.stats.happiness + 6); push(st, `🤝 You said it out loud instead of assuming they knew. ${st.family[k].name} shrugged it off and went pink.`); } } },
+        { label: "Owe them one", fx: { run: (st) => { st.family[k].rel = clamp(st.family[k].rel + 5); push(st, `🤝 An unspoken debt, filed on both sides. This is how siblings work.`); } } },
+      ] } }; } },
+  { id: "nieceBorn", i: 1, w: 3, minAge: 20, maxAge: 70, cd: 1100, cond: (s) => Object.keys(s.family).some((k) => k.startsWith("sib") && ageYears(s) + (s.family[k].ageGap || 0) > 22 && (s.family[k].kids || 0) < 3), run: (s) => {
+    const k = pick(Object.keys(s.family).filter((x) => x.startsWith("sib") && ageYears(s) + (s.family[x].ageGap || 0) > 22 && (s.family[x].kids || 0) < 3));
+    const p = s.family[k];
+    const g = pick(["m", "f"]);
+    const nm = candidateName(s, g === "m" ? "M" : "F");
+    return { event: { emoji: "🍼", title: "You're an aunt/uncle", text: `${p.name} has had a baby — ${nm}. There is a photo, and it looks, frankly, like a very small furious potato, and you love it instantly.`, options: [
+      { label: "Be the fun one", fx: { run: (st) => { st.family[k].kids = (st.family[k].kids || 0) + 1; if (!st.relatives) st.relatives = {}; st.relatives["nib" + Object.keys(st.relatives).length] = { ...makePerson(nm, g === "m" ? "Nephew" : "Niece", { rel: rnd(70, 90) }), g: g === "m" ? "M" : "F", born: st.ageDays }; st.family[k].rel = clamp(st.family[k].rel + 8); st.stats.happiness = clamp(st.stats.happiness + 9); push(st, `🍼 ${nm} is here. You have appointed yourself the one who brings loud presents and gives them back.`); } } },
+      { label: "Show up with practical help", fx: { run: (st) => { st.family[k].kids = (st.family[k].kids || 0) + 1; if (!st.relatives) st.relatives = {}; st.relatives["nib" + Object.keys(st.relatives).length] = { ...makePerson(nm, g === "m" ? "Nephew" : "Niece", { rel: rnd(60, 85) }), g: g === "m" ? "M" : "F", born: st.ageDays }; st.family[k].rel = clamp(st.family[k].rel + 14); st.money -= 100; st.emergent.kindness = clamp((st.emergent.kindness ?? 50) + 6); push(st, `🍼 You did three loads of laundry and held ${nm} while ${st.family[k].name} slept for four uninterrupted hours. They have never forgotten it.`); } } },
+      { label: "Keep your distance for now", fx: { run: (st) => { st.family[k].kids = (st.family[k].kids || 0) + 1; if (!st.relatives) st.relatives = {}; st.relatives["nib" + Object.keys(st.relatives).length] = { ...makePerson(nm, g === "m" ? "Nephew" : "Niece", { rel: rnd(35, 55) }), g: g === "m" ? "M" : "F", born: st.ageDays }; push(st, `🍼 You sent a card and a gift and stayed out of the chaos. Perfectly reasonable. Slightly noted.`); } } },
+    ] } }; } },
+  { id: "coolAunt", i: 1, w: 3, minAge: 13, maxAge: 60, cd: 1200, cond: (s) => s.relatives && s.relatives.aunt && s.relatives.aunt.cool && isOutQueer(s) && !s.outTo.aunt, run: (s) => {
+    const a = s.relatives.aunt;
+    return { event: { emoji: "🌻", title: `${a.name} says something`, text: `Out of nowhere, ${a.name} mentions a friend of theirs — "her and her partner, they've been together thirty years" — and then looks at you a half-second longer than the sentence needed.`, options: [
+      { label: "Take the opening", fx: { run: (st) => { st.outTo.aunt = true; const q = st.relatives.aunt; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.pending = comeOutReact(st, "relatives", "aunt", 14, "sideways").pending; } } },
+      { label: "Note it and say nothing", fx: { emergent: { selfAwareness: +5 }, stats: { happiness: +3 }, run: (st) => { st.relatives.aunt.rel = clamp(st.relatives.aunt.rel + 4); push(st, `🌻 You said nothing, and filed away the fact that there is one door in this family that is already open.`); } } },
+    ] } }; } },
+  { id: "grandparentTime", i: 1, w: 3, minAge: 5, maxAge: 45, cd: 900, cond: (s) => s.relatives && (s.relatives.gran || s.relatives.gramp), run: (s) => {
+    const k = s.relatives.gran ? "gran" : "gramp";
+    const p = s.relatives[k];
+    return { event: { emoji: "🫖", title: `An afternoon at ${p.name}'s`, text: pick([
+      `${p.name}'s house smells the way it has always smelled. There is cake nobody asked for and a story you've heard eleven times.`,
+      `${p.name} wants to teach you something they think you should know — a recipe, a knot, a card game with impenetrable rules.`,
+    ]), options: [
+      { label: "Listen to the story again", fx: { run: (st) => { st.relatives[k].rel = clamp(st.relatives[k].rel + 10); st.stats.happiness = clamp(st.stats.happiness + 6); st.emergent.kindness = clamp((st.emergent.kindness ?? 50) + 4); push(st, `🫖 You let ${st.relatives[k].name} tell it start to finish. There was a new detail this time. You'll be very glad you heard it.`); } } },
+      { label: "Learn the thing properly", fx: { run: (st) => { st.relatives[k].rel = clamp(st.relatives[k].rel + 12); st.stats.smarts = clamp(st.stats.smarts + 3); const sk = pick(["cooking", "music", "prudence"]); st.emergent[sk] = clamp((st.emergent[sk] ?? 30) + 8); push(st, `🫖 You paid attention and got it right on the third try. ${st.relatives[k].name} was so pleased they had to look out of the window.`); } } },
+      { label: "Cut it short — you have plans", fx: { stats: { happiness: +1 }, run: (st) => { st.relatives[k].rel = clamp(st.relatives[k].rel - 5); push(st, `🫖 You left after forty minutes. ${st.relatives[k].name} said "of course, of course" and stood at the window as you went.`); } } },
+    ] } }; } },
+  { id: "relativeLoss", i: 1, w: 2, minAge: 12, maxAge: 70, cd: 2200, cond: (s) => s.relatives && (s.relatives.gran || s.relatives.gramp) && ageYears(s) > 14, run: (s) => {
+    const k = s.relatives.gran ? "gran" : "gramp";
+    const p = s.relatives[k];
+    return { event: { emoji: "🕯", title: `${p.name} is gone`, text: `It happened overnight, without drama, the way they'd have wanted. The house will be sold. There is a box with your name on it.`, options: [
+      { label: "Speak at the funeral", fx: { run: (st) => { delete st.relatives[k]; st.stats.happiness = clamp(st.stats.happiness - 12); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8); push(st, `🕯 You stood up and got two sentences in before your voice went. You finished anyway. Afterwards three people told you it was the best thing said all day.`); } } },
+      { label: "Take the box home unopened", fx: { run: (st) => { delete st.relatives[k]; st.stats.happiness = clamp(st.stats.happiness - 10); st.money += rnd(100, 900); push(st, `🕯 The box sat unopened for a year. When you finally opened it: photographs, a watch, and a letter with your name on it in handwriting that stopped you cold.`); } } },
+      { label: "Keep busy, don't feel it yet", fx: { run: (st) => { delete st.relatives[k]; st.stats.happiness = clamp(st.stats.happiness - 6); st.flags.grief = st.ageDays; push(st, `🕯 You organised everything, fed everyone, drove everyone home. You cried six weeks later, in a supermarket, at nothing.`); } } },
+    ] } }; } },
+];
+POOL.push(...FAMILY_POOL);
+
+/* ═══════════════ EXES ═══════════════ */
+
+function exMenu(state, pkey) {
+  const s = pClone(state);
+  const p = s.romance[pkey];
+  const years = Math.floor((s.ageDays - (p.exSince || s.ageDays)) / 365);
+  s.pending = { emoji: "🕸", title: p.name, text: `${years < 1 ? "It's still raw." : `${years} year${years > 1 ? "s" : ""} since it ended.`} What do you want with ${p.name}?`, options: [
+    { label: "Reach out — just to talk", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      if (Math.random() < 0.55 + q.rel / 200) { q.rel = clamp(q.rel + 12); st.stats.happiness = clamp(st.stats.happiness + 5); push(st, `🕸 You messaged ${q.name}. It was easy, which was its own strange grief. You caught up like people who used to know everything about each other, because you are.`); }
+      else { q.rel = clamp(q.rel - 5); st.stats.happiness = clamp(st.stats.happiness - 6); push(st, `🕸 You reached out to ${q.name}. The reply was polite and about six words long. You put the phone face down.`); }
+    } } },
+    { label: "Ask for closure — the conversation you didn't get", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 8);
+      if (Math.random() < 0.6) { st.stats.happiness = clamp(st.stats.happiness + 9); q.rel = clamp(q.rel + 6); push(st, `🕸 You asked ${q.name} the actual question. They answered honestly, and the answer was smaller and sadder and more human than the version you'd built. It stopped hurting in the specific way it had been hurting.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `🕸 ${q.name} gave you the diplomatic version. You left with the same hole and one more conversation in it.`); }
+    } } },
+    { label: "Try to get back together", cond: (st) => activePartners(st).length === 0, fx: { run: (st) => {
+      const q = st.romance[pkey];
+      const odds = q.rel / 190 + (q.loyalty > 60 ? 0.12 : 0) - (st.ageDays - (q.exSince || 0) > 2000 ? 0.15 : 0);
+      if (Math.random() < odds) { q.status = "dating"; q.role = q.g === "M" ? "Man" : q.g === "F" ? "Woman" : "Partner"; q.rel = clamp(q.rel + 10); st.stats.happiness = clamp(st.stats.happiness + 12); push(st, `💞 You and ${q.name} are trying again. Everyone has an opinion. You've both agreed to do the parts you were bad at differently, and you might even manage it.`); }
+      else { q.rel = clamp(q.rel - 10); st.stats.happiness = clamp(st.stats.happiness - 11); push(st, `🕸 ${q.name} said no — kindly, and completely. "I love who you were to me. I can't do it again." You are going to have to hear that a few more times before it lands.`); }
+    } } },
+    { label: "Be genuine friends", cond: (st) => st.romance[pkey].rel > 40, fx: { run: (st) => {
+      const q = st.romance[pkey];
+      const nk = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1);
+      st.friends[nk] = { ...q, role: "Friend", status: "", rel: clamp(q.rel + 4) };
+      delete st.romance[pkey];
+      st.stats.happiness = clamp(st.stats.happiness + 7);
+      push(st, `🕊 You and ${q.name} did the rare thing: became actual friends, not the polite fiction. It took a year of awkwardness and was worth it.`);
+    } } },
+    { label: "Delete their number for good", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      delete st.romance[pkey];
+      st.stats.happiness = clamp(st.stats.happiness - 3);
+      st.emergent.discipline = clamp((st.emergent.discipline ?? 50) + 6);
+      push(st, `🚪 You deleted ${q.name}'s number, unfollowed, and put the photos in a folder you won't open. Cleaner. Quieter. The right call, most days.`);
+    } } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* ═══════════════ SCHOOL LIFE ═══════════════ */
+
+const SCHOOL_TYPES = {
+  public:    { name: "Public school", emoji: "🏫", tuition: 0,    prestige: 0, strict: 0, faith: 0 },
+  charter:   { name: "Charter school", emoji: "🏫", tuition: 0,   prestige: 1, strict: 1, faith: 0, minYear: 1992 },
+  magnet:    { name: "Magnet school", emoji: "🔬", tuition: 0,    prestige: 2, strict: 1, faith: 0, minYear: 1975 },
+  vocational:{ name: "Vocational school", emoji: "🔧", tuition: 0, prestige: 0, strict: 0, faith: 0 },
+  catholic:  { name: "Catholic school", emoji: "✝️", tuition: 60, prestige: 1, strict: 2, faith: 2 },
+  faith:     { name: "Religious school", emoji: "🕌", tuition: 55, prestige: 1, strict: 2, faith: 2 },
+  privateDay:{ name: "Private day school", emoji: "🎓", tuition: 260, prestige: 2, strict: 1, faith: 0 },
+  prep:      { name: "Preparatory academy", emoji: "🏛", tuition: 520, prestige: 3, strict: 2, faith: 0 },
+  boarding:  { name: "Boarding school", emoji: "🏰", tuition: 700, prestige: 3, strict: 3, faith: 0 },
+  allGirls:  { name: "All-girls school", emoji: "👧", tuition: 300, prestige: 2, strict: 3, faith: 1, single: "F" },
+  allBoys:   { name: "All-boys school", emoji: "👦", tuition: 300, prestige: 2, strict: 3, faith: 1, single: "M" },
+  homeschool:{ name: "Homeschooled", emoji: "🏠", tuition: 0, prestige: 1, strict: 1, faith: 1, noPeers: 1 },
+};
+
+const FAITHY = ["Ireland", "Poland", "Italy", "Spain", "Portugal", "Mexico", "Colombia", "Philippines", "Brazil", "Nigeria", "Kenya", "Egypt", "Indonesia", "Turkey", "Argentina", "Chile"];
+
+function pickSchoolType(s) {
+  const cls = s.profile.cls, y = yearOf(s), c = s.profile.country;
+  const faithy = FAITHY.includes(c);
+  const bag = [];
+  const add = (k, n) => { for (let i = 0; i < n; i++) bag.push(k); };
+  add("public", cls === "Wealthy" ? 2 : cls === "Middle" ? 6 : 10);
+  if (y >= 1992) add("charter", cls === "Poor" ? 2 : 3);
+  if (y >= 1975) add("magnet", s.stats.smarts > 70 ? 4 : 1);
+  if (cls === "Poor" || cls === "Working") add("vocational", 2);
+  add(faithy ? "catholic" : "faith", faithy ? (cls === "Wealthy" ? 5 : 4) : 1);
+  if (cls === "Middle" || cls === "Wealthy") add("privateDay", cls === "Wealthy" ? 5 : 2);
+  if (cls === "Wealthy") { add("prep", 5); add("boarding", 3); }
+  if (faithy || cls === "Wealthy") { add(s.profile.sex === "Female" ? "allGirls" : "allBoys", 2); }
+  if (y >= 1985 && Math.random() < 0.04) add("homeschool", 1);
+  let t = pick(bag);
+  const cfg = SCHOOL_TYPES[t];
+  if (cfg.single && cfg.single !== (s.profile.sex === "Female" ? "F" : "M")) t = "privateDay";
+  return t;
+}
+
+const SAINTS = ["Agnes", "Michael", "Brigid", "Anthony", "Clara", "Xavier", "Teresa", "Vincent", "Cecilia", "Augustine"];
+const PREP_WORDS = ["Ashford", "Winslow", "Bellhaven", "Crowmere", "Thornbury", "Kestrel", "Marchmont", "Halloway"];
+const PLAIN_WORDS = ["Ridgeview", "Northgate", "Lakeside", "Eastfield", "Hillcrest", "Fairmount", "Brookside", "Westbrook"];
+
+function schoolName(s, type, stage) {
+  const lvl = stage === "primary" ? pick(["Primary School", "Elementary School"]) : stage === "middle" ? "Middle School" : "High School";
+  const city = s.profile.city;
+  switch (type) {
+    case "catholic": return `St. ${pick(SAINTS)}'s ${stage === "high" ? "Catholic High" : "Catholic School"}`;
+    case "faith": return `${pick(["Al-Noor", "Beit Shalom", "Grace", "New Hope", "Divine Light"])} ${stage === "high" ? "Academy" : "School"}`;
+    case "prep": return `${pick(PREP_WORDS)} Preparatory Academy`;
+    case "boarding": return `${pick(PREP_WORDS)} Hall`;
+    case "privateDay": return `${pick(PREP_WORDS)} ${pick(["Academy", "School"])}`;
+    case "allGirls": return `${pick(SAINTS)} ${pick(["Girls' School", "Academy for Girls"])}`;
+    case "allBoys": return `${pick(PREP_WORDS)} ${pick(["Boys' School", "College"])}`;
+    case "magnet": return `${city} ${pick(["Science & Technology", "Academy of Arts", "Academy for Gifted Students"])}`;
+    case "vocational": return `${city} ${pick(["Technical College", "Vocational Institute"])}`;
+    case "charter": return `${pick(PLAIN_WORDS)} Charter ${lvl}`;
+    case "homeschool": return "The kitchen table";
+    default: return `${pick([city + " " + pick(["North", "South", "East", "Central"]), pick(PLAIN_WORDS)])} ${lvl}`;
+  }
+}
+
+const CLIQUES = ["quiet one", "class clown", "overachiever", "athlete", "artist", "troublemaker", "rich kid", "loner", "gossip", "kind one"];
+const TEACHER_STYLE = ["strict", "beloved", "burnt out", "inspiring", "sarcastic", "impossible to please", "genuinely kind", "checked out"];
+
+function makeClassmates(s, n) {
+  const out = {};
+  const single = SCHOOL_TYPES[s.school.type].single;
+  for (let i = 0; i < n; i++) {
+    const g = single === "F" ? "f" : single === "M" ? "m" : pick(["m", "f", "f", "m", "n"]);
+    const nm = candidateName(s, g === "m" ? "M" : g === "f" ? "F" : "NB");
+    out["cm" + (i + 1)] = {
+      name: nm, g: g === "n" ? "N" : g.toUpperCase(), clique: pick(CLIQUES),
+      rel: rnd(20, 55), smarts: rnd(20, 95), mean: rnd(0, 100), known: [],
+    };
+  }
+  return out;
+}
+
+function makeFaculty(s) {
+  const out = {};
+  const subs = Object.keys(SUBJECTS).sort(() => Math.random() - 0.5).slice(0, 4);
+  subs.forEach((sub, i) => {
+    const g = pick(["m", "f"]);
+    out["t" + (i + 1)] = {
+      name: `${pick(["Mr.", "Ms.", "Mrs.", "Dr."])} ${pick(nameList(s.profile.country, "last"))}`,
+      subject: sub, style: pick(TEACHER_STYLE), rel: rnd(35, 65), strict: rnd(20, 95), g: g.toUpperCase(),
+      beliefs: clamp(eraAcceptance(yearOf(s)) + rnd(-40, 40)),
+      professionalism: rnd(15, 98), empathy: rnd(10, 95), ruleRespect: rnd(20, 95),
+      legalFear: rnd(10, 95), religious: rnd(5, 90), priorExp: Math.random() < 0.2,
+      known: [],
+    };
+  });
+  out.head = { name: `${pick(["Principal", "Headmaster", "Headmistress", "Dean"])} ${pick(nameList(s.profile.country, "last"))}`, subject: null, style: pick(["by the book", "old school", "surprisingly decent"]), rel: rnd(30, 60), strict: rnd(50, 99), boss: 1,
+    beliefs: clamp(eraAcceptance(yearOf(s)) + rnd(-45, 30)), professionalism: rnd(30, 95), empathy: rnd(10, 80),
+    ruleRespect: rnd(50, 99), legalFear: rnd(30, 99), religious: rnd(5, 90), priorExp: Math.random() < 0.25, known: [] };
+  return out;
+}
+
+function enrollSchool(s, stage) {
+  const type = s.school && s.school.type && stage !== "primary" && Math.random() < 0.7 ? s.school.type : pickSchoolType(s);
+  s.school = {
+    type, name: schoolName(s, type, stage), stage,
+    classmates: {}, faculty: {}, skips: 0, trouble: 0, lastStudy: {},
+  };
+  if (!SCHOOL_TYPES[type].noPeers) s.school.classmates = makeStudentBody(s, stage === "primary" ? rnd(20, 28) : rnd(26, 45));
+  s.school.present = { name: "birth", uniform: "assigned", pe: "assigned", pronouns: false, outTo: [] };
+  s.school.faculty = makeFaculty(s);
+  const cfg = SCHOOL_TYPES[type];
+  if (cfg.tuition) s.education.debt = (s.education.debt || 0);
+  return s;
+}
+
+function schoolFee(s) {
+  const cfg = SCHOOL_TYPES[s.school.type];
+  return Math.round(cfg.tuition * (COUNTRIES[s.profile.country].tui ?? 1));
+}
+
+/* — the school panel actions — */
+
+const CLUBS = {
+  team:      { emoji: "🏅", name: "School team", sub: "sport, sweat, belonging", health: 4, skill: "athletics", subj: "pe" },
+  band:      { emoji: "🎺", name: "Band", sub: "the uniform is a crime", skill: "music", subj: "music" },
+  drama:     { emoji: "🎭", name: "Drama club", sub: "loud people, good people", skill: "courage", subj: "arts" },
+  debate:    { emoji: "🗣", name: "Debate society", sub: "argue, but with rules", skill: "courage", subj: "lit" },
+  chess:     { emoji: "♟", name: "Chess club", sub: "quiet warfare", skill: "prudence", subj: "math" },
+  science:   { emoji: "🔬", name: "Science club", sub: "things that fizz", skill: "discipline", subj: "science" },
+  art:       { emoji: "🎨", name: "Art club", sub: "paint under the fingernails", skill: "music", subj: "arts" },
+  paper:     { emoji: "📰", name: "School paper", sub: "someone has to say it", skill: "selfAwareness", subj: "lit" },
+  volunteer: { emoji: "🤝", name: "Volunteering", sub: "tiring, grounding", skill: "kindness", subj: null },
+  computing: { emoji: "💻", name: "Computer club", sub: "green text, big ideas", minYear: 1982, skill: "discipline", subj: "tech" },
+  gsa:       { emoji: "🏳️‍🌈", name: "Gay-straight alliance", sub: "a room where it's fine", minYear: 1990, queer: 1, skill: "courage", subj: null },
+};
+
+function clubsMenu(state) {
+  const s = pClone(state);
+  const y = yearOf(s);
+  const cur = s.education.extra;
+  const avail = Object.entries(CLUBS).filter(([k, c]) => {
+    if (c.minYear && y < c.minYear) return false;
+    if (c.queer && localAcceptance(s) < 35) return false;
+    return k !== cur;
+  });
+  s.pending = { emoji: "🎪", title: "Clubs & activities", layout: "grid",
+    text: cur && CLUBS[cur] ? `You're in ${CLUBS[cur].name.toLowerCase()}. Switching means starting over socially.` : "What do you do with your afternoons?",
+    options: [
+      ...avail.map(([k, c]) => ({ card: { emoji: c.emoji, name: c.name, sub: c.sub, tag: "" }, hi: c.queer ? 1 : 0,
+        fx: { run: (st) => {
+          st.education.extra = k;
+          st.flags.extraChosen = true;
+          if (c.health) st.stats.health = clamp(st.stats.health + c.health);
+          if (c.skill) st.emergent[c.skill] = clamp((st.emergent[c.skill] ?? 30) + 5);
+          if (c.subj && st.education.subjects[c.subj] !== undefined) st.education.subjects[c.subj] = clamp(st.education.subjects[c.subj] + 4);
+          st.stats.happiness = clamp(st.stats.happiness + (c.queer ? 9 : 5));
+          push(st, c.queer
+            ? `🏳️‍🌈 You joined the GSA. Fifteen people in a classroom at lunchtime, half of them not out to anyone, all of them breathing easier for an hour a week. You went every single week.`
+            : `${c.emoji} You joined ${c.name.toLowerCase()}. ${pick(["Early starts, aching everything, real belonging.", "Your people, as it turned out.", "You weren't the best there. You were the most consistent."])}`);
+        } } })),
+      ...(cur ? [{ label: "Quit — keep your afternoons free", fx: { run: (st) => { st.education.extra = null; st.stats.happiness = clamp(st.stats.happiness + 2); push(st, "🚪 You quit. Freedom has its own curriculum."); } } }]
+              : [{ label: "Nothing — school ends at the bell", fx: { run: (st) => { st.flags.extraChosen = true; st.stats.happiness = clamp(st.stats.happiness + 2); push(st, "🚪 You kept your afternoons free. Freedom has its own curriculum."); } } }]),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function classmatesMenu(state) {
+  const s = pClone(state);
+  const cms = Object.entries(s.school.classmates || {});
+  if (!cms.length) { s.pending = { emoji: "🏠", title: "No classmates", text: "You're taught at home. The other students are the cat and a very patient houseplant.", options: [{ label: "Back", fx: {} }] }; return s; }
+  s.pending = { emoji: "👥", title: `Your year — ${cms.length} students`, text: "Sorted by how well you know them. Talk to people to learn what they're actually like.", layout: "grid",
+    options: [...cms.sort((a, b) => b[1].rel - a[1].rel).map(([k, c]) => ({
+      card: { emoji: c.known.includes("safe") ? "🏳️‍🌈" : c.g === "F" ? "👧" : c.g === "M" ? "👦" : "🧒",
+        name: c.name,
+        sub: `${c.clique}${c.known.includes("interests") ? ` · ${c.interests[0]}` : ""}`,
+        tag: studentTag(s, c) },
+      fx: { run: (st) => { st.pending = classmateActions(st, k).pending; } } })), CANCEL] };
+  return s;
+}
+
+function classmateActions(state, k) {
+  const s = pClone(state);
+  const c = s.school.classmates[k];
+  const age = ageYears(s);
+  const opts = [
+    { label: "Talk to them", fx: { run: (st) => { const q = st.school.classmates[k];
+      q.rel = clamp(q.rel + rnd(3, 8));
+      if (!q.known.includes("interests")) q.known.push("interests");
+      if (q.mean > 65 && !q.known.includes("mean") && Math.random() < 0.5) q.known.push("mean");
+      if (q.ally > 60 && !q.known.includes("ally") && Math.random() < 0.5) q.known.push("ally");
+      push(st, pick([`🗣 You and ${q.name} talked between lessons. ${q.clique === "gossip" ? "You now know three things you shouldn't." : "Easier than you expected."}`,
+        `🗣 A whole conversation with ${q.name} about nothing. The good kind of nothing.`])); } } },
+    { label: "Sit together at lunch", fx: { run: (st) => { const q = st.school.classmates[k];
+      q.rel = clamp(q.rel + rnd(5, 11)); st.stats.happiness = clamp(st.stats.happiness + 3);
+      push(st, `🍎 You sat with ${q.name} at lunch. A small territorial claim on belonging.`); } } },
+    { label: "Study together", fx: { run: (st) => { const q = st.school.classmates[k];
+      q.rel = clamp(q.rel + 6);
+      const sub = pick(Object.keys(SUBJECTS));
+      const gain = q.smarts > 70 ? rnd(5, 9) : rnd(1, 4);
+      st.education.subjects[sub] = clamp(st.education.subjects[sub] + gain);
+      push(st, `📚 You studied ${SUBJECTS[sub].toLowerCase()} with ${q.name}. ${q.smarts > 70 ? "They explained it better than the teacher does." : "Neither of you understood it, but you were confused together."}`); } } },
+    { label: "Become proper friends", cond: (st) => st.school.classmates[k].rel > 50, fx: { run: (st) => { const q = st.school.classmates[k];
+      const fk = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1);
+      st.friends[fk] = makePerson(q.name, "Friend", { rel: q.rel, g: q.g === "N" ? undefined : q.g });
+      delete st.school.classmates[k];
+      st.stats.happiness = clamp(st.stats.happiness + 7);
+      push(st, `🤝 ${q.name} isn't just someone in your class now — they're a friend. They're in your People list.`); } } },
+    { label: "Copy their homework", cond: (st) => st.school.classmates[k].smarts > 55, fx: { run: (st) => { const q = st.school.classmates[k];
+      if (Math.random() < 0.75) { const sub = pick(Object.keys(SUBJECTS)); st.education.subjects[sub] = clamp(st.education.subjects[sub] + 3); q.rel = clamp(q.rel - 3);
+        push(st, `📝 You copied ${q.name}'s homework, changed two words, and got away with it.`); }
+      else { st.school.trouble = (st.school.trouble || 0) + 1; st.stats.happiness = clamp(st.stats.happiness - 5); q.rel = clamp(q.rel - 8);
+        push(st, `📝 The teacher noticed the identical answers immediately. Both of you got zero, and ${q.name} is not speaking to you.`); } } } },
+    { label: "Stand up to them", cond: (st) => st.school.classmates[k].mean > 60, fx: { run: (st) => { const q = st.school.classmates[k];
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8);
+      if (Math.random() < 0.55) { q.rel = clamp(q.rel + 12); q.mean = clamp(q.mean - 25); st.stats.happiness = clamp(st.stats.happiness + 8);
+        push(st, `🛡 You stood up to ${q.name} in front of everyone. They backed down — and, bizarrely, respected you for it afterwards.`); }
+      else { st.stats.health = clamp(st.stats.health - 5); st.stats.happiness = clamp(st.stats.happiness - 5); st.school.trouble = (st.school.trouble || 0) + 1;
+        push(st, `🛡 You stood up to ${q.name}. It got physical, both of you got detention, and nothing was resolved. You'd still do it again.`); } } } },
+    { label: "Spread a rumour about them", fx: { run: (st) => { const q = st.school.classmates[k];
+      st.emergent.kindness = clamp((st.emergent.kindness ?? 50) - 8);
+      if (Math.random() < 0.6) { q.rel = clamp(q.rel - 20); push(st, `🐍 The rumour went round by Thursday. ${q.name} knows it was you. Everyone knows it was you.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness - 3); push(st, `🐍 Nobody bit. The rumour died and you felt small for a week.`); } } } },
+  ];
+  if (age >= 13 && !s.school.classmates[k].pet) {
+    opts.push({ label: "Pass them a note — you like them", cond: (st) => st.school.classmates[k].rel > 45, fx: { run: (st) => { const q = st.school.classmates[k];
+      const likes = Math.random() < 0.4 + q.rel / 300;
+      if (likes) { const rk = "r" + (st.flags.rSeq = (st.flags.rSeq || 0) + 1);
+        st.romance[rk] = { ...makePerson(q.name, "Sweetheart", { rel: clamp(q.rel + 8), g: q.g === "N" ? undefined : q.g }), status: "dating", openOk: false, met: "school" };
+        delete st.school.classmates[k];
+        st.stats.happiness = clamp(st.stats.happiness + 11);
+        push(st, `💌 You passed ${q.name} a note with a question and two boxes. They ticked yes and drew a small, unnecessary heart. You are, officially, going out.`); }
+      else { q.rel = clamp(q.rel - 6); st.stats.happiness = clamp(st.stats.happiness - 7);
+        push(st, `💌 ${q.name} read the note, went pink, and said they only liked you as a friend. The walk to your next lesson took a geological age.`); } } } });
+  }
+  opts.push(CANCEL);
+  const bits = [`The ${c.clique}.`];
+  bits.push(c.smarts > 70 ? "Top of most classes." : c.smarts < 35 ? "Not academic, and doesn't pretend to be." : "Middling grades, like most people.");
+  if (c.popularity > 75) bits.push("Everyone knows who they are.");
+  else if (c.popularity < 25) bits.push("Mostly invisible in this school.");
+  if (c.known.includes("interests")) bits.push(`Into ${c.interests.join(" and ")}.`);
+  if (c.known.includes("mean")) bits.push("Has a cruel streak.");
+  else if (c.known.includes("ally")) bits.push("Safe — you've tested it.");
+  else if (c.mean > 65) bits.push("Something about them puts you on guard.");
+  else if (c.mean < 25) bits.push("Genuinely kind.");
+  if (c.known.includes("safe")) bits.push("Knows about you, and it was fine.");
+  s.pending = { emoji: c.known.includes("safe") ? "🏳️‍🌈" : "🧒", title: c.name, text: bits.join(" "), options: opts };
+  return s;
+}
+
+function facultyMenu(state) {
+  const s = pClone(state);
+  const fac = Object.entries(s.school.faculty || {});
+  s.pending = { emoji: "🧑‍🏫", title: "Faculty", text: "Who are you dealing with?", layout: "grid",
+    options: [...fac.map(([k, t]) => ({ card: { emoji: t.boss ? "🎩" : "🧑‍🏫", name: t.name, sub: t.boss ? t.style : `${SUBJECTS[t.subject]} · ${t.style}`, tag: t.rel > 60 ? "likes you" : t.rel < 35 ? "wary" : "neutral" },
+      fx: { run: (st) => { st.pending = facultyActions(st, k).pending; } } })), CANCEL] };
+  return s;
+}
+
+function facultyActions(state, k) {
+  const s = pClone(state);
+  const t = s.school.faculty[k];
+  const opts = [
+    { label: "Ask for extra help", fx: { run: (st) => { const q = st.school.faculty[k];
+      q.rel = clamp(q.rel + 8);
+      if (q.subject) { st.education.subjects[q.subject] = clamp(st.education.subjects[q.subject] + rnd(4, 9));
+        push(st, `📖 ${q.name} stayed after class and explained it three different ways until one landed. ${q.style === "genuinely kind" || q.style === "inspiring" ? "They seemed pleased you asked." : "They were brisk about it, but they did it."}`); }
+      else push(st, `📖 ${q.name} listened to your problem and pointed you at someone who could actually help.`); } } },
+    { label: "Be the model student", fx: { run: (st) => { const q = st.school.faculty[k];
+      q.rel = clamp(q.rel + 12); st.emergent.discipline = clamp((st.emergent.discipline ?? 50) + 4);
+      if (q.subject) st.education.subjects[q.subject] = clamp(st.education.subjects[q.subject] + 3);
+      push(st, `🍎 Front row, questions answered, homework early. ${q.name} has started saying your name like it's a good thing.`); } } },
+    { label: "Argue with them in class", fx: { run: (st) => { const q = st.school.faculty[k];
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 6);
+      if (Math.random() < (q.strict > 70 ? 0.25 : 0.55)) { q.rel = clamp(q.rel + 6); st.stats.smarts = clamp(st.stats.smarts + 2);
+        push(st, `🗯 You challenged ${q.name} on a point and were, annoyingly for them, right. They conceded it publicly. Your stock rose.`); }
+      else { q.rel = clamp(q.rel - 14); st.school.trouble = (st.school.trouble || 0) + 1;
+        push(st, `🗯 You argued with ${q.name} and lost, loudly. It has been added to your file.`); } } } },
+    { label: "Ask about life after school", fx: { run: (st) => { const q = st.school.faculty[k];
+      q.rel = clamp(q.rel + 7); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); st.stats.smarts = clamp(st.stats.smarts + 2);
+      push(st, `🧭 ${q.name} talked to you like an adult for twenty minutes about what you might actually do. ${q.style === "burnt out" || q.style === "checked out" ? "Even they seemed surprised to still care." : "You left with two ideas you hadn't had."}`); } } },
+    { label: "Prank them", fx: { run: (st) => { const q = st.school.faculty[k];
+      if (Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 7);
+        push(st, `😈 The prank landed perfectly and nobody could prove it was you. ${q.name} suspects. ${q.name} is correct.`); }
+      else { q.rel = clamp(q.rel - 18); st.school.trouble = (st.school.trouble || 0) + 2; st.stats.happiness = clamp(st.stats.happiness - 3);
+        push(st, `😈 You were caught within the hour. ${q.name} was not amused, and neither was the office.`); } } } },
+  ];
+  if (t.rel < 35 && !t.boss) opts.push({ label: "Report them to the head", fx: { run: (st) => { const q = st.school.faculty[k];
+    if (Math.random() < 0.4) { q.rel = clamp(q.rel - 10); st.stats.happiness = clamp(st.stats.happiness + 5); push(st, `📣 You reported ${q.name}. Something actually happened — a conversation behind a closed door, and a noticeably different tone afterwards.`); }
+    else { q.rel = clamp(q.rel - 20); st.school.trouble = (st.school.trouble || 0) + 1; push(st, `📣 You reported ${q.name} and the school closed ranks. Now two adults have opinions about you.`); } } } });
+  opts.push(CANCEL);
+  s.pending = { emoji: t.boss ? "🎩" : "🧑‍🏫", title: t.name, text: `${t.boss ? "Runs the school." : `Teaches ${SUBJECTS[t.subject].toLowerCase()}.`} ${t.style[0].toUpperCase() + t.style.slice(1)}. ${t.strict > 75 ? "Zero tolerance for nonsense." : t.strict < 35 ? "Lets a lot slide." : ""}`, options: opts };
+  return s;
+}
+
+function skipSchool(state) {
+  const s = pClone(state);
+  s.school.skips = (s.school.skips || 0) + 1;
+  const strict = SCHOOL_TYPES[s.school.type].strict;
+  const caught = Math.random() < 0.3 + strict * 0.12 + s.school.skips * 0.04;
+  Object.keys(SUBJECTS).forEach((k) => { if (Math.random() < 0.5) s.education.subjects[k] = clamp(s.education.subjects[k] - rnd(1, 4)); });
+  s.stats.happiness = clamp(s.stats.happiness + 6);
+  if (caught) {
+    s.school.trouble = (s.school.trouble || 0) + 1;
+    const par = Math.random() < 0.5 ? "mom" : "dad";
+    s.family[par].rel = clamp(s.family[par].rel - rnd(6, 14));
+    bumpSuspicion(s, par, 4);
+    s.stats.happiness = clamp(s.stats.happiness - 10);
+    push(s, `🚭 You skipped the day — and the school rang home before you got back. ${s.family[par].name} was waiting in the kitchen with the specific silence that precedes a very long conversation.`);
+  } else {
+    push(s, pick([
+      `🚭 You skipped the whole day and nobody noticed. Four unaccounted hours in a park, and the sky looked different.`,
+      `🚭 A day off nobody authorised. You went to the shopping centre and felt like an outlaw with £3.`,
+    ]));
+  }
+  return advance(s, 1);
+}
+
+function dropOutSchool(state) {
+  const s = pClone(state);
+  s.education.stage = "done";
+  s.school = null;
+  s.stats.happiness = clamp(s.stats.happiness + 4);
+  s.family.mom.rel = clamp(s.family.mom.rel - 14);
+  s.family.dad.rel = clamp(s.family.dad.rel - 14);
+  push(s, `🚪 You left school for good at ${ageYears(s)}. Your parents took it badly. Doors closed quietly behind you — some of them permanently, some only until you decide otherwise.`);
+  return s;
+}
+
+const SCHOOL_GROUP = { id: "school", emoji: "🎒", name: "School", cond: (s) => inSchool(s) && !inPrison(s), items: [
+  { id: "classmates", minAge: 5, emoji: "👥", label: "Your classmates", cost: 1, special: "classmates" },
+  { id: "faculty", minAge: 5, emoji: "🧑‍🏫", label: "Teachers", cost: 1, special: "faculty" },
+  { id: "clubs", minAge: 10, emoji: "🎪", label: "Clubs & activities", cost: 1, special: "clubs" },
+  { id: "present", minAge: 10, emoji: "🎒", label: "How you show up here", cost: 1, special: "schoolpresent" },
+  { id: "schooltrans", minAge: 10, emoji: "🏫", label: "Transition at school", cost: 2, special: "schooltrans", cond: (s) => s.discovered.gender && isQueerG(s) },
+  { id: "selftrans", minAge: 10, emoji: "🫵", label: "What you do regardless", cost: 1, special: "selftrans", cond: (s) => s.discovered.gender && isQueerG(s) },
+  { id: "stxBoard", minAge: 10, emoji: "📓", label: "Where things stand", cost: 0, special: "stxBoard", cond: (s) => s.discovered.gender && isQueerG(s) },
+  { id: "skipday", minAge: 8, emoji: "🚭", label: "Skip school", cost: 1, special: "skipschool", danger: { title: "Skip school?", body: "A day of freedom. Your grades take a hit, and if the school rings home there'll be trouble.", yes: "Skip it" } },
+  { id: "dropout", minAge: 16, emoji: "🚪", label: "Drop out of school", cost: 2, special: "dropschool", cond: (s) => s.education.stage === "high", danger: { title: "Drop out of school?", body: "No diploma, no college, and far fewer jobs will ever open to you. This cannot be undone.", yes: "Leave school" } },
+] };
+ACT_GROUPS.push(SCHOOL_GROUP);
+
+const SCHOOL_POOL = [
+  { id: "schoolTrouble", i: 1, w: 6, minAge: 8, maxAge: 19, cd: 200, cond: (s) => inSchool(s) && (s.school?.trouble || 0) >= 2, run: (s) => {
+    const head = Object.values(s.school.faculty).find((t) => t.boss);
+    return { event: { emoji: "🎩", title: "Sent to the office", text: `${head ? head.name : "The head"} has your file open on the desk. "This is becoming a pattern."`, options: [
+      { label: "Apologise and mean it", fx: { run: (st) => { st.school.trouble = 0; st.stats.happiness = clamp(st.stats.happiness - 2); st.emergent.prudence = clamp((st.emergent.prudence ?? 50) + 5); push(st, "🎩 You took it on the chin and meant the apology. Slate wiped, with a warning attached."); } } },
+      { label: "Say nothing at all", fx: { run: (st) => { st.school.trouble = 1; st.emergent.courage = clamp((st.emergent.courage ?? 40) + 5); st.family.mom.rel = clamp(st.family.mom.rel - 6); push(st, "🎩 You sat in silence through the whole thing. Suspended for three days. Your mother had to leave work to collect you."); } } },
+      { label: "Blame someone else", fx: { run: (st) => { if (Math.random() < 0.4) { st.school.trouble = 0; push(st, "🎩 It worked. Someone else got the detention. You have not thought about this as much as you should."); } else { st.school.trouble += 1; st.stats.happiness = clamp(st.stats.happiness - 6); push(st, "🎩 It did not work, and now you're a liar as well as a problem."); } } } },
+    ] } }; } },
+  { id: "schoolUniform", i: 1, w: 3, minAge: 8, maxAge: 18, cd: 1200, cond: (s) => inSchool(s) && SCHOOL_TYPES[s.school?.type || "public"].strict >= 2, run: (s) => ({ event: { emoji: "👔", title: "Uniform inspection", text: `${s.school.name} has rules about hems, ties, hair and shoes, and someone is checking them at the gate.`, options: [
+    { label: "Comply exactly", fx: { emergent: { discipline: +4 }, stats: { happiness: -2 }, feed: "👔 Immaculate. Invisible. Through the gate in four seconds." } },
+    { label: "Push it as far as you can", fx: { run: (st) => { if (Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 6); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 4); push(st, "👔 You got away with the shoes and the tie. A tiny, delicious victory over an institution."); } else { st.school.trouble = (st.school.trouble || 0) + 1; push(st, "👔 Sent home to change. The whole morning lost to a hem."); } } } },
+    ...(isQueerG(s) && s.discovered.gender ? [{ label: "Ask to wear the other uniform", fx: { run: (st) => {
+      const era = localAcceptance(st);
+      if (era > 55 && Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 14); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10); push(st, "👔 They said yes. Quietly, without ceremony, as if it were administrative. You wore it the next day and could not stop catching your reflection."); }
+      else { st.stats.happiness = clamp(st.stats.happiness - 10); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8); push(st, "👔 The answer was no, delivered as policy rather than opinion, which somehow made it worse. You asked. That mattered, even so."); }
+    } } }] : []),
+  ] } }) },
+  { id: "schoolFaith", i: 1, w: 3, minAge: 10, maxAge: 18, cd: 900, cond: (s) => inSchool(s) && SCHOOL_TYPES[s.school?.type || "public"].faith >= 2 && isOutQueer(s), run: (s) => ({ event: { emoji: "✝️", title: "Assembly", text: `${s.school.name} holds an assembly on morality, and the section about people like you is delivered in a gentle voice that makes it worse.`, options: [
+    { label: "Sit through it, jaw set", fx: { stats: { happiness: -9 }, emergent: { discipline: +6, selfAwareness: +5 }, feed: "✝️ You sat still for forty minutes and thought your own thoughts, loudly, in the privacy of your skull." } },
+    { label: "Walk out", fx: { run: (st) => { st.school.trouble = (st.school.trouble || 0) + 2; st.emergent.courage = clamp((st.emergent.courage ?? 40) + 12); st.stats.happiness = clamp(st.stats.happiness - 3); push(st, "✝️ You stood up in the middle and walked out of the hall. Three hundred people watched. Two of them found you afterwards to say thank you."); } } },
+    { label: "Talk to a teacher about it after", fx: { run: (st) => { const t = pick(Object.values(st.school.faculty).filter((x) => !x.boss));
+      if (t && t.rel > 55) { st.stats.happiness = clamp(st.stats.happiness + 6); push(st, `✝️ ${t.name} listened, and then said quietly that they didn't agree with all of it either. You have an ally in the building. That changes everything about the building.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness - 5); push(st, "✝️ The teacher recited the policy back to you with a sympathetic face. You learned exactly how much sympathy is worth without action."); } } } },
+  ] } }) },
+  { id: "schoolCrushEra", i: 1, w: 3, minAge: 13, maxAge: 18, cd: 800, cond: (s) => inSchool(s) && Object.keys(s.school?.classmates || {}).length > 0 && isQueerO(s) && s.discovered.orientation, run: (s) => {
+    const cms = Object.entries(s.school.classmates);
+    const same = cms.filter(([, c]) => (c.g === "F" && s.profile.sex === "Female") || (c.g === "M" && s.profile.sex === "Male"));
+    if (!same.length) return { auto: [] };
+    const [k, c] = pick(same);
+    return { event: { emoji: "💭", title: `About ${c.name}`, text: `You've been careful not to look for too long. ${c.name} is the ${c.clique}, and thinking about them is the best and worst part of most days.`, options: [
+      { label: "Try to find out how they feel", fx: { run: (st) => { const q = st.school.classmates[k]; if (!q) return;
+        if (Math.random() < 0.3) { q.rel = clamp(q.rel + 15); push(st, `💭 A conversation that circled and circled and then, briefly, landed. ${q.name} is like you. Neither of you said the word. Both of you knew.`); st.stats.happiness = clamp(st.stats.happiness + 12); }
+        else { push(st, `💭 You worked out, from one offhand comment, that nothing was ever going to happen. It stung for a term and then became a fond, embarrassing memory.`); st.stats.happiness = clamp(st.stats.happiness - 5); } } } },
+      { label: "Keep it entirely to yourself", fx: { stats: { happiness: -3 }, emergent: { selfAwareness: +6 }, feed: "💭 You said nothing to anyone, ever. It lived in a notebook and in the specific route you took between lessons." } },
+      { label: "Become their friend and be glad of it", fx: { run: (st) => { const q = st.school.classmates[k]; if (q) q.rel = clamp(q.rel + 12); st.stats.happiness = clamp(st.stats.happiness + 6); push(st, `💭 You chose the friendship over the fantasy. ${q ? q.name : "They"} became one of the good ones, and you kept them for years.`); } } },
+    ] } }; } },
+];
+POOL.push(...SCHOOL_POOL);
+
+/* ═══════════════ FAMILY CHANGES DURING LIFE — NEW SIBLINGS · DIVORCE · STEP-FAMILY ═══════════════ */
+
+function sibCount(s) { return Object.keys(s.family).filter((k) => k.startsWith("sib") || k.startsWith("stepsib")).length; }
+
+const LATER_FAMILY_POOL = [
+  // a new full sibling, while the parents are still together and you're young enough for it to be plausible
+  { id: "newSibNews", i: 1, w: 2, minAge: 2, maxAge: 11, cd: 3000, once: true,
+    cond: (s) => s.flags.fam_newSibRoll && !s.flags.parentsDivorced && !s.family.mom.deceased && !s.family.dad.deceased && sibCount(s) < 4 && !s.flags.sibDue,
+    run: (s) => ({ event: { emoji: "🤰", title: "News at dinner", text: `${s.family.mom.name} and ${s.family.dad.name} sit you down with the particular seriousness of parents about to say something big: you're going to be a big ${s.profile.sex === "Female" ? "sister" : "brother"}.`, options: [
+      { label: "Be thrilled", fx: { run: (st) => { st.flags.sibDue = st.ageDays + 240; st.stats.happiness = clamp(st.stats.happiness + 8); push(st, "🤰 You asked forty questions in a row, mostly about whether the baby could talk yet. It cannot. This did not dampen your enthusiasm."); } } },
+      { label: "Worry about being replaced", fx: { run: (st) => { st.flags.sibDue = st.ageDays + 240; st.stats.happiness = clamp(st.stats.happiness - 4); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 3); push(st, "🤰 Nobody said you'd be replaced. You worried about it anyway, quietly, for weeks."); } } },
+      { label: "Shrug and go back to what you were doing", fx: { run: (st) => { st.flags.sibDue = st.ageDays + 240; push(st, "🤰 You said 'okay' and returned to what you were doing. It hadn't landed yet. It would."); } } },
+    ] } }) },
+  { id: "newSibBirth", w: 25, minAge: 2, maxAge: 12, cd: 5, cond: (s) => !!s.flags.sibDue && s.ageDays >= s.flags.sibDue, run: (s) => {
+    const g = pick(["m", "f"]);
+    const nm = candidateName(s, g === "m" ? "M" : "F");
+    const key = "sib" + (Object.keys(s.family).filter((k) => k.startsWith("sib")).length + 1);
+    s.family[key] = { ...makePerson(nm, g === "m" ? "Younger brother" : "Younger sister", { rel: rnd(55, 85) }), g: g === "m" ? "M" : "F", ageGap: -ageYears(s), kids: 0 };
+    s.flags.sibDue = null;
+    return { auto: [`👶 ${nm} arrived — loud, tiny, and instantly the center of the household. ${s.family.mom.name} looks exhausted and lit up at once.`], fx: { stats: { happiness: +4 } } }; } },
+
+  // parents' marriage ends
+  { id: "parentsDivorce", i: 1, w: 2, minAge: 4, maxAge: 17, cd: 4000, once: true,
+    cond: (s) => s.flags.fam_divorceRoll && !s.flags.parentsDivorced && !s.family.mom.deceased && !s.family.dad.deceased,
+    run: (s) => ({ event: { emoji: "📦", title: "Mom and Dad sit you down", text: `The kind of quiet that means something's coming. "We still both love you. That's not changing." What is changing becomes clear over the next few sentences: they're separating.`, options: [
+      { label: "Ask to live mostly with Mom", fx: { run: (st) => { st.flags.parentsDivorced = true; st.flags.livesWith = "mom"; st.family.dad.rel = clamp(st.family.dad.rel - 8); st.stats.happiness = clamp(st.stats.happiness - 10); push(st, `📦 You chose. ${st.family.mom.name} held you a beat too long. ${st.family.dad.name} said it was fine and did not look fine. Weekends and holidays, from here.`); } } },
+      { label: "Ask to live mostly with Dad", fx: { run: (st) => { st.flags.parentsDivorced = true; st.flags.livesWith = "dad"; st.family.mom.rel = clamp(st.family.mom.rel - 8); st.stats.happiness = clamp(st.stats.happiness - 10); push(st, `📦 You chose. ${st.family.dad.name} held you a beat too long. ${st.family.mom.name} said it was fine and did not look fine. Weekends and holidays, from here.`); } } },
+      { label: "Refuse to pick a side", fx: { run: (st) => { st.flags.parentsDivorced = true; st.flags.livesWith = "split"; st.stats.happiness = clamp(st.stats.happiness - 6); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); push(st, "📦 You wouldn't choose, and eventually they stopped asking you to. A bag that lives permanently half-packed, two toothbrushes, two bedrooms that are both a little bit not quite yours."); } } },
+    ] } }) },
+
+  // a parent's death (rare)
+  { id: "parentPasses", i: 1, w: 1, minAge: 3, maxAge: 55, cd: 5000,
+    cond: (s) => s.flags.fam_deathRoll && (!s.family.mom.deceased || !s.family.dad.deceased),
+    run: (s) => {
+      const living = ["mom", "dad"].filter((k) => !s.family[k].deceased);
+      const key = pick(living);
+      const p = s.family[key];
+      return { event: { emoji: "🕯", title: `${p.name} is gone`, text: `It happened ${ageYears(s) < 12 ? "suddenly, and nobody explained it well enough for it to make sense" : "faster than anyone had prepared for"}. The house has a shape now with a piece missing from it.`, options: [
+        { label: "Be strong for the family", fx: { run: (st) => { st.family[key].deceased = true; st.stats.happiness = clamp(st.stats.happiness - 16); st.emergent.discipline = clamp((st.emergent.discipline ?? 50) + 8); push(st, `🕯 You held things together because someone had to and it landed on you. You were good at it. You shouldn't have had to be.`); } } },
+        { label: "Fall apart, and let people see it", fx: { run: (st) => { st.family[key].deceased = true; st.stats.happiness = clamp(st.stats.happiness - 20); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 8); push(st, `🕯 You didn't perform composure for anyone. It was ugly and loud and honest, and the people who stayed through it are the ones who mattered.`); } } },
+        { label: "Keep a piece of them close", fx: { run: (st) => { st.family[key].deceased = true; st.stats.happiness = clamp(st.stats.happiness - 14); push(st, `🕯 You kept something small — a watch, a scarf, a handwriting sample on a shopping list — somewhere you'd see it often. Grief needs an object sometimes.`); } } },
+      ] } }; } },
+
+  // remarriage brings a step-parent
+  { id: "stepmomArrives", i: 1, w: 3, minAge: 5, maxAge: 60, cd: 3500, once: true,
+    cond: (s) => s.flags.fam_dadRemarry && !s.family.stepmom && !s.family.dad.deceased && (s.family.mom.deceased || s.flags.parentsDivorced),
+    run: (s) => {
+      const nm = pick(nameList(s.profile.country, "f"));
+      return { event: { emoji: "💍", title: `${s.family.dad.name} is getting remarried`, text: `You've met ${nm} a handful of times now — careful dinners, a little too eager to be liked. Today ${s.family.dad.name} tells you it's serious: a wedding, and a new person permanently in the house.`, options: [
+        { label: "Welcome them in", fx: { run: (st) => { st.family.stepmom = { ...makePerson(nm, "Stepmom", { rel: rnd(50, 75) }), g: "F" }; st.stats.happiness = clamp(st.stats.happiness + 5); addStepsibs(st); push(st, `💍 You gave it a real chance, and ${nm} noticed, and tried harder because of it. Not a replacement. Something else, that turned out to be worth having.`); } } },
+        { label: "Keep your distance", fx: { run: (st) => { st.family.stepmom = { ...makePerson(nm, "Stepmom", { rel: rnd(25, 45) }), g: "F" }; addStepsibs(st); push(st, `💍 Polite. Correct. Nothing more offered, nothing more taken. ${nm} stopped trying quite so hard after a while, which felt like both a relief and a small loss.`); } } },
+        { label: "Make it difficult", fx: { run: (st) => { st.family.stepmom = { ...makePerson(nm, "Stepmom", { rel: rnd(10, 28) }), g: "F" }; st.family.dad.rel = clamp(st.family.dad.rel - 8); st.stats.happiness = clamp(st.stats.happiness - 4); addStepsibs(st); push(st, `💍 You were not, by any measure, welcoming. ${st.family.dad.name} noticed, and it cost you both something. ${nm} kept showing up anyway.`); } } },
+      ] } }; } },
+  { id: "stepdadArrives", i: 1, w: 3, minAge: 5, maxAge: 60, cd: 3500, once: true,
+    cond: (s) => s.flags.fam_momRemarry && !s.family.stepdad && !s.family.mom.deceased && (s.family.dad.deceased || s.flags.parentsDivorced),
+    run: (s) => {
+      const nm = pick(nameList(s.profile.country, "m"));
+      return { event: { emoji: "💍", title: `${s.family.mom.name} is getting remarried`, text: `You've met ${nm} a handful of times now — careful dinners, a little too eager to be liked. Today ${s.family.mom.name} tells you it's serious: a wedding, and a new person permanently in the house.`, options: [
+        { label: "Welcome them in", fx: { run: (st) => { st.family.stepdad = { ...makePerson(nm, "Stepdad", { rel: rnd(50, 75) }), g: "M" }; st.stats.happiness = clamp(st.stats.happiness + 5); addStepsibs(st); push(st, `💍 You gave it a real chance, and ${nm} noticed, and tried harder because of it. Not a replacement. Something else, that turned out to be worth having.`); } } },
+        { label: "Keep your distance", fx: { run: (st) => { st.family.stepdad = { ...makePerson(nm, "Stepdad", { rel: rnd(25, 45) }), g: "M" }; addStepsibs(st); push(st, `💍 Polite. Correct. Nothing more offered, nothing more taken. ${nm} stopped trying quite so hard after a while, which felt like both a relief and a small loss.`); } } },
+        { label: "Make it difficult", fx: { run: (st) => { st.family.stepdad = { ...makePerson(nm, "Stepdad", { rel: rnd(10, 28) }), g: "M" }; st.family.mom.rel = clamp(st.family.mom.rel - 8); st.stats.happiness = clamp(st.stats.happiness - 4); addStepsibs(st); push(st, `💍 You were not, by any measure, welcoming. ${st.family.mom.name} noticed, and it cost you both something. ${nm} kept showing up anyway.`); } } },
+      ] } }; } },
+];
+POOL.push(...LATER_FAMILY_POOL);
+
+function addStepsibs(st) {
+  if (Math.random() >= 0.4) return; // most new partners don't bring kids along; some do
+  const n = pick([1, 1, 2]);
+  const existing = Object.keys(st.family).filter((k) => k.startsWith("stepsib")).length;
+  for (let i = 0; i < n; i++) {
+    const g = pick(["m", "f"]);
+    const nm = candidateName(st, g === "m" ? "M" : "F");
+    const gap = rnd(-5, 5);
+    st.family["stepsib" + (existing + i + 1)] = {
+      ...makePerson(nm, gap < 0 ? (g === "m" ? "Younger stepbrother" : "Younger stepsister") : (g === "m" ? "Older stepbrother" : "Older stepsister"), { rel: rnd(25, 55) }),
+      g: g === "m" ? "M" : "F", ageGap: gap, kids: 0,
+    };
+  }
+}
+
+/* ═══════════════ PRESENTATION · DYSPHORIA ═══════════════ */
+
+// where you sit on the presentation axis: 0 = fully masculine, 100 = fully feminine
+function presTarget(s) {
+  const g = s.hidden.gender;
+  if (g === "Trans woman") return 88;
+  if (g === "Trans man") return 12;
+  if (g === "Non-binary" || g === "Genderfluid") return 50;
+  return s.profile.sex === "Female" ? 82 : 18;
+}
+function presStart(s) { return s.profile.sex === "Female" ? 78 : 22; }
+function presently(s) { return s.emergent.pres ?? presStart(s); }
+
+// how far your presentation is from where you need it to be
+function presGap(s) { return Math.abs(presently(s) - presTarget(s)); }
+
+function movePres(st, amt) {
+  const t = presTarget(st);
+  const cur = presently(st);
+  const dir = t > cur ? 1 : -1;
+  const next = clamp(cur + dir * Math.min(Math.abs(amt), Math.abs(t - cur)));
+  st.emergent.pres = Math.round(next);
+  return st.emergent.pres;
+}
+
+function presLabel(s) {
+  const v = presently(s);
+  return v > 78 ? "clearly feminine" : v > 60 ? "leaning feminine" : v > 40 ? "androgynous" : v > 22 ? "leaning masculine" : "clearly masculine";
+}
+
+// dysphoria: most trans people carry it; it eases as presentation and transition catch up
+function dysphoriaLevel(s) {
+  if (!s.discovered.gender || !isQueerG(s)) return 0;
+  if (s.flags.noDysphoria) return 0;
+  let d = 55;
+  d += presGap(s) * 0.35;                       // living wrong is the biggest driver
+  if (s.flags.hrt) d -= 22;
+  if (s.flags.srg_top) d -= 10;
+  if (s.flags.srg_gcs) d -= 12;
+  if (s.flags.srg_face) d -= 8;
+  if (s.flags.legalName) d -= 5;
+  if (usedName(s) !== s.profile.first) d -= 6;
+  const outCount = Object.keys(s.outTo).filter((k) => s.outTo[k]).length;
+  d -= Math.min(14, outCount * 3);              // being known as yourself helps
+  if (s.flags.buried) d += 12;
+  d -= (s.emergent.selfAwareness ?? 50) * 0.08;
+  return Math.max(0, Math.min(100, Math.round(d)));
+}
+
+const DYSPHORIA_POOL = [
+  { id: "dysphoriaDrag", w: 9, minAge: 10, maxAge: 90, cd: 60, cond: (s) => dysphoriaLevel(s) > 30, run: (s) => {
+    const d = dysphoriaLevel(s);
+    const hard = d > 65;
+    return { auto: [pick(hard ? [
+      "🌑 A bad stretch. Mirrors became things to route around, photos became unbearable, and getting dressed took forty minutes of negotiation with yourself.",
+      "🌑 Your own voice on a recording undid your whole afternoon.",
+      "🌑 Someone said your old name in a crowded room and the rest of the day happened underwater.",
+      "🌑 You lay awake doing the arithmetic of years — how long until, how much it costs, whether you'll ever get there.",
+    ] : [
+      "🌫 A low hum of wrongness all week. Not a crisis. Just weather you can't step out of.",
+      "🌫 You caught your reflection at an angle you weren't ready for and lost twenty minutes to it.",
+      "🌫 Getting dressed took three attempts and a compromise you resented.",
+    ])], fx: { stats: { happiness: hard ? -rnd(4, 8) : -rnd(1, 4), health: hard ? -1 : 0 } } }; } },
+  { id: "dysphoriaEase", w: 5, minAge: 10, maxAge: 90, cd: 200, cond: (s) => s.discovered.gender && isQueerG(s) && dysphoriaLevel(s) < 30, run: (s) => ({ auto: [pick([
+    "☀️ A whole week where you didn't think about it once. You only noticed afterwards, and the noticing was its own quiet joy.",
+    "☀️ You caught your reflection and just carried on walking. That used to be impossible.",
+    "☀️ Someone used your name and pronouns without thinking, and your body registered it as safety before your brain caught up.",
+  ])], fx: { stats: { happiness: +rnd(3, 7) } } }) },
+  // living visibly differently gets you clocked, medical transition or not
+  { id: "presQuestioned", i: 1, w: 5, minAge: 12, maxAge: 90, cd: 400,
+    cond: (s) => s.discovered.gender && isQueerG(s) && presGap(s) < 55 && Math.abs(presently(s) - presStart(s)) > 18 && Object.keys(s.outTo).filter((k) => s.outTo[k]).length < 3,
+    run: (s) => {
+      const medical = !!s.flags.hrt;
+      return { event: { emoji: "❓", title: "Someone's working it out", text: pick([
+        `A colleague looks at you a beat too long and asks, carefully, "Are you... going through something? You seem different lately."`,
+        `Someone you barely know asks what pronouns you use. Not unkindly. Just directly, in a way nobody has before.`,
+        `"You've changed," an acquaintance says, and leaves an obvious gap where the question would go.`,
+      ]) + (medical ? " Your face has been changing for months. People aren't blind." : " You haven't changed anything medical — just how you dress, how you speak, how you hold yourself. It's apparently enough."), options: [
+        { label: "Tell them the truth", fx: { run: (st) => { st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8); st.stats.happiness = clamp(st.stats.happiness + 7); st.flags.outCasual = (st.flags.outCasual || 0) + 1; push(st, "❓ You told them, plainly, in a corridor, in about nine words. They said 'okay, cool' and asked a sensible follow-up question. Not every disclosure is an event."); } } },
+        { label: "Deflect — 'new haircut'", fx: { stats: { happiness: -5 }, emergent: { prudence: +4 }, feed: "❓ You blamed a haircut. They accepted it in the way people accept things they've decided not to push on. The deflection cost you a little more than it saved." } },
+        { label: "Ask what they mean by different", fx: { run: (st) => { if (Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 4); push(st, "❓ You turned it back on them. They got flustered, apologised, and were noticeably more careful with you afterwards."); } else { st.stats.happiness = clamp(st.stats.happiness - 4); push(st, "❓ You asked what they meant. They said 'nothing, forget it' and the air stayed strange between you for months."); } } } },
+      ] } }; } },
+  // being on hormones while closeted is a hard thing to hide
+  { id: "hrtClocked", i: 1, w: 6, minAge: 14, maxAge: 90, cd: 300,
+    cond: (s) => !!s.flags.hrt && ["mom", "dad"].some((k) => closetedFrom(s, k)),
+    run: (s) => {
+      const k = ["mom", "dad"].find((k2) => closetedFrom(s, k2));
+      const p = s.family[k];
+      const months = Math.floor((s.ageDays - s.flags.hrt) / 30);
+      const how = months < 8 ? pick([
+        `${p.name} found the packet in your bag. They're holding it, not reading it, waiting for you to speak.`,
+        `"You've been to the doctor a lot lately," ${p.name} says, in the voice that isn't really a question.`,
+      ]) : pick([
+        `${p.name} has been looking at your face across the dinner table for weeks. Tonight they say it: "Something's different. Don't tell me it's nothing."`,
+        `Your voice, your skin, the shape of you — ${p.name} isn't stupid, and today they stop pretending to be.`,
+        `${p.name} found the prescription. Not hidden well enough, or maybe you wanted it found.`,
+      ]);
+      return { event: { emoji: "💊", title: "They've noticed", text: how, options: [
+        { label: "Tell them everything", fx: { run: (st) => { st.outTo[k] = true; const q = st.family[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.pending = comeOutReact(st, "family", k, -2, "confronted").pending; } } },
+        { label: "Lie — say it's for something else", fx: { run: (st) => { bumpSuspicion(st, k, 22); st.stats.happiness = clamp(st.stats.happiness - 9); push(st, `💊 You invented a condition and a doctor's name. ${st.family[k].name} accepted it out loud and did not accept it at all. The lie now lives in the house with you both.`); } } },
+        { label: "Say nothing and leave the room", fx: { run: (st) => { bumpSuspicion(st, k, 30); st.stats.happiness = clamp(st.stats.happiness - 6); push(st, `💊 You walked out mid-question. Nothing was said and everything was said. ${st.family[k].name} knows, now, without being told.`); } } },
+      ] } }; } },
+];
+POOL.push(...DYSPHORIA_POOL);
+
+/* ═══════════════ HOME · YOUR ROOM ═══════════════ */
+
+const BOOK_GENRES = {
+  novel:    { name: "Literary novel", emoji: "📕", fx: { smarts: 3, happiness: 4 }, skill: "lit" },
+  scifi:    { name: "Science fiction", emoji: "🚀", fx: { smarts: 4, happiness: 4 }, skill: "science" },
+  mystery:  { name: "Mystery", emoji: "🔎", fx: { smarts: 3, happiness: 5 }, skill: "lit" },
+  history:  { name: "History", emoji: "🏛", fx: { smarts: 5, happiness: 2 }, skill: "history" },
+  poetry:   { name: "Poetry", emoji: "🕊", fx: { smarts: 2, happiness: 6 }, skill: "arts" },
+  science:  { name: "Popular science", emoji: "🔬", fx: { smarts: 6, happiness: 2 }, skill: "science" },
+  memoir:   { name: "Memoir", emoji: "💬", fx: { smarts: 3, happiness: 5 }, skill: "lit" },
+  queer:    { name: "Queer memoir", emoji: "🏳️‍🌈", fx: { smarts: 3, happiness: 8 }, skill: "lit", queer: 1 },
+  romance:  { name: "Romance", emoji: "💗", fx: { smarts: 1, happiness: 7 }, skill: "lit" },
+  horror:   { name: "Horror", emoji: "🕯", fx: { smarts: 2, happiness: 4 }, skill: "lit" },
+};
+const BOOK_TITLES = {
+  novel: ["The Weight of Ordinary Days", "Salt and Cinders", "A House Without Corners", "The Long Tuesday"],
+  scifi: ["The Cassini Directive", "Nine Deaths of the Ark", "Signal from Thessaly", "Vacuum Bloom"],
+  mystery: ["The Quiet Client", "Ash on the Doorstep", "What the Gardener Saw", "Cold Harbour"],
+  history: ["Empire of Paper", "The Century That Broke", "Bread, Salt, Revolution", "Lines Drawn in Sand"],
+  poetry: ["Small Instruments", "Field Notes for the Sleepless", "Bright Interruptions", "The Hour Before"],
+  science: ["The Restless Cell", "Everything Is Made of Something", "A Short Book About Time", "The Accidental Universe"],
+  memoir: ["I Was There Too", "Kitchen Table Years", "Notes From the Cheap Seats", "How I Learned to Leave"],
+  queer: ["Names We Gave Ourselves", "The Boy in the Blue Dress", "Paper Thin, Steel Spine", "We Were Always Here"],
+  romance: ["Second Best Kiss", "The Understudy's Heart", "Nine Weeks in Lisbon", "Almost, Always"],
+  horror: ["The Tenant Below", "Something Is Counting", "Hollowmere", "The Long Hallway"],
+};
+
+function makeBook(s) {
+  const canQueer = s.discovered.orientation && isQueerO(s) || (s.discovered.gender && isQueerG(s));
+  const keys = Object.keys(BOOK_GENRES).filter((k) => !BOOK_GENRES[k].queer || (canQueer && yearOf(s) >= 1970));
+  const g = pick(keys);
+  return { genre: g, title: pick(BOOK_TITLES[g]), pages: rnd(6, 42) * 10, read: 0 };
+}
+
+function bookshelfMenu(state) {
+  const s = pClone(state);
+  if (!s.flags.book) s.flags.book = makeBook(s);
+  const b = s.flags.book;
+  const cfg = BOOK_GENRES[b.genre];
+  const pct = Math.round((b.read / b.pages) * 100);
+  const left = b.pages - b.read;
+  s.pending = { emoji: "📚", title: b.title, text: `${cfg.emoji} ${cfg.name} · ${b.pages} pages · ${b.read === 0 ? "unopened" : `page ${b.read} of ${b.pages} (${pct}%)`}`, options: [
+    { label: `Read a chapter (~${Math.min(left, 40)} pages)`, fx: { run: (st) => readPages(st, rnd(25, 45)) } },
+    { label: `Read for the whole evening (~${Math.min(left, 110)} pages)`, fx: { run: (st) => { readPages(st, rnd(80, 130)); st.stats.health = clamp(st.stats.health - 1); } } },
+    { label: "Stay up far too late finishing it", cond: (st) => st.flags.book && (st.flags.book.pages - st.flags.book.read) <= 220, fx: { run: (st) => { readPages(st, 999); st.stats.health = clamp(st.stats.health - 3); push(st, "🌙 You finished it at 3 a.m. and lay there staring at the ceiling. Worth every lost hour."); } } },
+    { label: "Abandon it — life's too short", cond: (st) => st.flags.book && st.flags.book.read > 0, fx: { run: (st) => { push(st, `📕 You gave up on ${st.flags.book.title} at page ${st.flags.book.read}. No regrets, some guilt.`); st.flags.book = makeBook(st); st.stats.happiness = clamp(st.stats.happiness - 1); } } },
+    { label: "Find something else to read", cond: (st) => st.flags.book && st.flags.book.read === 0, fx: { run: (st) => { st.flags.book = makeBook(st); push(st, `📚 You swapped it for ${st.flags.book.title}.`); } } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+function readPages(st, n) {
+  const b = st.flags.book;
+  const cfg = BOOK_GENRES[b.genre];
+  const before = b.read;
+  b.read = Math.min(b.pages, b.read + n);
+  const done = b.read >= b.pages;
+  const frac = (b.read - before) / 100;
+  st.stats.smarts = clamp(st.stats.smarts + Math.max(1, Math.round(cfg.fx.smarts * frac)));
+  st.stats.happiness = clamp(st.stats.happiness + Math.max(1, Math.round(cfg.fx.happiness * frac)));
+  if (cfg.skill && st.education.subjects[cfg.skill] !== undefined) st.education.subjects[cfg.skill] = clamp(st.education.subjects[cfg.skill] + Math.max(1, Math.round(2 * frac)));
+  if (done) {
+    st.flags.booksRead = (st.flags.booksRead || 0) + 1;
+    st.stats.happiness = clamp(st.stats.happiness + 4);
+    push(st, cfg.queer
+      ? `📖 Finished ${b.title} (${b.pages} pages). Someone wrote your life down before you'd lived it. You read the last page twice and sat very still. Books read: ${st.flags.booksRead}.`
+      : `📖 Finished ${b.title} — all ${b.pages} pages. ${pick(["The ending earned itself.", "You'll be thinking about it for weeks.", "Good, not great, but yours."])} Books read: ${st.flags.booksRead}.`);
+    st.flags.book = makeBook(st);
+  } else {
+    push(st, `📖 Read to page ${b.read} of ${b.title}. ${pick(["It's got its hooks in.", "Slow going, but it's building.", "You keep meaning to stop and don't."])}`);
+  }
+}
+
+const GAME_ERAS = [
+  { y: 1975, items: ["Pong", "a wood-panelled console with two dials"] },
+  { y: 1983, items: ["an arcade cabinet down the road", "a home computer that loads from tape"] },
+  { y: 1992, items: ["a 16-bit console", "a shareware disk from a magazine"] },
+  { y: 2001, items: ["a boxy console and a memory card", "a PC game with three CDs"] },
+  { y: 2010, items: ["an online shooter with voice chat", "a fantasy RPG with 90 hours in it"] },
+  { y: 2020, items: ["a co-op game with friends across three time zones", "an indie game that made you cry"] },
+];
+function gameFlavor(s) {
+  const y = yearOf(s);
+  const era = [...GAME_ERAS].reverse().find((e) => y >= e.y);
+  return era ? pick(era.items) : "a board game, because it's " + y;
+}
+
+function roomMenu(state) {
+  const s = pClone(state);
+  const age = ageYears(s);
+  const opts = [
+    { card: { emoji: "📚", name: "Bookshelf", sub: s.flags.book ? s.flags.book.title : "pick something to read", tag: s.flags.booksRead ? `${s.flags.booksRead} read` : "" },
+      fx: { run: (st) => { if (!st.flags.book) st.flags.book = makeBook(st); st.pending = bookshelfMenu(st).pending; } } },
+    { card: { emoji: "🎮", name: "Play games", sub: gameFlavor(s), tag: "" },
+      fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness + rnd(4, 8)); st.emergent.gaming = clamp((st.emergent.gaming ?? 20) + 4); if (Math.random() < 0.3) st.stats.smarts = clamp(st.stats.smarts + 1); push(st, `🎮 Hours vanished into ${gameFlavor(st)}. ${pick(["You got good at it. Nobody will ever pay you for this.", "One more level became four more hours.", "You and your own reflexes against the world, and you won."])}`); } } },
+    { card: { emoji: "🎧", name: "Music, loud", sub: "door shut, world out", tag: "" },
+      fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness + rnd(3, 7)); st.emergent.music = clamp((st.emergent.music ?? 20) + 3); push(st, pick([`🎧 One album, start to finish, lying on the floor. The correct way to listen to anything.`, `🎧 You played the same song eleven times. It was doing something necessary.`])); } } },
+    { card: { emoji: "📓", name: "Write in your journal", sub: "the private version", tag: "" },
+      fx: { run: (st) => { st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 5); st.stats.happiness = clamp(st.stats.happiness + 3); push(st, pick([`📓 You wrote it all down — the true version, not the one you say out loud. Cheaper than therapy, less effective, still worth it.`, `📓 Three pages of handwriting that would embarrass you in ten years and save you tonight.`])); } } },
+    { card: { emoji: "😴", name: "Nap / do nothing", sub: "restorative uselessness", tag: "" },
+      fx: { run: (st) => { st.stats.health = clamp(st.stats.health + rnd(2, 5)); st.stats.happiness = clamp(st.stats.happiness + 2); push(st, "😴 You did absolutely nothing for a whole afternoon, on purpose. The most underrated activity available to a human being."); } } },
+  ];
+  // presentation & self-expression — available to anyone, weighted for trans characters
+  const canExpress = age >= 8;
+  if (canExpress) opts.push({ card: { emoji: "🪞", name: "Try things on", sub: "clothes, makeup, the mirror", tag: s.discovered.gender && isQueerG(s) ? "euphoria" : "" }, hi: s.discovered.gender && isQueerG(s) ? 1 : 0,
+    fx: { run: (st) => { st.pending = expressMenu(st).pending; } } });
+  opts.push(CANCEL);
+  s.pending = { emoji: "🚪", title: "Your room", text: age < 18 ? "Door shut. The one space that's yours." : "Your own space, at last — or at least a door that closes.", layout: "grid", options: opts };
+  return s;
+}
+
+function expressMenu(state) {
+  const s = pClone(state);
+  const trans = s.discovered.gender && isQueerG(s);
+  const t = presTarget(s);
+  const fem = t > 50;
+  const opts = [];
+  const doExpress = (st, amt, joyBase, line, alone, kind) => {
+    const skillKey = kind === "makeup" ? "makeupSkill" : kind === "clothes" ? "stylingSkill" : null;
+    const lvl = skillKey ? (st.emergent[skillKey] ?? 0) : 0;
+    const tier = lvl < 20 ? 0 : lvl < 50 ? 1 : lvl < 80 ? 2 : 3;
+    const v = movePres(st, amt * (1 + tier * 0.15));
+    const trans2 = st.discovered.gender && isQueerG(st);
+    const joy = (trans2 ? joyBase + rnd(3, 7) : joyBase) + tier * 2;
+    st.stats.happiness = clamp(st.stats.happiness + joy);
+    if (skillKey) st.emergent[skillKey] = clamp(lvl + rnd(4, 9));
+    gainStyle(st, kind === "clothes" ? 4 : 2, kind === "makeup" ? 4 : 1);
+    if (tier >= 2) st.stats.looks = clamp(st.stats.looks + 1);
+    if (trans2) st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 2);
+    const progress = skillKey ? [
+      pick([" The first attempt was a war crime. You are not discouraged; you are furious and committed.", " Uneven, smudged, and objectively bad — and you did it again straight after."]),
+      pick([" Better than last time. Still forty minutes for something that should take ten.", " You're starting to know which bits matter and which bits you were overthinking."]),
+      pick([" Fifteen minutes, no reference photo, and it looked deliberate.", " Muscle memory now. You talked to someone while doing it and it still came out right."]),
+      pick([" Effortless. People have started asking you to do theirs.", " You could do this in a moving car with a hand mirror, and have."]),
+    ][tier] : "";
+    push(st, line + progress + (trans2 ? ` ${pick(["For a few minutes you looked like the person in your head, and the relief was physical.", "You stood there longer than you meant to. That was you. That's what you look like.", "Euphoria is a real thing and it lives in small mirrors on ordinary afternoons."])}` : ""));
+    if (alone && st.flags.hrt) bumpSuspicion(st, pick(["mom", "dad"]), 3);
+  };
+  opts.push({ card: { emoji: fem ? "💄" : "🪒", name: fem ? "Makeup" : "Shave and groom", sub: fem ? "badly at first, then less badly" : "the ritual of it", tag: "" },
+    fx: { run: (st) => doExpress(st, 4, 3, fem
+      ? `💄 Makeup at the mirror, ${(st.emergent.makeupSkill ?? 0) < 20 ? "with a video paused every eight seconds" : "no tutorial needed now"}.`
+      : `🪒 The whole ritual, slowly, properly — and the face looking back was closer to right.`, true, "makeup") } });
+  opts.push({ card: { emoji: "👗", name: "Try on clothes", sub: fem ? "dresses, skirts, softer lines" : "binder, shirts, harder lines", tag: "" },
+    fx: { run: (st) => doExpress(st, 5, 3, fem
+      ? `👗 Door locked, clothes that aren't officially yours, and a full-length mirror.`
+      : `👕 A binder ordered discreetly, a shirt that sits flat, a silhouette that finally reads right.`, true, "clothes") } });
+  opts.push({ card: { emoji: "💇", name: "Change your hair", sub: "the cheapest transformation", tag: "" },
+    fx: { run: (st) => { doExpress(st, 7, 4, `💇 You changed your hair — ${fem ? "grown out, or a wig kept somewhere private" : "cut short, finally, properly short"}.`, false, "clothes"); st.stats.looks = clamp(st.stats.looks + rnd(1, 4)); } } });
+  if (trans) {
+    opts.push({ card: { emoji: "🗣", name: "Practise your voice", sub: "pitch, resonance, patience", tag: `${s.emergent.voiceTraining ?? 0}/100` },
+      fx: { run: (st) => { st.emergent.voiceTraining = clamp((st.emergent.voiceTraining ?? 0) + rnd(4, 9)); movePres(st, 3); st.stats.happiness = clamp(st.stats.happiness + rnd(2, 6)); push(st, `🗣 Recordings, exercises, wincing at playback. ${(st.emergent.voiceTraining ?? 0) > 60 ? "It's landing now — the voice in the recording is starting to sound like you." : "Slow, unglamorous work. It moves."}`); } } });
+    opts.push({ card: { emoji: "📸", name: "Take photos of yourself", sub: "evidence for the bad days", tag: "" },
+      fx: { run: (st) => { const d = dysphoriaLevel(st);
+        if (d > 60) { st.stats.happiness = clamp(st.stats.happiness - 5); push(st, "📸 You took photos and could not look at them. Deleted, all of them, and sat on the edge of the bed for a while."); }
+        else { st.stats.happiness = clamp(st.stats.happiness + 7); push(st, "📸 A dozen photos, three of them good, one of them kept forever. Proof, for the days you won't believe it."); } } } });
+  }
+  if (presTarget(s) < 50 && s.discovered.gender && isQueerG(s)) opts.push({ card: { emoji: "🧢", name: "Passing", sub: "binder, packer, voice, stance", tag: "" }, hi: 1,
+    fx: { run: (st) => { st.pending = mascKitMenu(st).pending; } } });
+  opts.push({ card: { emoji: "🫥", name: "Who sees you", sub: Object.keys(hiddenFrom(s)).length ? `hiding from ${Object.keys(hiddenFrom(s)).length}` : "manage who gets the real version", tag: "" },
+    fx: { run: (st) => { st.pending = concealMenu(st).pending; } } });
+  opts.push({ card: { emoji: "🧹", name: "Just tidy up", sub: "control, in small doses", tag: "" },
+    fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness + 3); st.emergent.discipline = clamp((st.emergent.discipline ?? 50) + 3); push(st, "🧹 You cleaned the whole room. Nothing else in your life is fixable today, but the floor is visible."); } } });
+  opts.push(CANCEL);
+  s.pending = { emoji: "🪞", title: "The mirror", text: trans ? `Presentation: ${presLabel(s)}. ${presGap(s) > 40 ? "A long way from where you need to be." : presGap(s) > 15 ? "Getting closer." : "Close to right, now."}` : "A door that locks and a mirror that doesn't judge.", layout: "grid", options: opts };
+  return s;
+}
+
+function parentsRoomMenu(state) {
+  const s = pClone(state);
+  const age = ageYears(s);
+  const opts = [
+    { label: "Snoop through their things", fx: { run: (st) => {
+      if (Math.random() < 0.3) {
+        const finds = ["a folder of letters from someone who isn't your other parent", "photographs of a version of them you've never met — young, laughing, somewhere far away", "paperwork about money that explains a lot of quiet arguments", "a small box you weren't supposed to find, and put back exactly as it was"];
+        st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6); st.stats.happiness = clamp(st.stats.happiness - 3);
+        push(st, `🔍 You found ${pick(finds)}. You have been carrying it ever since.`);
+      } else if (Math.random() < 0.25) {
+        const par = pick(["mom", "dad"]);
+        st.family[par].rel = clamp(st.family[par].rel - 12);
+        push(st, `🔍 ${st.family[par].name} walked in. There was no good explanation and you didn't have a bad one ready either.`);
+      } else push(st, "🔍 Nothing but tax documents and a very old chocolate bar. Some rooms keep their secrets.");
+    } } },
+    { label: "Borrow something of theirs", cond: (st) => age < 25, fx: { run: (st) => {
+      const trans = st.discovered.gender && isQueerG(st);
+      if (trans) { movePres(st, 4); st.stats.happiness = clamp(st.stats.happiness + 8); push(st, `🚪 You borrowed something from their wardrobe and wore it in front of the mirror with the door locked. Put back before anyone noticed, folded exactly as found. One of the first times you saw yourself.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness + 3); push(st, "🚪 You borrowed something of theirs without asking. It suited you better and everyone knew it."); }
+    } } },
+    { label: "Sit and talk with them", fx: { run: (st) => {
+      const par = pick(["mom", "dad"]);
+      st.family[par].rel = clamp(st.family[par].rel + rnd(5, 11));
+      st.stats.happiness = clamp(st.stats.happiness + 4);
+      push(st, `☕ You sat on the end of their bed and talked for an hour about nothing much. ${st.family[par].name} seemed glad you'd come in. These are the ones you remember.`);
+    } } },
+    CANCEL,
+  ];
+  s.pending = { emoji: "🚪", title: "Your parents' room", text: "The door's ajar. It always feels slightly forbidden in here, even when it isn't.", options: opts };
+  return s;
+}
+
+const HOME_GROUP = { id: "home", emoji: "🏠", name: "At home", cond: (s) => !inPrison(s) && !hreIsHomeless(s), items: [
+  { id: "room", minAge: 3, emoji: "🚪", label: "Your room", cost: 1, special: "room" },
+  { id: "parentsroom", minAge: 4, emoji: "🛏", label: "Your parents' room", cost: 1, special: "parentsroom", cond: (s) => hreAtParents(s) },
+] };
+ACT_GROUPS.push(HOME_GROUP);
+/* ═══════════════ HRE · S12 · INTERFACE ADAPTER (housing) ═══════════════ */
+/* Phase 6. Part 1 §3.5 S12, Part 3 §7.15.
+
+   The ONLY place HRE touches the engine. Everything in S01-S06 is a plain
+   deterministic library that has never heard of ACT_GROUPS, `pending` or
+   applyFx; this file translates it into the exact shapes module 16 already
+   renders. If a housing feature cannot be expressed as a popup or an Act-sheet
+   item, that is a request to module 16, not a licence to add a component.
+
+   SUBSYSTEM INVARIANT (Gotcha #2): every menu builder here is READ-ONLY and
+   returns a bare `pending` object. Nothing in this file mutates state while
+   building a menu. Mutations happen in an option's `fx.run`, on the draft the
+   engine actually keeps. HRE will end up with more menus than any other module
+   in the game and one violation is a silent data-loss bug, so the rule is
+   "builders return, options mutate" with no exceptions.
+
+   Phase 6 is deliberately look-but-don't-touch: there is no way to apply for,
+   offer on, or move into anything here. Engagement pinning, landlords and
+   tenancies are Phase 7. */
+
+/* ── the currency gap (module 20 open item) ──
+   `profile.curSym` is injected only by the Creation screen, so harness
+   characters have it undefined. HRE is the first display layer that renders
+   money, so it resolves the symbol itself rather than trusting the field. */
+function hreCurSym(s) {
+  const p = s.profile || {};
+  if (p.curSym) return p.curSym;
+  const c = COUNTRIES[p.country];
+  return c ? c.cur : "$";
+}
+
+function hreMoney(s, n) {
+  const v = Math.round(n);
+  const sym = hreCurSym(s);
+  if (Math.abs(v) >= 1000000) return sym + (Math.round(v / 100000) / 10) + "m";
+  if (Math.abs(v) >= 10000) return sym + Math.round(v / 1000) + "k";
+  return sym + String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function hreDayOfYear(s) {
+  const d = currentDate(s);
+  return Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000);
+}
+
+/* Affordability context, built from realised income rather than the salary the
+   player is shown — the display lie documented in the calibration section. */
+function hreSearchCtx(s) {
+  const job = s.career && s.career.job;
+  const nominal = job ? (job.salary || 0) : 0;
+  const annual = hreRealisedAnnual(nominal);
+  return { nominalMonthly: nominal, realisedAnnual: annual,
+    rentCeiling: hreAffordableRent(nominal),
+    buyCeiling: annual * HRE_PRICE_TO_INCOME, employed: !!job };
+}
+
+/* Where the character is looking from. The family home's neighbourhood if it
+   is known, otherwise hood 0 — a migrated save has no dwelling record and must
+   still be able to open the menu. */
+function hreHomeHoodOf(s) {
+  const home = hreHome(s);
+  if (home && home.id) { const p = hreIdParse(home.id); if (p) return p.hood; }
+  return 0;
+}
+
+function hreCityIdxOf(s) {
+  return hreCityIndexOf(s.profile.country, s.profile.city);
+}
+
+/* ── module 14 adoption (risk R18) ──
+   institutionalTier()'s first production caller anywhere in the project.
+   Housing protection historically trails the marriage/employment curve that
+   eraAcceptance() is shaped around — fair-housing law arrives late and is
+   enforced later still — so the domain is queried with a lag. The lag is
+   PROVISIONAL and belongs to module 22's tranche alongside the discrimination
+   dates already owed to S04.
+   Phase 6 uses the tier for advisory text only. Phase 7 bounds the landlord
+   decision with the same call, which is the point of adopting it here: the
+   presentation and the mechanism read one authority, not two. */
+const HRE_HOUSING_DOMAIN_LAG = 12;   /* provisional — module 22 */
+
+function hreHousingClimate(s) {
+  return institutionalTier("housing", s, { domainLag: HRE_HOUSING_DOMAIN_LAG });
+}
+
+const HRE_CLIMATE_LINE = {
+  criminalised: "Two of you on one tenancy agreement is evidence, and evidence is dangerous. People manage. They manage carefully.",
+  none: "Nobody has to give a reason for saying no, and nobody does.",
+  emerging: "There are rules now. Whether anyone applies them to you is a different question.",
+  protected: "You could complain, and it would go somewhere. Slowly.",
+  strong: "The law is on your side here, and mostly the agents know it.",
+};
+
+/* ── neighbourhood queer visibility (risk R13) ──
+   Calibration note for module 11, per the Phase 6 gate.
+
+   1. Module 04 owns the national climate through localAcceptance(). S03's
+      queerVisibility is a DELTA on it, ~zero-mean across a country's stock, so
+      HRE can never silently shift a climate it does not own.
+   2. It is shown only to a character who has already discovered they are
+      queer. Telling a 12-year-old who has not worked it out yet which street
+      feels safer is the game knowing something about them that they don't.
+   3. It is never a number and never a "gay-friendly" flag. It renders as the
+      character's own read of a place, in the second person, because a
+      neighbourhood does not have an attribute called tolerance — people live
+      there and some of them are frightening.
+   4. It says nothing about any individual. Landlords are people with reasons
+      (Phase 7), not a property of the postcode. */
+function hreQueerRead(s, hood) {
+  if (!isOutQueer(s)) return null;
+  const local = clamp(localAcceptance(s) + hood.queerVisibility);
+  const rel = hood.queerVisibility;
+  const base =
+    local < 14 ? "You would be careful here. Very careful."
+    : local < 32 ? "Your business would have to stay your business."
+    : local < 52 ? "You would not be the first. You would still be counted."
+    : local < 74 ? "There are others here. You can tell, if you know how to look."
+    : "Nobody here would need it explained to them.";
+  const tilt = rel >= 9 ? " More so than most of the city."
+    : rel <= -9 ? " Less so than most of the city."
+    : "";
+  return base + tilt;
+}
+
+/* ── one line per listing ──
+   The whole listing has to survive on a 480px column, so the label carries the
+   shape, the place and the number, and everything else waits behind a tap
+   (§7.15: summarisable to a few lines, detail behind a tap). */
+function hreListingLine(s, l) {
+  const d = l.bp.dims;
+  const noun = hreDwellingNoun(l.bp);
+  const head = d.bedrooms === 0 ? noun.charAt(0).toUpperCase() + noun.slice(1)
+                                : d.bedrooms + "-bed " + noun;
+  const money = hreMoney(s, l.asking) + (l.tenure === "rent" ? "/mo" : "");
+  const cut = l.reductions ? " ↓" : "";
+  return (l.tenure === "rent" ? "🔑 " : "🏷 ") + head + " · " + money + cut;
+}
+
+function hreSummaryText(s, res) {
+  const ctx = hreSearchCtx(s);
+  if (!ctx.employed) return "You have no wage coming in, which makes most of this window-shopping.";
+  return "On what actually reaches you, " + hreMoney(s, ctx.rentCeiling) +
+    " a month in rent is the comfortable line, and " + hreMoney(s, ctx.buyCeiling) + " the outside edge of buying.";
+}
+
+/* ─────────────────────────── the menus ───────────────────────────
+   Builders are read-only and return a `pending` object (never a state clone). */
+
+function hreMarketMenu(s) {
+  const year = yearOf(s);
+  const country = s.profile.country;
+  const chans = hreChannels(country, year);
+  const climate = hreHousingClimate(s);
+  const period = hreMarketPeriod(year, hreDayOfYear(s));
+  const mem = (s.hre && s.hre.mem) || {};
+  const filt = mem.filt || "all";
+
+  const climateLine = isOutQueer(s) ? " " + (HRE_CLIMATE_LINE[climate.tier] || "") : "";
+  const text = "Looking for somewhere in " + s.profile.city + ". " + hreSummaryText(s) +
+    " The market turns over about every " + period.refreshDays + " days." + climateLine;
+
+  const options = chans.map(function (ch) {
+    return { label: ch.emoji + " " + ch.label,
+      fx: { run: function (st) {
+        if (st.hre) { if (!st.hre.mem) st.hre.mem = {}; st.hre.mem.ch = ch.id; }
+        st.pending = hreBrowseMenu(st, ch.id, filt);
+      } } };
+  });
+  options.push({ label: "Not today", fx: {} });
+
+  return { emoji: "🔎", title: "What's on the market", text: text, options: options };
+}
+
+function hreBrowseMenu(s, chId, filtId) {
+  const year = yearOf(s);
+  const country = s.profile.country;
+  const channel = hreChannel(chId) || hreBestChannel(country, year);
+  const filter = hreFilter(filtId);
+  const ctx = hreSearchCtx(s);
+  const seed = hreWorldSeedOf(s);
+  const res = hreSearch(seed, { country: country, city: hreCityIdxOf(s), year: year,
+    dayOfYear: hreDayOfYear(s), homeHood: hreHomeHoodOf(s), channel: channel.id,
+    filter: filter.id, ctx: ctx });
+
+  const options = res.listings.map(function (l, i) {
+    return { label: hreListingLine(s, l),
+      fx: { run: function (st) { st.pending = hreListingMenu(st, channel.id, filter.id, i); } } };
+  });
+
+  /* filter cycling — one option, not five, because the sheet is a phone */
+  const fi = HRE_FILTERS.indexOf(filter);
+  const nextFilter = HRE_FILTERS[(fi + 1) % HRE_FILTERS.length];
+  options.push({ label: "▸ Showing: " + filter.label + " — switch to " + nextFilter.label,
+    fx: { run: function (st) {
+      if (st.hre) { if (!st.hre.mem) st.hre.mem = {}; st.hre.mem.filt = nextFilter.id; }
+      st.pending = hreBrowseMenu(st, channel.id, nextFilter.id);
+    } } });
+  options.push({ label: "↩ Look somewhere else", fx: { run: function (st) { st.pending = hreMarketMenu(st); } } });
+  options.push({ label: "Leave it", fx: {} });
+
+  const text = res.listings.length
+    ? channel.strap + " " + res.listings.length + " of them worth a second look."
+    : channel.strap + " " + channel.empty;
+
+  return { emoji: channel.emoji, title: channel.label, text: text, options: options };
+}
+
+function hreListingMenu(s, chId, filtId, idx) {
+  const year = yearOf(s);
+  const country = s.profile.country;
+  const channel = hreChannel(chId) || hreBestChannel(country, year);
+  const ctx = hreSearchCtx(s);
+  const seed = hreWorldSeedOf(s);
+  const res = hreSearch(seed, { country: country, city: hreCityIdxOf(s), year: year,
+    dayOfYear: hreDayOfYear(s), homeHood: hreHomeHoodOf(s), channel: channel.id,
+    filter: filtId, ctx: ctx });
+  const l = res.listings[idx];
+
+  /* The market moved between taps — impossible today (the search is a pure
+     function of the same period) but cheap to survive, and Phase 7's pinning
+     makes this path real. Never a dead end. */
+  if (!l) {
+    return { emoji: "🚪", title: "Gone", text: "Taken, or withdrawn, or never quite real. It happens.",
+      options: [{ label: "Back to the list", fx: { run: function (st) { st.pending = hreBrowseMenu(st, channel.id, filtId); } } },
+        { label: "Leave it", fx: {} }] };
+  }
+
+  const d = l.bp.dims;
+  const rentLine = l.tenure === "rent"
+    ? hreMoney(s, l.asking) + " a month"
+    : hreMoney(s, l.asking) + (l.reductions ? " (down from " + hreMoney(s, l.opening) + ")" : "");
+  const reach = l.tenure === "rent"
+    ? (ctx.employed ? (l.asking <= ctx.rentCeiling ? "Within what you could carry." : "More than you could carry, on what you actually earn.") : "You have no income to set against it.")
+    : (ctx.employed ? (l.asking <= ctx.buyCeiling ? "Not impossible, on paper." : "Well beyond you, on paper.") : "Academic, without a wage.");
+
+  const bits = [];
+  bits.push(l.blurb);
+  bits.push("— " + l.address + ", " + (l.hood.classBand === "informal" ? "an unplanned quarter" : l.hood.classBand + " streets") + ", built " + l.bp.builtYear + ".");
+  bits.push(d.area + " m², " + d.bathrooms + (d.bathrooms === 1 ? " bathroom" : " bathrooms") +
+    (d.parking ? ", parking" : "") + (d.outdoor !== "none" ? ", " + d.outdoor : "") + ".");
+  bits.push(rentLine + ". " + reach);
+  if (l.daysOnMarket > 0) bits.push("On the market " + l.daysOnMarket + " days.");
+  if (l.defects.length) bits.push("Declared: " + l.defects.map(function (x) { return x.phrased; }).join("; ") + ".");
+  const q = hreQueerRead(s, l.hood);
+  if (q) bits.push(q);
+
+  return { emoji: l.tenure === "rent" ? "🔑" : "🏷", title: l.title, text: bits.join(" "),
+    options: [
+      /* Phase 7 step 2. Viewing and applying are the two things you can now do
+         with a listing. Both write to the engagement, so they must mutate the
+         engine's own draft (`st`) inside fx.run rather than the menu builder's
+         discarded clone — Gotcha #2. */
+      { label: "Arrange a viewing", cond: function (st) { return l.tenure === "rent"; },
+        fx: { run: function (st) {
+          const eng = hrePinEngagement(st, l, "interested", st.ageDays);
+          const rep = hreDoViewing(st, eng, l);
+          const extra = rep && rep.newlyVisible.length
+            ? " Up close: " + rep.newlyVisible.map(function (d) { return d.phrased; }).join("; ") + "."
+            : " Nothing you had not already been told.";
+          push(st, "🔍 You walked round " + l.address + "." + extra);
+        } } },
+      { label: "Apply for it", cond: function (st) { return l.tenure === "rent"; },
+        fx: { run: function (st) {
+          const eng = hrePinEngagement(st, l, "interested", st.ageDays);
+          const v = hreResolveApplication(st, eng, l);
+          if (v.accept) {
+            push(st, "🔑 The tenancy at " + l.address + " is yours — " + hreMoney(st, v.factors.terms.rent) +
+              " a month, " + hreMoney(st, v.factors.deposit) + " down. You signed it standing up.");
+            st.stats.happiness = clamp(st.stats.happiness + rnd(8, 14));
+          } else {
+            push(st, "📄 " + (v.reason ? v.reason.line : "It did not come off."));
+            st.stats.happiness = clamp(st.stats.happiness - rnd(2, 6));
+          }
+        } } },
+      { label: "Note the address and think about it",
+        fx: { feed: "🏠 " + l.address + " — " + l.title.toLowerCase() + ", " + rentLine + ". You thought about it the whole way home." } },
+      { label: "Back to the list", fx: { run: function (st) { st.pending = hreBrowseMenu(st, channel.id, filtId); } } },
+      { label: "Leave it", fx: {} },
+    ] };
+}
+
+/* Where you live — the first player-visible output of Phases 0-5. */
+function hreHomeValuation(s) {
+  const home = hreHome(s);
+  if (!home || !home.id) return null;
+  const p = hreIdParse(home.id);
+  const seed = hreWorldSeedOf(s);
+  if (!p || seed === null) return null;
+  const year = yearOf(s);
+  const hood = hreNeighbourhood(seed, p.country, p.city, p.hood, year);
+  if (!hood) return null;
+  return { valuation: hreValue(seed, { country: p.country, city: p.city, baseHvu: home.baseHvu }, hood, year),
+    hood: hood, parsed: p };
+}
+
+/* Short home-tab headers, one per tenure state. Phase 7 inversion: the home
+   tab used to derive its own answer from `movedOut || age >= 26` while the
+   button beside it used a six-clause predicate, so a 20-year-old sofa-surfer
+   was told "your room is down the hall" and simultaneously denied that room.
+   Both now read one authority, so they cannot disagree again. */
+const HRE_TENURE_HEADER = {
+  withParents: "Home", renting: "Your place", lodging: "Someone else's floor",
+  withPartner: "Your place, together", owning: "Your place", ownOutright: "Your place",
+  social: "Your place", institutional: "Not your choice right now",
+  homeless: "No fixed address",
+};
+
+const HRE_TENURE_LINE = {
+  withParents: "You live in your parents' house.",
+  renting: "You rent.",
+  lodging: "You are staying on someone else's floor.",
+  withPartner: "You live with your partner.",
+  owning: "You own it, and the bank owns most of it.",
+  ownOutright: "It is yours, outright.",
+  social: "It is social housing.",
+  institutional: "You are not choosing where you sleep at the moment.",
+  homeless: "You have nowhere of your own.",
+};
+
+function hreHomeMenu(s) {
+  const tenure = hreTenure(s);
+  const home = hreHome(s);
+  const line = HRE_TENURE_LINE[tenure] || "You live somewhere.";
+  const opts = [{ label: "Close", fx: {} }];
+
+  if (!home) {
+    return { emoji: "🏠", title: "Where you live", options: opts,
+      text: line + " Nothing more is written down than that — the record of the actual rooms was never kept." };
+  }
+
+  const arch = hreArchetypeById(home.archetype);
+  const v = hreHomeValuation(s);
+  const d = home.dims;
+  const bits = [line];
+  bits.push(home.address + " — " + (d.bedrooms === 0 ? "one room" : d.bedrooms + (d.bedrooms === 1 ? " bedroom" : " bedrooms")) +
+    ", " + d.area + " m², " + (arch ? arch.label : "a dwelling") + " built in " + home.builtYear + ".");
+  if (v) {
+    bits.push("A place like it goes for about " + hreMoney(s, v.valuation.money) +
+      " now, or " + hreMoney(s, v.valuation.rentMonthly) + " a month to rent.");
+    bits.push(v.hood.classBand === "informal" ? "The quarter grew without a plan and is still growing."
+      : "The streets around it are " + v.hood.classBand + ".");
+    const q = hreQueerRead(s, v.hood);
+    if (q) bits.push(q);
+  }
+  return { emoji: "🏠", title: "Where you live", text: bits.join(" "), options: opts };
+}
+
+const HRE_GROUP = { id: "housing", emoji: "🏘", name: "Property", cond: (s) => !inPrison(s), items: [
+  { id: "hreHome", minAge: 5, emoji: "🏠", label: "Where you live", cost: 0, special: "hreHome" },
+  { id: "hreMarket", minAge: 16, emoji: "🔎", label: "What's on the market", cost: 0, special: "hreMarket" },
+] };
+ACT_GROUPS.push(HRE_GROUP);
+
+
+/* ═══════════════ STYLE · NONCONFORMITY · CONCEALMENT ═══════════════ */
+
+// what other people can see, and how far it reads from what they expect of your birth sex
+function visibleLean(s) {
+  const b = s.body || {};
+  let v = presently(s) - presStart(s);          // baseline drift
+  const fem = s.profile.sex !== "Male";
+  const nailsPainted = b.nails && !["clear", "neat"].includes(b.nails);
+  if (nailsPainted) v += fem ? 0 : 16;          // painted nails on a male body reads loudly
+  if (b.hairLean) v += b.hairLean * 0.7;
+  if (b.color && ["pink", "blue", "green"].some((c) => String(b.color).includes(c))) v += fem ? 2 : 5;
+  return v;
+}
+// 0-100: how visibly gender-nonconforming you currently are
+function nonconformity(s) {
+  const v = visibleLean(s);
+  const wrongWay = s.profile.sex === "Male" ? v > 0 : v < 0;
+  return wrongWay ? Math.min(100, Math.round(Math.abs(v) * 1.6)) : 0;
+}
+
+// style ratings — how put-together you read to other people
+function styleSense(s) { return s.emergent.styleSense ?? 30; }
+function grooming(s) { return s.emergent.grooming ?? 35; }
+function styleRating(s) {
+  const b = s.body || {};
+  let r = styleSense(s) * 0.4 + grooming(s) * 0.3 + (s.stats.looks ?? 50) * 0.3;
+  if (b.hair) r += 4;
+  if (b.color) r += 2;
+  if (b.nails) r += 2;
+  if (s.ageDays - (b.wax || -9999) < 400) r += 2;
+  return clamp(Math.round(r));
+}
+function styleLabel(s) {
+  const r = styleRating(s);
+  return r > 82 ? "striking" : r > 66 ? "put together" : r > 48 ? "presentable" : r > 30 ? "unfussed" : "given up, frankly";
+}
+function gainStyle(st, sense, groom) {
+  if (sense) st.emergent.styleSense = clamp(styleSense(st) + sense);
+  if (groom) st.emergent.grooming = clamp(grooming(st) + groom);
+}
+
+/* — concealment: who you hide your style from — */
+function hiddenFrom(s) { return s.flags.hideStyle || {}; }
+function isHidingFrom(s, k) { return !!hiddenFrom(s)[k]; }
+function concealTargets(s) {
+  const out = [];
+  ["mom", "dad"].forEach((k) => { if (s.family[k] && !s.family[k].deceased) out.push([k, s.family[k], "family"]); });
+  Object.keys(s.family).filter((k) => k.startsWith("sib")).forEach((k) => out.push([k, s.family[k], "family"]));
+  Object.entries(s.friends).filter(([, p]) => !p.pet).slice(0, 4).forEach(([k, p]) => out.push([k, p, "friends"]));
+  return out;
+}
+
+function concealMenu(state) {
+  const s = pClone(state);
+  const nc = nonconformity(s);
+  const targets = concealTargets(s);
+  s.pending = { emoji: "🫥", title: "Who doesn't get to see this", layout: "grid",
+    text: nc < 8
+      ? "Nothing about how you look would raise an eyebrow right now — but you can still decide who gets the unedited version later."
+      : `You're presenting noticeably differently. Hiding it from someone means changing before you see them, washing it off, keeping two wardrobes. It works — until it doesn't.`,
+    options: [
+      ...targets.map(([k, p]) => ({
+        card: { emoji: isHidingFrom(s, k) ? "🫥" : "👁", name: p.name, sub: p.role, tag: isHidingFrom(s, k) ? "✓ hiding" : "sees you" },
+        hi: isHidingFrom(s, k) ? 1 : 0,
+        fx: { run: (st) => {
+          if (!st.flags.hideStyle) st.flags.hideStyle = {};
+          if (st.flags.hideStyle[k]) delete st.flags.hideStyle[k];
+          else st.flags.hideStyle[k] = true;
+          st.pending = concealMenu(st).pending;   // stays open: tick as many as you like
+        } } })),
+      { label: "Done", fx: { run: (st) => {
+        const n = Object.keys(hiddenFrom(st)).length;
+        if (n === 0) push(st, `👁 Nobody's on the list. Everyone gets the same version of you.`);
+        else {
+          const names = Object.keys(hiddenFrom(st)).map((k) => { const t = concealTargets(st).find(([kk]) => kk === k); return t ? t[1].name : k; });
+          push(st, `🫥 You'll change before you see ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}. Several versions of yourself, on a schedule.`);
+          st.stats.happiness = clamp(st.stats.happiness - Math.min(6, n * 2));
+        }
+      } } },
+    ] };
+  return s;
+}
+
+/* — reactions: people notice, and the era decides how badly — */
+function styleReaction(s, key, group) {
+  const p = (s[group] && s[group][key]) || s.family[key] || s.friends[key];
+  if (!p) return null;
+  const era = localAcceptance(s);
+  const nc = nonconformity(s);
+  const score = p.acceptance * (0.4 + era / 170) + era * 0.3 + p.rel * 0.15 - nc * 0.25;
+  return { p, score, era, nc };
+}
+
+const STYLE_POOL = [
+  // someone clocks the nails / the haircut / the whole silhouette
+  { id: "styleNoticed", i: 1, w: 6, minAge: 8, maxAge: 90, cd: 260,
+    cond: (s) => nonconformity(s) > 22 && concealTargets(s).some(([k]) => !isHidingFrom(s, k)),
+    run: (s) => {
+      const opts = concealTargets(s).filter(([k]) => !isHidingFrom(s, k));
+      const [key, p, group] = pick(opts);
+      const r = styleReaction(s, key, group);
+      const b = s.body || {};
+      const what = b.nails && !["clear", "neat"].includes(b.nails) ? `your nails (${b.nails})`
+        : b.hair ? `your hair` : `the way you've been dressing`;
+      const warm = r.score > 55;
+      const cold = r.score < 28;
+      return { event: { emoji: "👁", title: `${p.name} notices`, text: warm
+        ? `${p.name} spots ${what} and says, with real warmth, "that really suits you." No caveat, no joke afterwards.`
+        : cold
+        ? `${p.name} looks at ${what} for a long second. "${pick([`What is that supposed to be?`, `You're not going out like that.`, `Is this a phase, or...?`])}" The temperature in the room drops.`
+        : `${p.name} clocks ${what} and does the thing where they decide not to say anything, visibly.`,
+        options: [
+          { label: warm ? "Take the compliment" : "\"I like it. That's the whole reason.\"", fx: { run: (st) => {
+            const q = (st[group] && st[group][key]) || st.family[key] || st.friends[key];
+            if (warm) { q.rel = clamp(q.rel + 8); st.stats.happiness = clamp(st.stats.happiness + 9); push(st, `👁 You took it, properly, instead of deflecting. ${p.name} meant it and you let yourself believe it.`); }
+            else { q.rel = clamp(q.rel - (cold ? 8 : 3)); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 7); st.stats.happiness = clamp(st.stats.happiness + (cold ? 2 : 5)); push(st, `👁 You didn't explain or apologise. ${p.name} ${cold ? "didn't like that at all, and you held their eye anyway." : "shrugged, and that was that."}`); }
+          } } },
+          { label: "Laugh it off — \"it's nothing\"", fx: { run: (st) => {
+            st.stats.happiness = clamp(st.stats.happiness - 6);
+            if (isQueerG(st) && st.discovered.gender) st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) - 2);
+            push(st, `👁 You made it small so nobody had to deal with it. It worked. You went quiet on the way home.`);
+          } } },
+          ...(cold ? [{ label: "Change it back", fx: { run: (st) => {
+            const bb = bodyState(st); bb.nails = null;
+            movePres(st, -6);
+            st.stats.happiness = clamp(st.stats.happiness - 11);
+            push(st, `👁 You took it off that night, standing at the sink, and told yourself it didn't matter much anyway.`);
+          } } }] : [{ label: "Hide it from them from now on", fx: { run: (st) => {
+            if (!st.flags.hideStyle) st.flags.hideStyle = {};
+            st.flags.hideStyle[key] = true;
+            st.stats.happiness = clamp(st.stats.happiness - 4);
+            push(st, `🫥 From now on you change before you see ${p.name}. It's exhausting and it buys peace.`);
+          } } }]),
+        ] } }; } },
+
+  // the slip: hiding works until you forget
+  { id: "styleSlip", i: 1, w: 5, minAge: 8, maxAge: 90, cd: 300,
+    cond: (s) => nonconformity(s) > 18 && Object.keys(hiddenFrom(s)).length > 0,
+    run: (s) => {
+      const keys = Object.keys(hiddenFrom(s));
+      const key = pick(keys);
+      const p = s.family[key] || s.friends[key];
+      if (!p) return { auto: [] };
+      const group = s.family[key] ? "family" : "friends";
+      const r = styleReaction(s, key, group);
+      const how = pick([
+        `${p.name} turns up unannounced and you have thirty seconds and no time to change`,
+        `you forget entirely — you're halfway through the door before you remember, and ${p.name} is already looking`,
+        `${p.name} sees a photo someone else posted, from a night you were fully yourself`,
+        `you fall asleep before taking it off, and ${p.name} is up first`,
+      ]);
+      return { event: { emoji: "😬", title: "Caught out", text: `You've been careful for months. Then ${how}.`, options: [
+        { label: "Own it — you're tired of hiding", fx: { run: (st) => {
+          if (st.flags.hideStyle) delete st.flags.hideStyle[key];
+          st.emergent.courage = clamp((st.emergent.courage ?? 40) + 9);
+          const q = st.family[key] || st.friends[key];
+          if (r.score > 45) { q.rel = clamp(q.rel + 6); st.stats.happiness = clamp(st.stats.happiness + 11); push(st, `😬 You stopped mid-excuse and just said "this is how I like to look." ${q.name} took it better than the version you'd rehearsed a hundred times.`); }
+          else { q.rel = clamp(q.rel - 10); st.stats.happiness = clamp(st.stats.happiness + 3); push(st, `😬 You owned it. ${q.name} did not take it well — but you are done changing at the door for them.`); }
+          if (isQueerG(st) && st.discovered.gender && !st.outTo[key]) bumpSuspicion(st, key, 25);
+        } } },
+        { label: "Scramble for an excuse", fx: { run: (st) => {
+          const q = st.family[key] || st.friends[key];
+          if (Math.random() < 0.55) { st.stats.happiness = clamp(st.stats.happiness - 5); push(st, `😬 A lost bet, a dare, a costume — you got there in the end and ${q.name} let it go. Your heart didn't slow down for an hour.`); }
+          else { bumpSuspicion(st, key, 18); q.rel = clamp(q.rel - 4); st.stats.happiness = clamp(st.stats.happiness - 8); push(st, `😬 The excuse didn't survive contact. ${q.name} didn't push — but they've filed it away, and you know it.`); }
+        } } },
+        { label: "Say nothing and hope", fx: { run: (st) => {
+          bumpSuspicion(st, key, 12);
+          st.stats.happiness = clamp(st.stats.happiness - 4);
+          push(st, `😬 Neither of you mentioned it. The not-mentioning was louder than anything either of you could have said.`);
+        } } },
+      ] } }; } },
+];
+POOL.push(...STYLE_POOL);
+
+/* ═══════════════ SALON & SPA ═══════════════ */
+
+// local pricing: a haircut costs wildly different amounts by country
+function salonPrice(s, base) {
+  const t = COUNTRIES[s.profile.country].tui ?? 0.5;
+  return Math.max(2, Math.round(base * (0.35 + t * 0.75)));
+}
+
+function bodyState(s) {
+  if (!s.body) s.body = { hair: null, color: null, nails: null, pedi: false, tan: 0, wax: 0, laserFace: 0, laserBody: 0 };
+  return s.body;
+}
+
+const HAIRSTYLES = [
+  { id: "shaved",   name: "Shaved to the skin",  sub: "nothing to hide behind", lean: -18, price: 10, looks: 0 },
+  { id: "buzz",     name: "Buzz cut",            sub: "clippers, two minutes",  lean: -14, price: 12, looks: 0 },
+  { id: "crew",     name: "Crew cut",            sub: "neat, unarguable",       lean: -13, price: 16, looks: 2 },
+  { id: "fade",     name: "Taper fade",          sub: "sharp sides",            lean: -11, price: 28, looks: 3 },
+  { id: "flattop",  name: "Flat top",            sub: "architectural",          lean: -12, price: 26, looks: 2 },
+  { id: "crop",     name: "Short crop",          sub: "tidy, classic",          lean: -9,  price: 20, looks: 2 },
+  { id: "quiff",    name: "Quiff",               sub: "product-dependent",      lean: -7,  price: 30, looks: 3 },
+  { id: "slick",    name: "Slicked back",        sub: "means business",         lean: -8,  price: 24, looks: 3 },
+  { id: "sidepart", name: "Side part",           sub: "safe in every decade",   lean: -5,  price: 22, looks: 2 },
+  { id: "undercut", name: "Undercut",            sub: "long on top",            lean: -4,  price: 32, looks: 3 },
+  { id: "curls",    name: "Cropped curls",       sub: "let it do its thing",    lean: -3,  price: 26, looks: 3 },
+  { id: "afro",     name: "Afro",                sub: "shaped and picked out",  lean: -2,  price: 30, looks: 4 },
+  { id: "locs",     name: "Locs",                sub: "a long-term commitment", lean: 0,   price: 90, looks: 4 },
+  { id: "braids",   name: "Braids",              sub: "hours in the chair",     lean: 3,   price: 85, looks: 4 },
+  { id: "shag",     name: "Shaggy / mullet",     sub: "gloriously undecided",   lean: 0,   price: 26, looks: 2 },
+  { id: "bowl",     name: "Bowl cut",            sub: "a decision was made",    lean: 1,   price: 14, looks: -1 },
+  { id: "mid",      name: "Mid-length, tucked",  sub: "quietly androgynous",    lean: 4,   price: 28, looks: 3 },
+  { id: "pixie",    name: "Pixie cut",           sub: "short but soft",         lean: 5,   price: 34, looks: 3 },
+  { id: "grow",     name: "Just a trim — growing it out", sub: "patience, mostly", lean: 6, price: 15, looks: 1 },
+  { id: "shoulder", name: "Shoulder length",     sub: "the in-between stage, survived", lean: 7, price: 30, looks: 3 },
+  { id: "curtain",  name: "Curtain bangs",       sub: "frames the face",        lean: 8,   price: 40, looks: 4 },
+  { id: "bob",      name: "Blunt bob",           sub: "jaw-length, deliberate", lean: 9,   price: 38, looks: 4 },
+  { id: "lob",      name: "Long bob",            sub: "softer at the ends",     lean: 10,  price: 42, looks: 4 },
+  { id: "layers",   name: "Long layers",         sub: "movement, softness",     lean: 12,  price: 45, looks: 4 },
+  { id: "blowout",  name: "Blow-out & waves",    sub: "an hour of heat",        lean: 13,  price: 55, looks: 5 },
+  { id: "updo",     name: "Updo",                sub: "for something specific", lean: 14,  price: 60, looks: 5 },
+  { id: "extend",   name: "Extensions",          sub: "length, immediately",    lean: 16,  price: 140, looks: 5 },
+  { id: "wig",      name: "Fitted wig",          sub: "instant, private, yours", lean: 18, price: 120, looks: 5, wig: 1 },
+];
+
+const HAIRCOLORS = [
+  { id: "natural", name: "Back to natural", price: 30, looks: 1, wild: 0 },
+  { id: "darker",  name: "A few shades darker", price: 35, looks: 2, wild: 0 },
+  { id: "blonde",  name: "Blonde",          price: 70, looks: 3, wild: 0 },
+  { id: "red",     name: "Copper red",      price: 60, looks: 3, wild: 0 },
+  { id: "black",   name: "Jet black",       price: 45, looks: 2, wild: 0 },
+  { id: "pink",    name: "Pink",            price: 65, looks: 2, wild: 1 },
+  { id: "blue",    name: "Blue",            price: 65, looks: 2, wild: 1 },
+  { id: "green",   name: "Green",           price: 65, looks: 2, wild: 1 },
+  { id: "bleach",  name: "Bleached platinum", price: 85, looks: 3, wild: 1 },
+];
+
+const NAILCOLORS = ["clear", "nude", "french", "soft pink", "coral", "cherry red", "deep plum", "navy", "emerald", "black", "glitter", "chrome"];
+
+function salonMenu(state) {
+  const s = pClone(state);
+  const b = bodyState(s);
+  const cur = s.profile.curSym;
+  const p = (n) => cur + salonPrice(s, n);
+  const laserTotal = 8;
+  s.pending = { emoji: "💆", title: "Salon & Spa", text: `${b.hair ? `Hair: ${b.hair}${b.color ? `, ${b.color}` : ""}.` : "Whatever your hair is doing, it's doing it unsupervised."} ${b.nails ? `Nails: ${b.nails}.` : ""}`.trim(), layout: "grid",
+    options: [
+      { card: { emoji: "💇", name: "Hair stylist", sub: "cuts, from clippers to layers", tag: p(12) + "+" },
+        fx: { run: (st) => { st.pending = hairMenu(st).pending; } } },
+      { card: { emoji: "🎨", name: "Dye job", sub: "colour, natural or not", tag: p(30) + "+" },
+        fx: { run: (st) => { st.pending = dyeMenu(st).pending; } } },
+      { card: { emoji: "💅", name: "Nail salon", sub: "mani, pedi, or both", tag: p(18) + "+" },
+        fx: { run: (st) => { st.pending = nailMenu(st).pending; } } },
+      { card: { emoji: "💆", name: "Massage", sub: "an hour of being unclenched", tag: p(50) },
+        cond: (st) => st.money >= salonPrice(st, 50),
+        fx: { run: (st) => { const c = salonPrice(st, 50); st.money -= c; st.stats.health = clamp(st.stats.health + rnd(2, 5)); st.stats.happiness = clamp(st.stats.happiness + rnd(4, 8)); push(st, pick([`💆 An hour face-down while someone found knots you'd been carrying since a job you left years ago.`, `💆 You made an undignified noise when they got to your shoulders and you do not apologise for it.`])); } } },
+      { card: { emoji: "✨", name: "Tanning salon", sub: "colour, at a cost", tag: p(25) },
+        cond: (st) => st.money >= salonPrice(st, 25),
+        fx: { run: (st) => { const c = salonPrice(st, 25); st.money -= c; const bb = bodyState(st); bb.tan = (bb.tan || 0) + 1;
+          st.stats.looks = clamp(st.stats.looks + (bb.tan > 6 ? 0 : 2));
+          st.stats.happiness = clamp(st.stats.happiness + 2);
+          if (bb.tan > 5) { st.stats.health = clamp(st.stats.health - 2); push(st, `✨ Another session. Your skin has started to look like a well-loved handbag, and the salon keeps taking your money.`); }
+          else push(st, `✨ Twenty minutes under the lamps. You came out a colour not found in your family tree, and felt great about it.`);
+        } } },
+      { card: { emoji: "🕯", name: "Waxing", sub: "brutal, effective, temporary", tag: p(35) },
+        cond: (st) => st.money >= salonPrice(st, 35),
+        fx: { run: (st) => { st.pending = waxMenu(st).pending; } } },
+      { card: { emoji: "🔦", name: "Laser hair removal", sub: b.laserFace + b.laserBody > 0 ? `course in progress` : "permanent, over many sessions", tag: p(90) + "/session" },
+        cond: (st) => yearOf(st) >= 1998,
+        hi: (s.discovered.gender && isQueerG(s)) ? 1 : 0,
+        fx: { run: (st) => { st.pending = laserMenu(st).pending; } } },
+      CANCEL,
+    ] };
+  return s;
+}
+
+function hairMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const b = bodyState(s);
+  const trans = s.discovered.gender && isQueerG(s);
+  const fem = presTarget(s) > 50;
+  const list = [...HAIRSTYLES].sort((a, c) => (fem ? c.lean - a.lean : a.lean - c.lean));
+  s.pending = { emoji: "💇", title: "Hair stylist", text: b.hair ? `Currently: ${b.hair}. What are we doing?` : "The chair, the cape, the question you never have a good answer to.", layout: "grid",
+    options: [
+      ...list.map((h) => ({
+        card: { emoji: h.wig ? "👱" : h.lean < -5 ? "💈" : h.lean > 5 ? "💇" : "✂️", name: h.name, sub: h.sub, tag: cur + salonPrice(s, h.price) },
+        cond: (st) => st.money >= salonPrice(st, h.price),
+        hi: trans && ((fem && h.lean > 6) || (!fem && h.lean < -6)) ? 1 : 0,
+        fx: { run: (st) => {
+          const c = salonPrice(st, h.price);
+          st.money -= c;
+          const bb = bodyState(st);
+          bb.hair = h.name.toLowerCase();
+          bb.hairLean = h.lean;
+          bb.hairDay = st.ageDays;
+          gainStyle(st, 3, 4);
+          st.stats.looks = clamp(st.stats.looks + h.looks);
+          const towardTarget = (presTarget(st) > presently(st) && h.lean > 0) || (presTarget(st) < presently(st) && h.lean < 0);
+          if (h.lean !== 0) movePres(st, Math.abs(h.lean) * (towardTarget ? 1 : 0.4));
+          const t2 = st.discovered.gender && isQueerG(st);
+          st.stats.happiness = clamp(st.stats.happiness + (t2 && towardTarget ? rnd(6, 11) : rnd(2, 5)));
+          push(st, t2 && towardTarget
+            ? `💇 ${h.name}. You watched it happen in the mirror and had to keep your face still in front of the stylist. Walking out, the wind hit the back of your neck differently, and you were somebody you recognised.`
+            : `💇 ${h.name}. ${pick(["You tipped well and left feeling like a slightly better-funded version of yourself.", "It'll look even better in three days when it settles.", "Objectively an improvement. Subjectively, a whole mood."])}`);
+          if (h.wig) push(st, `👱 Kept somewhere it won't be found, for now.`);
+        } } })),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function dyeMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  s.pending = { emoji: "🎨", title: "Dye job", text: "Foils, fumes, and two hours of magazines from 2011.", layout: "grid",
+    options: [
+      ...HAIRCOLORS.map((c) => ({
+        card: { emoji: c.wild ? "🌈" : "🎨", name: c.name, sub: c.wild ? "a statement" : "", tag: cur + salonPrice(s, c.price) },
+        cond: (st) => st.money >= salonPrice(st, c.price),
+        fx: { run: (st) => {
+          const cost = salonPrice(st, c.price);
+          st.money -= cost;
+          const bb = bodyState(st);
+          bb.color = c.name.toLowerCase();
+          gainStyle(st, 4, 2);
+          st.stats.looks = clamp(st.stats.looks + c.looks);
+          st.stats.happiness = clamp(st.stats.happiness + (c.wild ? rnd(5, 9) : rnd(2, 5)));
+          push(st, c.wild
+            ? `🌈 ${c.name}. ${pick(["Your mother asked if it was permanent in the voice that means she hopes it isn't.", "Three strangers complimented it and one man on a bus had a visible opinion.", "It faded to something even better within a month."])}`
+            : `🎨 ${c.name}. Subtle enough that people say 'you look well' without working out why.`);
+          if (c.wild && inSchool(st) && SCHOOL_TYPES[st.school?.type || "public"].strict >= 2) {
+            st.school.trouble = (st.school.trouble || 0) + 1;
+            push(st, `🎨 ${st.school.name} has a policy about "natural colours only". You are now in breach of it.`);
+          }
+        } } })),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function nailMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const doNails = (st, kind, color, price) => {
+    st.money -= price;
+    const bb = bodyState(st);
+    if (kind !== "pedi") bb.nails = color;
+    if (kind !== "mani") bb.pedi = true;
+    st.stats.looks = clamp(st.stats.looks + (kind === "both" ? 4 : 2));
+    const trans = st.discovered.gender && isQueerG(st);
+    const fem = presTarget(st) > 50;
+    if (fem && color !== "clear") movePres(st, kind === "both" ? 4 : 3);
+    st.stats.happiness = clamp(st.stats.happiness + (trans && fem ? rnd(6, 10) : rnd(3, 6)));
+    push(st, kind === "pedi"
+      ? `💅 Pedicure done. Nobody will see them. You will know.`
+      : trans && fem
+      ? `💅 ${kind === "both" ? "Mani-pedi" : "Manicure"}, ${color}. You spent the whole bus ride looking at your own hands like they belonged to someone luckier.`
+      : `💅 ${kind === "both" ? "Mani-pedi" : "Manicure"} in ${color}. ${pick(["You keep catching them in your peripheral vision and it keeps being nice.", "Chipped one within 48 hours, obviously."])}`);
+    // painted nails are hard to hide
+    if (kind !== "pedi" && color !== "clear" && ["mom", "dad"].some((k) => closetedFrom(st, k))) {
+      const k = ["mom", "dad"].find((k2) => closetedFrom(st, k2));
+      bumpSuspicion(st, k, 6);
+    }
+  };
+  const colorStep = (kind, price) => ({ run: (st) => {
+    st.pending = { emoji: "💅", title: "Pick a colour", text: kind === "both" ? "Same on hands and feet, or ask and they'll do something different." : "", layout: "grid",
+      options: [
+        ...NAILCOLORS.map((col) => ({ card: { emoji: "💅", name: col[0].toUpperCase() + col.slice(1), sub: "", tag: "" },
+          fx: { run: (st2) => doNails(st2, kind, col, salonPrice(st2, price)) } })),
+        CANCEL,
+      ] };
+  } });
+  s.pending = { emoji: "💅", title: "Nail salon", text: "Acetone, small talk, and forty minutes of not being able to touch your phone.", layout: "grid",
+    options: [
+      { card: { emoji: "💅", name: "Manicure", sub: "hands, colour of your choosing", tag: cur + salonPrice(s, 18) }, cond: (st) => st.money >= salonPrice(st, 18), fx: colorStep("mani", 18) },
+      { card: { emoji: "🦶", name: "Pedicure", sub: "feet, quietly transformative", tag: cur + salonPrice(s, 22) }, cond: (st) => st.money >= salonPrice(st, 22),
+        fx: { run: (st) => doNails(st, "pedi", "neat", salonPrice(st, 22)) } },
+      { card: { emoji: "✨", name: "Mani-pedi", sub: "the full set", tag: cur + salonPrice(s, 34) }, cond: (st) => st.money >= salonPrice(st, 34), fx: colorStep("both", 34) },
+      ...(bodyState(s).nails ? [{ label: "Take it all off", fx: { run: (st) => { const bb = bodyState(st); bb.nails = null; push(st, "💅 Acetone and cotton pads at the kitchen table. Back to plain."); } } }] : []),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function waxMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const areas = [
+    { id: "brows", name: "Eyebrows", sub: "shaped, not surprised", price: 15, lean: 4, looks: 3 },
+    { id: "face", name: "Face", sub: "upper lip, chin", price: 25, lean: 6, looks: 2 },
+    { id: "legs", name: "Legs", sub: "the long haul", price: 40, lean: 5, looks: 2 },
+    { id: "body", name: "Chest & back", sub: "smooth, briefly", price: 55, lean: 4, looks: 2 },
+    { id: "brazilian", name: "Brazilian", sub: "brave", price: 60, lean: 3, looks: 1 },
+  ];
+  s.pending = { emoji: "🕯", title: "Waxing salon", text: "Warm wax, cloth strips, and a technician who says 'small scratch' immediately before it is not that.", layout: "grid",
+    options: [
+      ...areas.map((a) => ({ card: { emoji: "🕯", name: a.name, sub: a.sub, tag: cur + salonPrice(s, a.price) },
+        cond: (st) => st.money >= salonPrice(st, a.price),
+        fx: { run: (st) => {
+          st.money -= salonPrice(st, a.price);
+          const bb = bodyState(st); bb.wax = st.ageDays;
+          st.stats.looks = clamp(st.stats.looks + a.looks);
+          st.stats.health = clamp(st.stats.health - 1);
+          if (presTarget(st) > 50) movePres(st, a.lean * 0.5);
+          const trans = st.discovered.gender && isQueerG(st);
+          st.stats.happiness = clamp(st.stats.happiness + (trans ? rnd(3, 7) : rnd(1, 4)));
+          push(st, `🕯 ${a.name} waxed. ${pick(["You made a sound. The technician has heard worse.", "Smooth for three weeks, regret for about eleven minutes.", "You watched the ceiling and thought about your life choices."])}`);
+        } } })),
+      CANCEL,
+    ] };
+  return s;
+}
+
+const LASER_TOTAL = 8;
+
+function laserMenu(state) {
+  const s = pClone(state);
+  const b = bodyState(s);
+  const cur = s.profile.curSym;
+  const price = salonPrice(s, 90);
+  const trans = s.discovered.gender && isQueerG(s);
+  const session = (st, area) => {
+    const bb = bodyState(st);
+    const key = area === "face" ? "laserFace" : "laserBody";
+    bb[key] = (bb[key] || 0) + 1;
+    st.money -= price;
+    const n = bb[key];
+    const done = n >= LASER_TOTAL;
+    st.stats.health = clamp(st.stats.health - 1);
+    const t2 = st.discovered.gender && isQueerG(st);
+    if (area === "face" && presTarget(st) > 50) movePres(st, done ? 8 : 2.5);
+    else if (presTarget(st) > 50) movePres(st, done ? 4 : 1);
+    st.stats.happiness = clamp(st.stats.happiness + (t2 ? (done ? 16 : rnd(3, 7)) : (done ? 8 : 2)));
+    if (done) {
+      st.stats.looks = clamp(st.stats.looks + 5);
+      push(st, area === "face"
+        ? (t2 ? `🔦 Session ${n} of ${LASER_TOTAL} — the last one. Years of a shadow you scraped at every single morning, gone permanently. You touched your own jaw in the car and cried in a way that surprised you.`
+              : `🔦 Course complete. Permanently smooth, and no more daily scraping.`)
+        : `🔦 Body course complete after ${n} sessions. Permanent, and worth every appointment you dreaded.`);
+    } else {
+      push(st, `🔦 Session ${n} of ${LASER_TOTAL}. ${pick(["Elastic-band snaps and the smell of singed hair — unpleasant, and you'd book the next one immediately.", "Six weeks until the next. It comes back patchier every time, which is the point.", "Numbing cream, safety goggles, and forty minutes of flinching."])}`);
+    }
+  };
+  const bar = (n) => `${n}/${LASER_TOTAL}`;
+  s.pending = { emoji: "🔦", title: "Laser hair removal", text: `A course of ${LASER_TOTAL} sessions, six weeks apart, and it doesn't grow back. ${trans ? "For a lot of people this matters more than almost anything else on the list." : ""}`, layout: "grid",
+    options: [
+      { card: { emoji: "😶", name: "Face & neck", sub: b.laserFace >= LASER_TOTAL ? "course complete" : `session ${(b.laserFace || 0) + 1} of ${LASER_TOTAL}`, tag: b.laserFace >= LASER_TOTAL ? "done" : cur + price },
+        cond: (st) => st.money >= price && bodyState(st).laserFace < LASER_TOTAL,
+        hi: trans ? 1 : 0,
+        fx: { run: (st) => session(st, "face") } },
+      { card: { emoji: "🫧", name: "Body", sub: b.laserBody >= LASER_TOTAL ? "course complete" : `session ${(b.laserBody || 0) + 1} of ${LASER_TOTAL}`, tag: b.laserBody >= LASER_TOTAL ? "done" : cur + price },
+        cond: (st) => st.money >= price && bodyState(st).laserBody < LASER_TOTAL,
+        fx: { run: (st) => session(st, "body") } },
+      ...(b.laserFace > 0 || b.laserBody > 0 ? [{ label: `Progress: face ${bar(b.laserFace || 0)}, body ${bar(b.laserBody || 0)}`, fx: {} }] : []),
+      CANCEL,
+    ] };
+  return s;
+}
+
+// tanning has a long tail
+const SALON_POOL = [
+  { id: "tanRisk", w: 2, minAge: 25, maxAge: 80, cd: 2000, cond: (s) => (s.body?.tan || 0) >= 8 && !hasCond(s, "cancer"), run: (s) => ({ auto: [`✨ A dermatologist took a long look at a mole and used the word "monitor". Years of lamps have a bill attached.`], fx: { stats: { health: -4 }, run: (st) => { if (Math.random() < 0.35) giveCondition(st, "cancer"); } } }) },
+];
+POOL.push(...SALON_POOL);
+
+/* ═══════════════ SCHOOL: STUDENT BODY · PRESENTING · CONSEQUENCES ═══════════════ */
+
+const INTERESTS = ["football", "horses", "comics", "skating", "video games", "poetry", "chemistry", "bands", "cars", "baking", "photography", "theatre", "birdwatching", "fashion", "athletics", "history documentaries", "guitar", "chess", "anime", "religion"];
+const CLIQUE_LIST = ["quiet one", "class clown", "overachiever", "athlete", "artist", "troublemaker", "rich kid", "loner", "gossip", "kind one", "teacher's pet", "drifter", "band kid", "science kid", "popular one"];
+
+function makeStudentBody(s, n) {
+  const out = {};
+  const single = SCHOOL_TYPES[s.school.type].single;
+  const era = localAcceptance(s);
+  const faith = SCHOOL_TYPES[s.school.type].faith || 0;
+  for (let i = 0; i < n; i++) {
+    const g = single === "F" ? "f" : single === "M" ? "m" : pick(["m", "f", "f", "m", "n"]);
+    const nm = candidateName(s, g === "m" ? "M" : g === "f" ? "F" : "NB");
+    const mean = rnd(0, 100);
+    out["cm" + (i + 1)] = {
+      name: nm, g: g === "n" ? "N" : g.toUpperCase(),
+      clique: pick(CLIQUE_LIST),
+      rel: rnd(5, 45),
+      smarts: rnd(15, 98),
+      mean,
+      popularity: rnd(5, 99),
+      // how safe they are for a queer classmate: era + school culture + personality
+      ally: clamp(Math.round(era * 0.5 + rnd(-25, 45) - faith * 9 - (mean > 70 ? 20 : 0))),
+      queer: Math.random() < 0.09,
+      interests: [pick(INTERESTS), pick(INTERESTS)].filter((v, idx, a) => a.indexOf(v) === idx),
+      known: [],
+    };
+  }
+  return out;
+}
+
+function studentTag(s, c) {
+  if (c.rel > 70) return "close";
+  if (c.rel > 50) return "friendly";
+  if (c.rel > 30) return "known";
+  if (c.mean > 70 && c.known.includes("mean")) return "hostile";
+  return "barely";
+}
+
+/* — how you show up at school — */
+function schoolPresentMenu(state) {
+  const s = pClone(state);
+  const sc = s.school;
+  if (!sc.present) sc.present = { name: "birth", uniform: "assigned", pe: "assigned", pronouns: false, outTo: [] };
+  const p = sc.present;
+  const trans = s.discovered.gender && isQueerG(s);
+  const chosen = usedName(s);
+  const era = localAcceptance(s);
+  const strict = SCHOOL_TYPES[sc.type].strict;
+  const risky = (base) => Math.max(0, Math.round(base + strict * 8 - era * 0.5));
+  const opt = (card, hi, run) => ({ card, hi, fx: { run } });
+
+  const opts = [];
+  // whether the school will even entertain it
+  const permit = (base) => clamp(base + era * 0.75 - strict * 12 - (SCHOOL_TYPES[sc.type].faith || 0) * 14);
+  opts.push(opt({ emoji: "📛", name: "Name at school", sub: p.name === "chosen" ? `they call you ${chosen}` : p.name === "refused" ? "refused by the school" : "register name only", tag: p.name === "chosen" ? "out" : p.name === "refused" ? "blocked" : "safe" }, 0, (st) => {
+    const q = st.school.present;
+    if (q.name === "chosen") { q.name = "birth"; push(st, `📛 You went back to the register name at school. Safer. Every roll call is a small paper cut.`); st.stats.happiness = clamp(st.stats.happiness - 5); }
+    else if (chosen === st.profile.first) { push(st, `📛 You'd need a name you actually want first (🪞 the mirror, at home).`); }
+    else if (Math.random() * 100 > permit(20)) {
+      q.name = "refused";
+      st.stats.happiness = clamp(st.stats.happiness - 11);
+      st.school.trouble = (st.school.trouble || 0) + 1;
+      push(st, `📛 You asked to be called ${chosen}. ${(SCHOOL_TYPES[sc.type].faith || 0) >= 2 ? `The head of year said the school uses "the name on the baptismal certificate" and that was the end of the meeting.` : `You were told the register is the register, and that this was "not something we do." A note went home about it.`}`);
+    }
+    else { q.name = "chosen"; st.stats.happiness = clamp(st.stats.happiness + 12);
+      push(st, `📛 You asked to be called ${chosen}. ${era > 55 ? "Two teachers got it right immediately. One kept 'forgetting' in a way that felt like a position." : "One teacher agreed quietly and never made a thing of it. The rest carried on as before, and you took the one."}`); }
+  }));
+  opts.push(opt({ emoji: "👔", name: "Uniform", sub: p.uniform === "other" ? "the one that fits you" : "as assigned", tag: p.uniform === "other" ? "visible" : "safe" }, 0, (st) => {
+    const q = st.school.present;
+    if (q.uniform === "other") { q.uniform = "assigned"; movePres(st, -5); push(st, `👔 Back to the assigned uniform. You get through the gate unremarked and feel like a costume all day.`); st.stats.happiness = clamp(st.stats.happiness - 6); }
+    else {
+      if (Math.random() * 100 > permit(30)) {
+        q.uniform = "refused";
+        st.school.trouble = (st.school.trouble || 0) + 2;
+        st.stats.happiness = clamp(st.stats.happiness - 9);
+        push(st, `👔 You wore the other uniform exactly once. You were stopped at the gate before you reached the doors, sent home to change, and the word "disruption" was used four times in the phone call to your parents.`);
+        return;
+      }
+      q.uniform = "other"; movePres(st, 7);
+      if (Math.random() * 100 < risky(35)) { st.school.trouble = (st.school.trouble || 0) + 2; st.stats.happiness = clamp(st.stats.happiness - 4);
+        push(st, `👔 You wore the other uniform. You were pulled up on it, sent to the office, and a letter went home — but you got the day.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness + 13);
+        push(st, `👔 You wore the other uniform and nobody stopped you. You spent the whole day braced for it, and it never came, and that was its own strange grief and joy.`); }
+    }
+  }));
+  opts.push(opt({ emoji: "🏃", name: "PE & changing rooms", sub: p.pe === "alone" ? "changing alone" : p.pe === "skip" ? "skipping PE" : "with the assigned group", tag: p.pe === "assigned" ? "hard" : "" }, 0, (st) => {
+    const q = st.school.present;
+    q.pe = q.pe === "assigned" ? "alone" : q.pe === "alone" ? "skip" : "assigned";
+    if (q.pe === "alone") {
+      if (Math.random() * 100 > permit(45)) { q.pe = "assigned"; st.stats.happiness = clamp(st.stats.happiness - 8);
+        push(st, `🏃 You asked to change separately and were told not to be difficult. Nothing changed except that the PE department now watches you.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness + 6); push(st, `🏃 You asked to change separately. ${era > 50 ? "The teacher sorted it without making it a thing, and you could have wept." : "You got the storage cupboard by the gym, which is not dignity, but it is privacy."}`); }
+    }
+    else if (q.pe === "skip") { st.education.subjects.pe = clamp(st.education.subjects.pe - 8); st.school.trouble = (st.school.trouble || 0) + 1; push(st, `🏃 You started skipping PE altogether. Your grade is dropping and the department has noticed.`); }
+    else { st.stats.happiness = clamp(st.stats.happiness - 9); push(st, `🏃 Back to changing with everyone else. Forty minutes twice a week of being very careful where you look and being looked at.`); }
+  }));
+  if (trans) opts.push(opt({ emoji: "🗣", name: "Pronouns with teachers", sub: p.pronouns ? "asked, and mostly respected" : "not raised", tag: p.pronouns ? "out" : "" }, 0, (st) => {
+    const q = st.school.present;
+    if (q.pronouns) { q.pronouns = false; push(st, `🗣 You stopped correcting anyone. It's quieter. It costs.`); st.stats.happiness = clamp(st.stats.happiness - 4); }
+    else {
+      const good = Math.random() * 100 < permit(10);
+      q.pronouns = good;
+      st.stats.happiness = clamp(st.stats.happiness + (good ? 14 : -8));
+      if (!good) st.school.trouble = (st.school.trouble || 0) + 1;
+      push(st, good
+        ? `🗣 You asked your teachers to use the right pronouns. Most did. One put a note in her planner so she'd remember, and you thought about that for weeks.`
+        : `🗣 You asked. ${era < 35 ? `The staff room heard about it within the hour. One teacher started using your surname only, which was somehow the kindest response available to him.` : `The head of year said the school "doesn't do that here" and the request went into a file rather than into practice.`}`);
+    }
+  }));
+  opts.push(opt({ emoji: "🏳️‍🌈", name: "Who knows at school", sub: `${(p.outTo || []).length} classmates`, tag: "" }, 0, (st) => { st.pending = schoolOutMenu(st).pending; }));
+  opts.push(CANCEL);
+
+  s.pending = { emoji: "🎒", title: `You at ${sc.name}`, layout: "grid",
+    text: trans
+      ? `Six hours a day, five days a week, in a building with rules about who you are. ${strict >= 2 ? "This one is strict." : ""} ${era < 30 ? "And this is not a decade that will help you." : ""}`
+      : `How you show up here.`,
+    options: opts };
+  return s;
+}
+
+function schoolOutMenu(state) {
+  const s = pClone(state);
+  const sc = s.school;
+  if (!sc.present) sc.present = { name: "birth", uniform: "assigned", pe: "assigned", pronouns: false, outTo: [] };
+  const cms = Object.entries(sc.classmates || {}).filter(([, c]) => c.rel > 35);
+  s.pending = { emoji: "🏳️‍🌈", title: "Telling people at school", layout: "grid",
+    text: cms.length ? "Who do you trust with this? Their reaction depends on who they are — and some of them will tell other people." : "You'd need to know someone here first.",
+    options: [
+      ...cms.map(([k, c]) => ({
+        card: { emoji: (sc.present.outTo || []).includes(k) ? "✅" : c.queer ? "🏳️‍🌈" : "🧒", name: c.name, sub: `${c.clique}${c.known.includes("ally") ? " · safe" : c.known.includes("mean") ? " · risky" : ""}`, tag: (sc.present.outTo || []).includes(k) ? "knows" : "" },
+        cond: (st) => !(st.school.present.outTo || []).includes(k),
+        fx: { run: (st) => {
+          if (!st.school.present.outTo) st.school.present.outTo = [];
+          if (!st.school.present.outTo.includes(k)) st.school.present.outTo.push(k);
+          const c = st.school.classmates[k];
+          if (c && !c.known.includes("ally") && !c.known.includes("mean")) c.known.push(c.ally > 55 ? "ally" : "mean");
+          st.pending = schoolComeOut(st, k).pending;
+        } } })),
+      CANCEL,
+    ] };
+  return s;
+}
+
+// telling a classmate — a real conversation, and it can travel
+function schoolComeOut(state, k) {
+  const s = pClone(state);
+  const c = s.school.classmates[k];
+  const era = localAcceptance(s);
+  const score = c.ally * 0.55 + era * 0.25 + c.rel * 0.2;
+
+  if (score > 58) {
+    s.pending = { emoji: "🏳️‍🌈", title: `You tell ${c.name}`, text: c.queer
+      ? `${c.name} listens, goes quiet, and then says: "Okay. Me too, actually. I've never said that to anyone here."`
+      : `${c.name} takes it completely in stride. "Cool. Are you okay? Do people know?" — the right questions, in the right order.`,
+      options: [
+        { label: c.queer ? "Sit with that together" : "Say you're okay", fx: { run: (st) => { const q = st.school.classmates[k]; q.rel = clamp(q.rel + 20); q.known.push("safe"); st.stats.happiness = clamp(st.stats.happiness + (c.queer ? 16 : 11));
+          push(st, c.queer ? `🏳️‍🌈 Two of you in a corridor, both suddenly less alone than you were ten minutes ago. You'd have got through school without this. It's better with it.` : `🏳️‍🌈 ${q.name} knows, and nothing bad happened. One safe person in a building of six hundred changes the whole building.`); } } },
+        { label: "Ask them to keep it to themselves", fx: { run: (st) => { const q = st.school.classmates[k]; q.rel = clamp(q.rel + 12); st.flags.schoolSecret = true;
+          push(st, `🏳️‍🌈 "Obviously," ${q.name} said, slightly offended you'd even asked. They meant it, too.`); st.stats.happiness = clamp(st.stats.happiness + 8); } } },
+      ] };
+    return s;
+  }
+  if (score > 32) {
+    s.pending = { emoji: "😐", title: `${c.name} doesn't know what to say`, text: `A pause that goes on too long. "Right. Um. Okay." ${c.name} is not hostile — they're just out of their depth, and you can watch them deciding what this means for them.`,
+      options: [
+        { label: "Give them a minute", fx: { run: (st) => { const q = st.school.classmates[k];
+          if (Math.random() < 0.6) { q.rel = clamp(q.rel + 8); q.known.push("safe"); push(st, `😐 By the next day ${q.name} had caught up with themselves and was normal about it. Sometimes that's all it takes.`); st.stats.happiness = clamp(st.stats.happiness + 6); }
+          else { q.rel = clamp(q.rel - 10); push(st, `😐 ${q.name} started sitting somewhere else. Nothing was said. That was the whole answer.`); st.stats.happiness = clamp(st.stats.happiness - 8); } } } },
+        { label: "Make a joke to defuse it", fx: { run: (st) => { const q = st.school.classmates[k]; q.rel = clamp(q.rel + 4); st.stats.happiness = clamp(st.stats.happiness - 2);
+          push(st, `😐 You made it funny so nobody had to sit in it. It worked. You did that a lot, that year.`); } } },
+      ] };
+    return s;
+  }
+  // it goes badly — and now it's a conversation you can still influence
+  s.pending = { emoji: "😨", title: `${c.name} reacts badly`, text: `${c.name}'s face closes. "${pick([`That's disgusting.`, `You're joking. Tell me you're joking.`, `I'm going to have to tell someone about this.`])}" ${c.clique === "gossip" ? "And of all the people in this school, this is the one who cannot hold anything." : ""}`,
+    options: [
+      { label: "\"Why does it bother you so much?\"", fx: { run: (st) => { st.pending = threatTalk(st, k, "why").pending; } } },
+      { label: "Ask them, plainly, not to tell", fx: { run: (st) => { st.pending = threatTalk(st, k, "ask").pending; } } },
+      { label: "Stand your ground — say nothing else", fx: { run: (st) => { const q = st.school.classmates[k]; q.rel = clamp(q.rel - 20); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8);
+        push(st, `😨 You didn't flinch and you didn't take it back. ${q.name} looked away first.`);
+        st.flags.schoolThreat = { by: k, day: st.ageDays }; } } },
+      { label: "Deny it — say it was a joke", fx: { run: (st) => { const q = st.school.classmates[k];
+        st.school.present.outTo = (st.school.present.outTo || []).filter((x) => x !== k);
+        st.stats.happiness = clamp(st.stats.happiness - 13);
+        push(st, `😨 You laughed and said you were winding them up. They half-believed it. You went to the toilets and sat in a cubicle until your hands stopped shaking.`); } } },
+    ] };
+  return s;
+}
+
+// second beat: they've threatened to tell, and you can still change the outcome
+function threatTalk(state, k, route) {
+  const s = pClone(state);
+  const c = s.school.classmates[k];
+  const era = localAcceptance(s);
+  const reason = c.reason || (c.reason = pick(["church", "disgust", "fear", "parents"]));
+  const reasonText = {
+    church: `"It's a sin. That's not me being horrible, it's just — that's what I've been taught, every Sunday, my whole life."`,
+    disgust: `"I don't know. It just — it makes me feel weird and I don't want to think about it."`,
+    fear: `"If people think I knew and said nothing, they'll think I'm one too. Do you know what they'd do to me?"`,
+    parents: `"My mum would kill me if she knew I was even friends with— " They stop. They know how that sounded.`,
+  }[reason];
+
+  if (route === "why") {
+    s.pending = { emoji: "🗨", title: `${c.name} tries to explain`, text: `${reasonText} ${c.name} isn't enjoying this either — you can see them working something out in real time.`,
+      options: [
+        { label: reason === "fear" ? "\"Then say nothing. That's all I'm asking.\"" : "\"I'm the same person I was ten minutes ago.\"", fx: { run: (st) => {
+          const q = st.school.classmates[k];
+          const odds = 0.12 + q.rel / 320 + era / 400 + (reason === "fear" ? 0.18 : 0) - (reason === "church" ? 0.12 : 0) - (q.clique === "gossip" ? 0.15 : 0);
+          if (Math.random() < odds) { q.rel = clamp(q.rel + 6); q.known.push("quiet"); st.stats.happiness = clamp(st.stats.happiness + 7);
+            push(st, `🗨 It landed. ${q.name} sat with it, then said "I won't say anything" — and meant it. You weren't friends after that, exactly. But they never told a soul.`); }
+          else { st.flags.schoolThreat = { by: k, day: st.ageDays }; st.stats.happiness = clamp(st.stats.happiness - 6);
+            push(st, `🗨 They shook their head the whole time you were talking. Whatever they'd decided, they'd decided before you opened your mouth.`); }
+        } } },
+        { label: "\"You've known me for years. Which part was the lie?\"", fx: { run: (st) => {
+          const q = st.school.classmates[k];
+          const odds = 0.1 + q.rel / 200 + era / 420 - (q.clique === "gossip" ? 0.12 : 0);
+          if (Math.random() < odds) { q.rel = clamp(q.rel + 14); q.known.push("quiet"); st.stats.happiness = clamp(st.stats.happiness + 11);
+            push(st, `🗨 That one got through. ${q.name} looked at the floor for a long time and said, "No. You're right. Sorry." It took months to be normal again, and it did become normal again.`); }
+          else { st.flags.schoolThreat = { by: k, day: st.ageDays }; q.rel = clamp(q.rel - 10); st.stats.happiness = clamp(st.stats.happiness - 8);
+            push(st, `🗨 "The whole thing was a lie," they said. "That's the point." And that was the friendship.`); }
+        } } },
+        ...(c.queer ? [{ label: "\"...You're not exactly straight either, are you.\"", fx: { run: (st) => {
+          const q = st.school.classmates[k];
+          if (Math.random() < 0.65) { q.rel = clamp(q.rel + 10); q.known.push("quiet"); st.stats.happiness = clamp(st.stats.happiness + 5); st.emergent.kindness = clamp((st.emergent.kindness ?? 50) - 6);
+            push(st, `🗨 The colour went out of their face. Neither of you told anyone anything, ever — a truce built on mutual hostage-taking. It worked. It also cost you something you can't name.`); }
+          else { st.flags.schoolThreat = { by: k, day: st.ageDays }; q.rel = clamp(q.rel - 25); st.stats.happiness = clamp(st.stats.happiness - 10);
+            push(st, `🗨 You said it and watched it turn into fury. Cornering a frightened person is how you make an enemy for life.`); }
+        } } }] : []),
+      ] };
+    return s;
+  }
+
+  // plain ask
+  s.pending = { emoji: "🤞", title: `You ask ${c.name} to keep it`, text: `"I'm not asking you to be okay with it. I'm asking you not to tell anyone." ${c.name} chews the inside of their cheek.`,
+    options: [
+      { label: "Offer them something in return", fx: { run: (st) => {
+        const q = st.school.classmates[k];
+        if (Math.random() < 0.25 + q.rel / 340) { q.rel = clamp(q.rel + 3); q.known.push("quiet"); st.stats.happiness = clamp(st.stats.happiness + 3);
+          push(st, `🤞 Homework, mostly, for the rest of the year. It held — a grubby, functional arrangement that got you through.`); }
+        else { st.flags.schoolThreat = { by: k, day: st.ageDays }; push(st, `🤞 "I don't want anything from you." Said like the word 'you' was the problem.`); }
+      } } },
+      { label: "Just wait — let the silence do the work", fx: { run: (st) => {
+        const q = st.school.classmates[k];
+        const odds = 0.1 + q.rel / 300 + era / 420 + (q.mean < 40 ? 0.15 : 0) - (q.clique === "gossip" ? 0.12 : 0);
+        if (Math.random() < odds) { q.known.push("quiet"); st.stats.happiness = clamp(st.stats.happiness + 6);
+          push(st, `🤞 You didn't fill the silence. Eventually ${q.name} said "...fine. Whatever," and walked off, and that was the end of it — genuinely, as it turned out.`); }
+        else { st.flags.schoolThreat = { by: k, day: st.ageDays }; st.stats.happiness = clamp(st.stats.happiness - 7);
+          push(st, `🤞 The silence stretched until they shrugged and left. You knew, walking to your next lesson, that they were already telling someone.`); }
+      } } },
+      { label: "Tell them to do whatever they want", fx: { run: (st) => {
+        const q = st.school.classmates[k];
+        st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10);
+        st.flags.schoolThreat = { by: k, day: st.ageDays };
+        push(st, `🤞 "Then tell them. I'm not doing this." You walked off first, which was worth something, and it cost you everything it was always going to cost.`);
+      } } },
+    ] };
+  return s;
+}
+
+/* — the threat plays out: they tell the Dean, or your parents — */
+const SCHOOL_QUEER_POOL = [
+  { id: "threatPlays", i: 1, w: 9, minAge: 10, maxAge: 20, cd: 60,
+    cond: (s) => s.flags.schoolThreat && s.ageDays - s.flags.schoolThreat.day > 14 && inSchool(s),
+    run: (s) => {
+      const k = s.flags.schoolThreat.by;
+      const c = s.school.classmates[k];
+      s.flags.schoolThreat = null;
+      if (!c) return { auto: [] };
+      const head = Object.values(s.school.faculty).find((t) => t.boss);
+      const toParents = Math.random() < 0.45;
+      return { event: { emoji: "📢", title: "It travelled", text: toParents
+        ? `${c.name} told their mother, who telephoned yours. You find out because the house is silent when you get in, and both your parents are sitting in the front room.`
+        : `${c.name} went to ${head ? head.name : "the head"}. You're called out of a lesson, and the corridor walk takes a year.`,
+        options: toParents ? [
+          { label: "Tell them the truth, since it's out anyway", fx: { run: (st) => {
+            ["mom", "dad"].forEach((kk) => { if (!st.outTo[kk]) { st.outTo[kk] = true; const q = st.family[kk]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); } });
+            st.pending = comeOutReact(st, "family", "mom", -10, "outed").pending;
+          } } },
+          { label: "Deny all of it", fx: { run: (st) => { bumpSuspicion(st, "mom", 35); bumpSuspicion(st, "dad", 35); st.stats.happiness = clamp(st.stats.happiness - 12);
+            push(st, `📢 You denied it flatly, and they wanted to believe you, so they did — officially. Nothing in that house was ever quite the same shape again.`); } } },
+        ] : [
+          { label: "Say nothing and let them talk", fx: { run: (st) => { st.school.trouble = (st.school.trouble || 0) + 2; st.stats.happiness = clamp(st.stats.happiness - 8);
+            const faith = SCHOOL_TYPES[st.school.type].faith || 0;
+            push(st, faith >= 2
+              ? `📢 You were told this school "has a position on this", handed a pamphlet, and asked whether you'd spoken to the chaplain. You said nothing for eleven minutes.`
+              : `📢 A long lecture about "distraction" and "appropriate conduct". Nothing you did was against any actual rule, and everyone in the room knew it.`); } } },
+          { label: "Ask exactly which rule you've broken", fx: { run: (st) => { st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10);
+            if (localAcceptance(st) > 40) { st.stats.happiness = clamp(st.stats.happiness + 6); push(st, `📢 You asked, calmly, which rule. There wasn't one. The head shuffled paper and let you go, and word got round that you'd done that.`); }
+            else { st.school.trouble = (st.school.trouble || 0) + 3; st.stats.happiness = clamp(st.stats.happiness - 6); push(st, `📢 You asked which rule. You were told not to be clever. Three days' suspension for "attitude".`); } } } },
+          { label: "Apologise for existing loudly", fx: { run: (st) => { st.school.trouble = 0; st.stats.happiness = clamp(st.stats.happiness - 14); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) - 4);
+            push(st, `📢 You said what they wanted to hear and got out of the room. It worked, and you hated yourself on the bus.`); } } },
+        ] } }; } },
+
+  // the school itself as a hostile environment, worse in strict/faith schools and early eras
+  { id: "schoolQueerTrouble", i: 1, w: 6, minAge: 11, maxAge: 19, cd: 320,
+    cond: (s) => inSchool(s) && (isOutQueer(s) || nonconformity(s) > 25) && (localAcceptance(s) < 55 || (SCHOOL_TYPES[s.school?.type || "public"].faith || 0) >= 2),
+    run: (s) => {
+      const faith = SCHOOL_TYPES[s.school.type].faith || 0;
+      const era = localAcceptance(s);
+      const scene = faith >= 2
+        ? pick([`The chaplain asks you to stay behind after assembly "for a chat".`, `A teacher leaves a pamphlet on your desk, face down, without a word.`])
+        : pick([`Someone has written something about you on the toilet wall, and it's still there three days later.`, `A group in the year above has started making a noise when you walk past. Every day. The same noise.`, `Your locker's been done — the lock's fine, the contents aren't.`]);
+      return { event: { emoji: "🎒", title: "School", text: `${scene} ${era < 25 ? "In this decade there is no policy that covers this, and no adult who thinks there should be." : ""}`, options: [
+        { label: "Report it properly", fx: { run: (st) => {
+          const helpful = era > 45 && faith < 2 && Math.random() < 0.55;
+          if (helpful) { st.stats.happiness = clamp(st.stats.happiness + 7); push(st, `🎒 A teacher took it seriously, wrote it down, and it actually stopped. You hadn't expected that and it rearranged something about how you saw adults.`); }
+          else { st.stats.happiness = clamp(st.stats.happiness - 9); push(st, `🎒 You reported it. You were asked what you'd done to attract it, and whether you'd considered "keeping things private". Nothing changed except what you'll bother reporting next time.`); }
+        } } },
+        { label: "Handle it yourself", fx: { run: (st) => {
+          st.emergent.courage = clamp((st.emergent.courage ?? 40) + 9);
+          if (Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 5); push(st, `🎒 You handled it — a look, a sentence, once and properly. It stopped. Nobody ever knew you'd been frightened.`); }
+          else { st.stats.health = clamp(st.stats.health - 7); st.school.trouble = (st.school.trouble || 0) + 2; push(st, `🎒 It became physical, and you were the one sent to the office afterwards. Of course you were.`); }
+        } } },
+        { label: "Find the others like you", cond: (st) => localAcceptance(st) > 20, fx: { run: (st) => {
+          const q = Object.entries(st.school.classmates).find(([, c]) => c.queer);
+          if (q) { st.school.classmates[q[0]].rel = clamp(st.school.classmates[q[0]].rel + 22); st.school.classmates[q[0]].known.push("safe");
+            st.stats.happiness = clamp(st.stats.happiness + 13);
+            push(st, `🎒 There was someone. There's always someone. You found ${q[1].name} and the two of you built a small, unofficial, load-bearing alliance.`); }
+          else { st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `🎒 You looked. If they were there, they were hiding better than you.`); }
+        } } },
+        { label: "Keep your head down until it passes", fx: { stats: { happiness: -6 }, emergent: { prudence: +5 }, feed: "🎒 You got smaller and quieter and waited it out. It did pass, eventually. So did that year of your life." } },
+      ] } }; } },
+];
+POOL.push(...SCHOOL_QUEER_POOL);
+
+const SCHOOL_ENFORCE = [
+  { id: "schoolCrackdown", i: 1, w: 5, minAge: 10, maxAge: 20, cd: 420,
+    cond: (s) => inSchool(s) && s.school.present && (s.school.present.name === "chosen" || s.school.present.uniform === "other" || s.school.present.pronouns)
+      && (localAcceptance(s) < 45 || (SCHOOL_TYPES[s.school.type].faith || 0) >= 2 || SCHOOL_TYPES[s.school.type].strict >= 3),
+    run: (s) => {
+      const p = s.school.present;
+      const thing = p.uniform === "other" ? "uniform" : p.name === "chosen" ? "name" : "pronouns";
+      const head = Object.values(s.school.faculty).find((t) => t.boss);
+      const label = { uniform: "the uniform you've been wearing", name: `the name the register doesn't have`, pronouns: "what you've asked staff to call you" }[thing];
+      return { event: { emoji: "📕", title: "A new policy, apparently", text: `${head ? head.name : "The head"} has "clarified expectations" in a letter to all parents. It doesn't name you. Everyone knows it's about ${label}.`, options: [
+        { label: "Comply, for now", fx: { run: (st) => {
+          const q = st.school.present;
+          if (thing === "uniform") { q.uniform = "assigned"; movePres(st, -6); }
+          if (thing === "name") q.name = "birth";
+          if (thing === "pronouns") q.pronouns = false;
+          st.stats.happiness = clamp(st.stats.happiness - 12);
+          push(st, `📕 You went back to the approved version of yourself. It's two more years. You started counting them.`);
+        } } },
+        { label: "Ignore it entirely", fx: { run: (st) => {
+          st.school.trouble = (st.school.trouble || 0) + 3;
+          st.emergent.courage = clamp((st.emergent.courage ?? 40) + 12);
+          st.stats.happiness = clamp(st.stats.happiness + 4);
+          push(st, `📕 You carried on exactly as you were. The detentions started that week and did not stop.`);
+        } } },
+        { label: "Get your parents to fight it", cond: (st) => (st.outTo.mom && st.family.mom.acceptance > 60) || (st.outTo.dad && st.family.dad.acceptance > 60), fx: { run: (st) => {
+          const ally = st.outTo.mom && st.family.mom.acceptance > 60 ? st.family.mom : st.family.dad;
+          if (localAcceptance(st) > 35 && Math.random() < 0.5) { st.stats.happiness = clamp(st.stats.happiness + 14);
+            push(st, `📕 ${ally.name} wrote a letter, then came in, then would not leave the office. The policy was quietly not enforced against you. You have never loved anyone more.`); }
+          else { st.school.trouble = (st.school.trouble || 0) + 1; st.stats.happiness = clamp(st.stats.happiness - 5);
+            push(st, `📕 ${ally.name} fought it and lost. The school outlasted them, the way institutions do. It mattered enormously that they tried.`); }
+        } } },
+      ] } }; } },
+];
+POOL.push(...SCHOOL_ENFORCE);
+
+/* ═══════════════ MASCULINISING PRESENTATION ═══════════════ */
+
+function binderState(s) {
+  const b = bodyState(s);
+  if (!b.binder) b.binder = { owned: false, kind: null, use: "none", days: 0, strain: 0 };
+  return b.binder;
+}
+const BINDERS = [
+  { id: "sportsbra", name: "Doubled sports bra", sub: "what you use before you know better", price: 20, flat: 3, risk: 2, safe: 1 },
+  { id: "cheap", name: "Cheap online binder", sub: "unbranded, no sizing guide", price: 35, flat: 7, risk: 5 },
+  { id: "proper", name: "Properly sized binder", sub: "measured, from a real brand", price: 70, flat: 9, risk: 2 },
+  { id: "tape", name: "Trans tape", sub: "skin-safe, needs technique", price: 40, flat: 8, risk: 3, minYear: 2015 },
+];
+
+function mascKitMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const bd = binderState(s);
+  const b = bodyState(s);
+  const onT = !!s.flags.hrt && presTarget(s) < 50;
+  const topDone = !!s.flags.srg_top;
+  const opts = [];
+
+  // — binding —
+  if (!topDone) {
+    opts.push({ card: { emoji: "🎽", name: bd.owned ? "Your binder" : "Get a binder", sub: bd.owned ? `${BINDERS.find((x) => x.id === bd.kind)?.name || "binder"} · ${bd.use === "all" ? "worn all day" : bd.use === "safe" ? "8 hours, rest days" : "not wearing it"}` : "the single biggest change", tag: bd.owned ? "" : cur + salonPrice(s, 35) + "+" }, hi: 1,
+      fx: { run: (st) => { st.pending = (binderState(st).owned ? binderUseMenu(st) : binderBuyMenu(st)).pending; } } });
+  } else {
+    opts.push({ card: { emoji: "🎽", name: "No binder needed", sub: "surgery did what binding couldn't", tag: "done" },
+      fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness + 5); push(st, `🎽 You found your old binder in a drawer. You held it for a second, then binned it, and breathed in as deep as your lungs would go.`); } } });
+  }
+
+  opts.push({ card: { emoji: "🩲", name: b.packer ? "Packing" : "Try packing", sub: b.packer ? "part of getting dressed now" : "silhouette, and something else", tag: b.packer ? "on" : cur + salonPrice(s, 45) },
+    cond: (st) => st.money >= salonPrice(st, 45) || bodyState(st).packer,
+    fx: { run: (st) => {
+      const bb = bodyState(st);
+      if (bb.packer) { bb.packer = false; movePres(st, -2); push(st, `🩲 You left it off today. Nothing dramatic. Just a day where you didn't feel like doing the whole routine.`); }
+      else { st.money -= salonPrice(st, 45); bb.packer = true; movePres(st, 4);
+        st.stats.happiness = clamp(st.stats.happiness + rnd(6, 11));
+        push(st, `🩲 It arrived in unmarked packaging. The first time you got dressed with it, your jeans sat differently and something in your chest unclenched that you hadn't known was clenched.`); }
+    } } });
+
+  // — grooming: the absence of things counts too —
+  opts.push({ card: { emoji: "🚫", name: "Stop wearing makeup", sub: b.noMakeup ? "already done" : "the quiet refusal", tag: b.noMakeup ? "on" : "" },
+    cond: (st) => !bodyState(st).noMakeup,
+    fx: { run: (st) => {
+      const bb = bodyState(st);
+      bb.noMakeup = true; bb.nails = null;
+      movePres(st, 5);
+      gainStyle(st, 1, 2);
+      st.stats.happiness = clamp(st.stats.happiness + 7);
+      const era = localAcceptance(st);
+      push(st, `🚫 You stopped. No foundation, no mascara, nothing — and bare nails. ${era < 40 ? `Two separate people asked if you were ill, which tells you everything about what a face is expected to be.` : `Nobody said much. You got fifteen minutes of your morning back and looked more like yourself in every one of them.`}`);
+      if (era < 45) { const k = pick(["mom", "dad"]); if (closetedFrom(st, k)) bumpSuspicion(st, k, 8); }
+    } } });
+
+  opts.push({ card: { emoji: "🧴", name: "Masculine grooming", sub: onT ? "beard care, properly" : "brows, posture, the details", tag: "" },
+    fx: { run: (st) => {
+      gainStyle(st, 2, 5);
+      movePres(st, onT ? 3 : 2);
+      st.stats.happiness = clamp(st.stats.happiness + rnd(3, 7));
+      push(st, onT
+        ? `🧴 Trimmer, oil, a razor that isn't pink. You've got a jawline's worth of stubble to look after now, and looking after it is its own small daily joy.`
+        : `🧴 Brows left alone to grow in, hair cut at a barber instead of a salon, shoulders back. A hundred tiny defaults, changed one at a time.`);
+    } } });
+
+  // — voice: on T it happens to you; before T it's work —
+  opts.push({ card: { emoji: "🗣", name: onT ? "Your voice is changing" : "Voice work", sub: onT ? "testosterone is doing this one for you" : "lower, from the chest", tag: `${s.emergent.voiceTraining ?? 0}/100` },
+    fx: { run: (st) => {
+      if (onT) {
+        st.emergent.voiceTraining = clamp((st.emergent.voiceTraining ?? 0) + rnd(7, 13));
+        movePres(st, 3);
+        st.stats.happiness = clamp(st.stats.happiness + rnd(5, 10));
+        const months = Math.floor((st.ageDays - st.flags.hrt) / 30);
+        push(st, months < 4
+          ? `🗣 It cracked mid-sentence in front of people, like being fourteen. You were mortified and completely delighted.`
+          : months < 12
+          ? `🗣 It's dropping. You answered the phone and were called "sir" by a stranger, and you sat down afterwards.`
+          : `🗣 Settled, low, and unmistakably yours. Recordings of your old voice sound like a different person, because they are.`);
+      } else {
+        st.emergent.voiceTraining = clamp((st.emergent.voiceTraining ?? 0) + rnd(2, 5));
+        movePres(st, 1);
+        st.stats.happiness = clamp(st.stats.happiness + rnd(1, 4));
+        push(st, `🗣 Speaking from lower down, slower, less up at the end. It helps a little, on the phone especially. Without hormones there's a ceiling to this and you've read enough to know where it is.`);
+      }
+    } } });
+
+  opts.push({ card: { emoji: "🚶", name: "Stance and mannerisms", sub: "how you take up space", tag: "" },
+    fx: { run: (st) => {
+      movePres(st, 3);
+      st.emergent.confidence = clamp((st.emergent.confidence ?? 40) + 5);
+      st.stats.happiness = clamp(st.stats.happiness + rnd(2, 6));
+      push(st, pick([
+        `🚶 Wider stance, hands in pockets, taking up the space you're allowed instead of the space you'd been taught. It's absurd how much of gender is posture.`,
+        `🚶 You watched how men sit on buses and copied it, feeling ridiculous, and then stopped feeling ridiculous.`,
+      ]));
+    } } });
+
+  opts.push(CANCEL);
+  s.pending = { emoji: "🧢", title: "Passing", layout: "grid",
+    text: topDone ? "Post-surgery. The daily work looks different now." : `Presentation: ${presLabel(s)}. ${bd.owned && bd.use === "all" ? "You've been binding every waking hour." : ""}`,
+    options: opts };
+  return s;
+}
+
+function binderBuyMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const y = yearOf(s);
+  s.pending = { emoji: "🎽", title: "Getting a binder", text: "It has to be the right size. Too small doesn't make you flatter — it makes you injured.", layout: "grid",
+    options: [
+      ...BINDERS.filter((b) => !b.minYear || y >= b.minYear).map((b) => ({
+        card: { emoji: b.safe ? "👚" : "🎽", name: b.name, sub: b.sub, tag: cur + salonPrice(s, b.price) },
+        cond: (st) => st.money >= salonPrice(st, b.price),
+        hi: b.id === "proper" ? 1 : 0,
+        fx: { run: (st) => {
+          st.money -= salonPrice(st, b.price);
+          const bd = binderState(st);
+          bd.owned = true; bd.kind = b.id; bd.use = "safe";
+          movePres(st, b.flat);
+          st.stats.happiness = clamp(st.stats.happiness + rnd(9, 15));
+          push(st, b.id === "proper"
+            ? `🎽 Measured properly, ordered, and then a week of checking the post. Putting it on the first time: a completely flat line under a t-shirt, and a sound you made that you'd rather not describe.`
+            : b.id === "sportsbra"
+            ? `👚 Two sports bras, one on top of the other. It half-works, it's uncomfortable, and it is not what they're designed for — but it's what you've got today.`
+            : b.id === "tape"
+            ? `🩹 Trans tape. Fiddly, takes practice, and there's no compression on your ribs at all — which your lungs appreciate.`
+            : `🎽 Cheap, unbranded, no size chart worth the name. It's flatter than anything you've managed before, and it is noticeably too tight.`);
+        } } })),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function binderUseMenu(state) {
+  const s = pClone(state);
+  const bd = binderState(s);
+  const cfg = BINDERS.find((x) => x.id === bd.kind) || BINDERS[1];
+  s.pending = { emoji: "🎽", title: "Wearing it", text: `${cfg.name}. Strain on your ribs: ${bd.strain > 60 ? "high — this is doing damage" : bd.strain > 30 ? "building up" : "low"}.`, layout: "grid",
+    options: [
+      { card: { emoji: "✅", name: "Eight hours, rest days", sub: "the way it's meant to be worn", tag: "safe" }, hi: 1,
+        fx: { run: (st) => { const q = binderState(st); q.use = "safe"; q.strain = Math.max(0, q.strain - 12);
+          st.stats.happiness = clamp(st.stats.happiness + 4);
+          push(st, `🎽 Eight hours, off at home, days off at the weekend. Less time flat than you want, and your ribs will still be working in ten years.`); } } },
+      { card: { emoji: "⚠️", name: "All day, every day", sub: "more hours, real cost", tag: "risky" },
+        fx: { run: (st) => { const q = binderState(st); q.use = "all"; q.strain = Math.min(100, q.strain + 18);
+          movePres(st, 2);
+          st.stats.happiness = clamp(st.stats.happiness + 6);
+          st.stats.health = clamp(st.stats.health - 2);
+          push(st, `🎽 Fourteen hours a day, most days. You can breathe, mostly. Bending down is a negotiation and there's an ache under your ribs that doesn't fully go away.`); } } },
+      { card: { emoji: "🛑", name: "Sleep in it too", sub: "don't", tag: "dangerous" },
+        fx: { run: (st) => { const q = binderState(st); q.use = "sleep"; q.strain = Math.min(100, q.strain + 30);
+          st.stats.health = clamp(st.stats.health - 6);
+          st.stats.happiness = clamp(st.stats.happiness + 4);
+          push(st, `🛑 You slept in it, and then kept sleeping in it. You know exactly how bad this is for you. You did it anyway, because waking up flat felt worth more than the ribs did.`); } } },
+      { card: { emoji: "🌬", name: "Take a break from it", sub: "a day off", tag: "" },
+        fx: { run: (st) => { const q = binderState(st); q.use = "none"; q.strain = Math.max(0, q.strain - 25);
+          st.stats.health = clamp(st.stats.health + 3);
+          st.stats.happiness = clamp(st.stats.happiness - 5);
+          push(st, `🌬 A day without it. Your ribs are grateful and you spent the whole day in a hoodie with your arms crossed.`); } } },
+      CANCEL,
+    ] };
+  return s;
+}
+
+const FTM_POOL = [
+  // binding safely vs not has consequences
+  { id: "binderStrain", w: 6, minAge: 11, maxAge: 60, cd: 200,
+    cond: (s) => s.body?.binder?.owned && ["all", "sleep"].includes(s.body.binder.use) && !s.flags.srg_top,
+    run: (s) => {
+      const bd = s.body.binder;
+      bd.strain = Math.min(100, bd.strain + rnd(4, 10));
+      if (bd.strain > 70 && Math.random() < 0.4) {
+        return { event: { emoji: "🫁", title: "Your ribs", text: pick([
+          "You couldn't get a full breath at the top of the stairs, and it took longer than it should have to come back.",
+          "A specific, sharp pain under your ribs that made you stop walking. It passed. It's been happening more.",
+        ]), options: [
+          { label: "Switch to wearing it safely", fx: { run: (st) => { const q = binderState(st); q.use = "safe"; q.strain = Math.max(0, q.strain - 25); st.stats.health = clamp(st.stats.health + 4); st.stats.happiness = clamp(st.stats.happiness - 3);
+            push(st, `🫁 Eight hours, rest days, properly. It's a downgrade you hate and the pain stopped within a fortnight.`); } } },
+          { label: "See a doctor about it", fx: { run: (st) => { st.money -= careCost(st, 90); const q = binderState(st); q.use = "safe"; q.strain = Math.max(0, q.strain - 40);
+            st.stats.health = clamp(st.stats.health + 6);
+            push(st, `🫁 The doctor didn't lecture you, which you'd braced for. Bruised cartilage, a sizing conversation, and a sentence you'll keep: "I'd rather you bind safely than not tell me about it."`); } } },
+          { label: "Carry on regardless", fx: { run: (st) => { const q = binderState(st); q.strain = Math.min(100, q.strain + 12); st.stats.health = clamp(st.stats.health - 6);
+            if (Math.random() < 0.4) giveCondition(st, "backPain");
+            push(st, `🫁 You carried on. There's a version of this story where you regret that, and you've read it, and you carried on anyway.`); } } },
+        ] } };
+      }
+      return { auto: [pick([
+        `🎽 The ache under your ribs is background noise now. You've stopped noticing, which is its own kind of warning.`,
+        `🎽 Taking it off at the end of the day is fifteen seconds of pure relief and a mark across your ribs that stays till morning.`,
+      ])], fx: { stats: { health: -1 } } };
+    } },
+  // PE and binding is a genuine conflict
+  { id: "binderPE", i: 1, w: 5, minAge: 11, maxAge: 19, cd: 500,
+    cond: (s) => inSchool(s) && s.body?.binder?.owned && s.body.binder.use !== "none" && !s.flags.srg_top,
+    run: (s) => ({ event: { emoji: "🏃", title: "Cross-country", text: "You cannot run in it. You cannot take it off. The lesson is in forty minutes and both of those things are still true.", options: [
+      { label: "Run in it anyway", fx: { run: (st) => { const q = binderState(st); q.strain = Math.min(100, q.strain + 20); st.stats.health = clamp(st.stats.health - 5);
+        push(st, `🏃 You ran in it and finished dizzy, grey and last, and told the teacher you were just unfit.`); } } },
+      { label: "Take it off and get through the hour", fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness - 11); st.stats.health = clamp(st.stats.health + 1);
+        push(st, `🏃 You took it off. Forty minutes of a body you didn't want to be in, in front of everyone. You showered at home that day, and every day.`); } } },
+      { label: "Skip PE entirely", fx: { run: (st) => { st.education.subjects.pe = clamp(st.education.subjects.pe - 10); st.school.trouble = (st.school.trouble || 0) + 1;
+        push(st, `🏃 You skipped it, and kept skipping it. Your PE grade is a casualty of a problem nobody in that building would have understood.`); } } },
+    ] } }) },
+  // being read correctly
+  { id: "sirMoment", w: 5, minAge: 12, maxAge: 70, cd: 260,
+    cond: (s) => s.discovered.gender && isQueerG(s) && presTarget(s) < 50 && presGap(s) < 35,
+    run: (s) => ({ auto: [pick([
+      `🎯 A shop assistant called you "mate" without thinking about it, and you floated for the rest of the afternoon.`,
+      `🎯 Someone held a door and said "after you, sir." You said thank you in the lowest voice you own and grinned the whole way down the street.`,
+      `🎯 A stranger asked your name and, hearing it, didn't do the small double-take. Nothing happened. That was the whole point.`,
+    ])], fx: { stats: { happiness: +rnd(5, 10) } } }) },
+];
+POOL.push(...FTM_POOL);
+
+/* ═══════════════ PARTNER AWARENESS · FERTILITY · DISTANCE ═══════════════ */
+
+// partners have their own orientation, learned by paying attention
+const ORIENTS = ["Straight", "Bisexual", "Pansexual", "Lesbian", "Gay", "Asexual", "Fluid"];
+function partnerOrientation(s, p) {
+  if (!p.orientation) {
+    const era = localAcceptance(s);
+    const bag = ["Straight", "Straight", "Straight", "Bisexual", "Pansexual", "Fluid", "Asexual"];
+    if (era > 45) bag.push("Bisexual", "Pansexual");
+    p.orientation = pick(bag);
+  }
+  return p.orientation;
+}
+// how a partner takes your transition depends heavily on whether they're attracted to women
+function orientationFit(s, p) {
+  const o = partnerOrientation(s, p);
+  if (["Bisexual", "Pansexual", "Fluid"].includes(o)) return 1;      // fine either way
+  if (o === "Asexual") return 0.8;
+  const becomingWoman = s.hidden.gender === "Trans woman";
+  const becomingMan = s.hidden.gender === "Trans man";
+  const theyLikeWomen = (o === "Lesbian") || (o === "Straight" && p.g === "M");
+  const theyLikeMen = (o === "Gay") || (o === "Straight" && p.g === "F");
+  if (becomingWoman) return theyLikeWomen ? 1 : 0.25;
+  if (becomingMan) return theyLikeMen ? 1 : 0.25;
+  return 0.8;
+}
+
+/* — fertility, honestly — */
+function isSterile(s) {
+  if (s.flags.srg_gcs) return true;                       // gender-affirming surgery
+  if (s.flags.sterilised) return true;
+  if (s.flags.hrt) {
+    const yrs = (s.ageDays - s.flags.hrt) / 365;
+    return yrs >= 2;                                      // prolonged HRT: treated as infertile here
+  }
+  return false;
+}
+function fertilityNote(s, p) {
+  if (s.flags.srg_gcs) return "Surgery closed that door, and you knew that when you chose it.";
+  if (s.flags.sterilised) return "That isn't possible for you any more.";
+  if (s.flags.hrt && (s.ageDays - s.flags.hrt) / 365 >= 2) return "Years on hormones. Whatever chance there was is behind you now — a thing you weighed, and chose, and still feel on certain days.";
+  if (s.flags.hrt) return "You're early enough on hormones that it might still be possible — briefly, and not for much longer.";
+  if (!canConceiveBio(s, p)) return "Not between the two of you, biologically.";
+  return null;
+}
+// pure biology check, without the sterility overlay
+function canConceiveBio(s, p) {
+  const meF = s.profile.sex === "Female", meM = s.profile.sex === "Male";
+  const themF = p.g === "F", themM = p.g === "M";
+  return (meF && themM) || (meM && themF);
+}
+
+/* — moving cities has consequences — */
+function relocate(st, to) {
+  const from = st.profile.city;
+  st.profile.city = to;
+  // people you don't live with become distant
+  const mark = (obj) => Object.values(obj || {}).forEach((p) => { if (p && !p.pet) p.distant = true; });
+  mark(st.friends); mark(st.relatives);
+  ["mom", "dad", ...Object.keys(st.family).filter((k) => k.startsWith("sib"))].forEach((k) => { if (st.family[k]) st.family[k].distant = true; });
+  // your job doesn't come with you unless it can
+  if (st.career.job) {
+    const remote = yearOf(st) >= 2015 && Math.random() < 0.35;
+    if (remote) push(st, `💼 You kept your job as ${st.career.job.title} — remote, with a laptop and a lot of calls.`);
+    else { push(st, `💼 You couldn't take ${st.career.job.title} with you. Last day, a card signed by people you'd got used to, and then nothing lined up.`); st.career.job = null; }
+  }
+  if (st.school) { push(st, `🎒 New school. New everything.`); enrollSchool(st, st.school.stage); }
+  st.flags.movedCity = st.ageDays;
+  push(st, `📦 You moved from ${from} to ${to}. Boxes, a new bus route, and the specific loneliness of the first three weeks.`);
+}
+
+const REALISM_POOL = [
+  /* — a partner living with you cannot miss a medical transition — */
+  { id: "partnerNotices", i: 1, w: 12, minAge: 16, maxAge: 90, cd: 240,
+    cond: (s) => !!s.flags.hrt && activePartners(s).some(([k, p]) => !s.outTo[k] && (p.status === "married" || p.status === "engaged" || p.status === "serious")),
+    run: (s) => {
+      const [k, p] = activePartners(s).find(([kk, q]) => !s.outTo[kk] && ["married", "engaged", "serious"].includes(q.status));
+      const months = Math.floor((s.ageDays - s.flags.hrt) / 30);
+      const together = s.flags.cohabiting || p.status === "married";
+      const how = months < 6
+        ? pick([`${p.name} found the box in the bathroom cabinet and didn't put it back where it was.`, `"You've had a lot of appointments," ${p.name} says, not looking up. "Is there something you're not telling me?"`])
+        : months < 18
+        ? pick([`${p.name} has been looking at you differently for weeks. Tonight: "Your body is changing. I'm not stupid, and I'm not blind, and I live here."`, `You caught ${p.name} crying in the kitchen. Not angry. Just: "Please tell me what's happening to you."`])
+        : pick([`${p.name} puts down their fork. "We are not doing this any more — this thing where I pretend I haven't noticed and you pretend there's nothing to notice. Years, ${usedName(s)}. Years."`, `${p.name} has stopped touching you, and tonight they say why: "I don't know who I'm married to. I've stopped being able to pretend I do."`]);
+      return { event: { emoji: "💔", title: `${p.name} knows something`, text: `${how}${together ? "" : " You don't even live together, and it's still obvious."}`, options: [
+        { label: "Tell them everything, properly", fx: { run: (st) => {
+          st.outTo[k] = true;
+          const q = st.romance[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance");
+          st.pending = comeOutReact(st, "romance", k, months > 18 ? -14 : -4, "confronted").pending;
+        } } },
+        { label: "Lie again", fx: { run: (st) => {
+          const q = st.romance[k];
+          q.rel = clamp(q.rel - rnd(12, 20));
+          q.trustBroken = (q.trustBroken || 0) + 1;
+          st.stats.happiness = clamp(st.stats.happiness - 14);
+          push(st, `💔 You lied to ${q.name} again, and this time they knew it while you were saying it. ${q.trustBroken > 1 ? "Something in their face closed for good." : "They let it go, and did not believe a word."}`);
+        } } },
+      ] } }; } },
+
+  /* — after surgery there is no hiding, at all — */
+  { id: "partnerSurgery", i: 1, w: 20, minAge: 18, maxAge: 90, cd: 30,
+    cond: (s) => (s.flags.srg_top || s.flags.srg_gcs) && activePartners(s).some(([k, p]) => !s.outTo[k] && ["married", "engaged", "serious"].includes(p.status)) && !s.flags.surgeryOutDone,
+    run: (s) => {
+      const [k, p] = activePartners(s).find(([kk, q]) => !s.outTo[kk] && ["married", "engaged", "serious"].includes(q.status));
+      s.flags.surgeryOutDone = true;
+      return { event: { emoji: "🏥", title: "There is no hiding this", text: `You have had surgery. ${p.name} shares a bed with you. There is no version of this where they don't know — and tonight they say so, quietly, sitting on the edge of the bath while you can't meet their eye.`, options: [
+        { label: "Tell them the whole truth", fx: { run: (st) => {
+          st.outTo[k] = true;
+          const q = st.romance[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance");
+          st.pending = comeOutReact(st, "romance", k, -12, "outed").pending;
+        } } },
+      ] } }; } },
+
+  /* — a straight spouse and a transitioning partner: the real conversation — */
+  { id: "orientationClash", i: 1, w: 7, minAge: 18, maxAge: 90, cd: 500,
+    cond: (s) => s.discovered.gender && isQueerG(s) && !!s.flags.hrt && activePartners(s).some(([k, p]) => s.outTo[k] && orientationFit(s, p) < 0.5 && !p.clashDone),
+    run: (s) => {
+      const [k, p] = activePartners(s).find(([kk, q]) => s.outTo[kk] && orientationFit(s, q) < 0.5 && !q.clashDone);
+      const o = partnerOrientation(s, p);
+      return { event: { emoji: "🫂", title: `${p.name} says the hard thing`, text: `"I love you. I have never stopped loving you." ${p.name} is choosing every word. "But I'm ${o.toLowerCase()}. That isn't a thing I decided and it isn't a thing I can decide out of. I don't know how to be your wife and be honest at the same time."`, options: [
+        { label: "Ask what they actually want", fx: { run: (st) => {
+          const q = st.romance[k]; q.clashDone = true;
+          if (!q.known.includes("orientation")) q.known.push("orientation");
+          const stay = Math.random() < 0.3 + q.loyalty / 260 + q.rel / 300;
+          if (stay) { q.rel = clamp(q.rel - 8); q.status = q.status === "married" ? "married" : q.status;
+            st.stats.happiness = clamp(st.stats.happiness - 4);
+            push(st, `🫂 ${q.name} wants to try — separate rooms for now, no promises, and a counsellor if you can find one who won't be a disaster. It is not what either of you wanted. It is honest, and it is still a marriage, for now.`); }
+          else { doBreakup(st, k, false);
+            st.stats.happiness = clamp(st.stats.happiness - 10);
+            push(st, `🫂 ${q.name} wants out — kindly, and completely. "You deserve someone who wants what you're becoming. So do I." It took months to unpick a life. Neither of you was the villain.`); }
+        } } },
+        { label: "Beg them to stay", fx: { run: (st) => {
+          const q = st.romance[k]; q.clashDone = true;
+          if (Math.random() < 0.35) { q.rel = clamp(q.rel - 14); st.stats.happiness = clamp(st.stats.happiness - 8);
+            push(st, `🫂 They stayed, and something curdled. You both know it's an arrangement now, not a marriage. It lasts years longer than it should.`); }
+          else { doBreakup(st, k, true); st.stats.happiness = clamp(st.stats.happiness - 16);
+            push(st, `🫂 You begged, and watched it make things worse, and it ended anyway — with less dignity for you both than it needed to.`); }
+        } } },
+        { label: "Let them go", fx: { run: (st) => {
+          const q = st.romance[k]; q.clashDone = true;
+          doBreakup(st, k, false);
+          st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 10);
+          st.stats.happiness = clamp(st.stats.happiness - 8);
+          push(st, `🫂 You said it first, to spare them saying it: "You should go." ${q.name} cried, and agreed, and thanked you for it later — properly, years later, at a coffee shop, both of you happier.`);
+        } } },
+      ] } }; } },
+
+  /* — distance is real once you've moved — */
+  { id: "distanceDrift", w: 5, minAge: 18, maxAge: 90, cd: 300,
+    cond: (s) => !!s.flags.movedCity && (Object.values(s.friends).some((p) => p.distant) || s.family.mom?.distant),
+    run: (s) => {
+      const pool = [...Object.values(s.friends), s.family.mom, s.family.dad].filter((p) => p && p.distant && !p.pet);
+      if (!pool.length) return { auto: [] };
+      const p = pick(pool);
+      p.rel = clamp(p.rel - rnd(1, 4));
+      return { auto: [pick([
+        `📵 You and ${p.name} keep saying you'll call properly. Three hundred miles turns "next week" into "next time I'm back".`,
+        `📵 ${p.name} had news you found out about second-hand. That's what distance does — not a falling out, just a slow loss of the small stuff.`,
+      ])], fx: { stats: { happiness: -2 } } }; } },
+];
+POOL.push(...REALISM_POOL);
+
+const CHEAT_POOL = [
+  { id: "caughtCheating", i: 1, w: 8, minAge: 16, maxAge: 90, cd: 400,
+    cond: (s) => s.flags.cheating && activePartners(s).filter(([, p]) => !p.openOk).length >= 2,
+    run: (s) => {
+      const list = activePartners(s).filter(([, p]) => !p.openOk);
+      const found = list.find(([, q]) => ["married", "engaged", "serious"].includes(q.status)) || list[0];
+      const [k, p] = found;
+      return { event: { emoji: "💣", title: `${p.name} found out`, text: pick([
+        `A message you didn't hide well enough. ${p.name} is holding your phone and hasn't said anything for a long time.`,
+        `Someone told them. ${p.name} asked you directly, and watched your face do the work before your mouth caught up.`,
+      ]), options: [
+        { label: "Admit everything", fx: { run: (st) => {
+          const q = st.romance[k];
+          st.flags.cheating = false;
+          if (Math.random() < 0.25 + q.loyalty / 400) { q.rel = clamp(q.rel - 30); st.stats.happiness = clamp(st.stats.happiness - 12);
+            push(st, `💣 You told the truth, all of it. ${q.name} stayed — furious, wounded, and staying. It took years, and it was never quite the same shape again.`); }
+          else { doBreakup(st, k, true); st.stats.happiness = clamp(st.stats.happiness - 18);
+            push(st, `💣 You told the truth and it ended things. ${q.name} was calm, which was worse than shouting.`); }
+        } } },
+        { label: "Deny it", fx: { run: (st) => {
+          const q = st.romance[k];
+          if (Math.random() < 0.3) { q.rel = clamp(q.rel - 12); push(st, `💣 They wanted to believe you enough to let it drop. It sits under everything now.`); }
+          else { doBreakup(st, k, true); st.stats.happiness = clamp(st.stats.happiness - 16); push(st, `💣 They had the messages. Denying it was the last thing you did in that relationship.`); }
+        } } },
+      ] } }; } },
+];
+POOL.push(...CHEAT_POOL);
+
+/* ═══════════════ SOCIAL MEDIA ═══════════════ */
+
+const PLATFORMS = [
+  { id: "sixdeg", name: "SixDegrees", emoji: "🌐", from: 1997, to: 2001, minAge: 13, vibe: "the very first one, and nobody's on it" },
+  { id: "msn", name: "MSN Messenger", emoji: "💬", from: 1999, to: 2013, minAge: 12, vibe: "nudges, away messages, and song lyrics as your name" },
+  { id: "myspace", name: "MySpace", emoji: "🎸", from: 2003, to: 2010, minAge: 14, vibe: "your top 8 is a political statement" },
+  { id: "orkut", name: "Orkut", emoji: "🟣", from: 2004, to: 2014, minAge: 13, vibe: "communities for everything", strong: ["Brazil", "India"] },
+  { id: "facebook", name: "Facebook", emoji: "📘", from: 2006, to: 2100, minAge: 13, vibe: "your aunt is here now", banned: ["China"] },
+  { id: "reddit", name: "Reddit", emoji: "🤖", from: 2005, to: 2100, minAge: 13, vibe: "strangers who know one thing extremely well" },
+  { id: "twitter", name: yearOfLabel(2023) ? "Twitter / X" : "Twitter", emoji: "🐦", from: 2007, to: 2100, minAge: 13, vibe: "the argument never ends", banned: ["China"] },
+  { id: "tumblr", name: "Tumblr", emoji: "🌀", from: 2008, to: 2100, minAge: 13, vibe: "where a lot of people work themselves out" },
+  { id: "instagram", name: "Instagram", emoji: "📸", from: 2011, to: 2100, minAge: 13, vibe: "everyone's best 4%", banned: ["China"] },
+  { id: "snapchat", name: "Snapchat", emoji: "👻", from: 2012, to: 2100, minAge: 13, vibe: "it disappears, allegedly" },
+  { id: "tiktok", name: "TikTok", emoji: "🎵", from: 2018, to: 2100, minAge: 13, vibe: "time evaporates here", banned: ["India"], bannedFrom: 2020 },
+  { id: "kwai", name: "Kwai", emoji: "🎬", from: 2017, to: 2100, minAge: 13, vibe: "short videos, big prizes", strong: ["Brazil"] },
+  { id: "discord", name: "Discord", emoji: "🎮", from: 2016, to: 2100, minAge: 13, vibe: "servers that become your actual social life" },
+];
+function yearOfLabel() { return false; }
+
+// legal minimum age to hold an account where you live
+function socialMinAge(s, p) {
+  const c = s.profile.country;
+  const strictEU = ["Germany", "Netherlands", "France", "Ireland", "Italy", "Portugal", "Greece", "Poland", "Austria"];
+  if (strictEU.includes(c) && yearOf(s) >= 2018) return Math.max(p.minAge, 16); // GDPR
+  if (c === "South Korea" && yearOf(s) >= 2012) return Math.max(p.minAge, 14);
+  return p.minAge;
+}
+function platformAvailable(s, p) {
+  const y = yearOf(s);
+  if (y < p.from || y > p.to) return false;
+  if (p.banned && p.banned.includes(s.profile.country) && y >= (p.bannedFrom || p.from)) return false;
+  return true;
+}
+function socialState(s) {
+  if (!s.social) s.social = { accounts: {}, followers: 0, reach: 0, drama: 0 };
+  return s.social;
+}
+
+function socialMenu(state) {
+  const s = pClone(state);
+  const soc = socialState(s);
+  const y = yearOf(s);
+  const age = ageYears(s);
+  const avail = PLATFORMS.filter((p) => platformAvailable(s, p));
+  if (!avail.length) {
+    s.pending = { emoji: "📵", title: "No such thing yet", text: `It's ${y}. Talking to people means the telephone in the hall, letters, or actually seeing them.`, options: [{ label: "Fair enough", fx: {} }] };
+    return s;
+  }
+  s.pending = { emoji: "📱", title: "Online", layout: "grid",
+    text: soc.followers > 0 ? `${soc.followers.toLocaleString()} followers across everything.` : `It's ${y}. What's online right now:`,
+    options: [
+      ...avail.map((p) => {
+        const min = socialMinAge(s, p);
+        const has = soc.accounts[p.id];
+        const tooYoung = age < min;
+        return { card: { emoji: p.emoji, name: p.name, sub: tooYoung ? `${min}+ where you live` : has ? p.vibe : "sign up", tag: has ? "joined" : tooYoung ? "🔒" : "" },
+          hi: p.strong && p.strong.includes(s.profile.country) ? 1 : 0,
+          fx: { run: (st) => {
+            const so = socialState(st);
+            if (age < min) { st.pending = underageMenu(st, p, min).pending; return; }
+            if (!so.accounts[p.id]) {
+              so.accounts[p.id] = { since: st.ageDays, posts: 0 };
+              st.stats.happiness = clamp(st.stats.happiness + 4);
+              push(st, `${p.emoji} You joined ${p.name}. ${p.strong && p.strong.includes(st.profile.country) ? `Everyone in ${st.profile.country} is already on it.` : p.vibe}`);
+            } else { st.pending = platformMenu(st, p).pending; }
+          } } };
+      }),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function underageMenu(state, p, min) {
+  const s = pClone(state);
+  s.pending = { emoji: "🔒", title: `${p.name} says ${min}+`, text: `You're ${ageYears(s)}. The sign-up form wants a birthday.`, options: [
+    { label: "Lie about your age", fx: { run: (st) => {
+      const so = socialState(st);
+      so.accounts[p.id] = { since: st.ageDays, posts: 0, faked: true };
+      st.stats.happiness = clamp(st.stats.happiness + 5);
+      push(st, `🔒 You put in a year that made you old enough. Everyone does. ${st.profile.country === "Germany" || st.profile.country === "Netherlands" ? "The rule exists to protect your data, which is not the thing you were thinking about." : "It took four seconds."}`);
+      if (Math.random() < 0.25) { const k = pick(["mom", "dad"]); if (st.family[k]) { bumpSuspicion(st, k, 5); push(st, `👀 ${st.family[k].name} knows you're on it, and knows what the age limit is.`); } }
+    } } },
+    { label: "Wait until you're old enough", fx: { stats: { happiness: -3 }, emergent: { prudence: +4 }, feed: `🔒 You waited. Everyone you know is on it and talks about it constantly, which is its own daily tax.` } },
+  ] };
+  return s;
+}
+
+function platformMenu(state, p) {
+  const s = pClone(state);
+  const soc = socialState(s);
+  const acct = soc.accounts[p.id];
+  const queer = isOutQueer(s);
+  const era = localAcceptance(s);
+  s.pending = { emoji: p.emoji, title: p.name, layout: "grid", text: `${acct.posts} posts. ${soc.followers.toLocaleString()} followers.`,
+    options: [
+      { card: { emoji: "✏️", name: "Post something", sub: "into the void, hopefully", tag: "" },
+        fx: { run: (st) => {
+          const so = socialState(st); so.accounts[p.id].posts++;
+          const gain = rnd(0, 40) + Math.round(st.stats.looks / 8);
+          so.followers += gain;
+          st.stats.happiness = clamp(st.stats.happiness + (gain > 25 ? 5 : 2));
+          push(st, gain > 30
+            ? `${p.emoji} Something you posted did numbers. +${gain} followers and a notifications tab you checked more than you'd admit.`
+            : `${p.emoji} You posted. ${gain} new followers, three likes from people you know, and the quiet hope nobody mentions it.`);
+        } } },
+      { card: { emoji: "🔍", name: "Fall down a hole", sub: "two hours, gone", tag: "" },
+        fx: { run: (st) => {
+          st.stats.happiness = clamp(st.stats.happiness + rnd(-3, 5));
+          st.stats.health = clamp(st.stats.health - 1);
+          st.stats.smarts = clamp(st.stats.smarts + (Math.random() < 0.3 ? 1 : 0));
+          push(st, pick([`${p.emoji} You went in for one thing and came out two hours later knowing a great deal about something irrelevant.`, `${p.emoji} Scrolled until your thumb ached and your mood was measurably worse. Did it again the next night.`]));
+        } } },
+      ...(queer || (s.discovered.gender && isQueerG(s)) ? [{ card: { emoji: "🏳️‍🌈", name: "Find your people", sub: "the whole reason this matters", tag: "" }, hi: 1,
+        fx: { run: (st) => {
+          st.stats.happiness = clamp(st.stats.happiness + rnd(8, 14));
+          st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 8);
+          const so = socialState(st); so.followers += rnd(5, 40);
+          push(st, era < 40
+            ? `${p.emoji} You found them — pseudonymous, careful, scattered across time zones, and the first people who ever described your own life back to you. ${st.profile.city} suddenly felt less like the whole world.`
+            : `${p.emoji} Accounts, communities, people posting about the exact thing you thought only you felt. You read for hours and something in you unclenched.`);
+        } } }] : []),
+      ...(queer && !s.flags.outOnline ? [{ card: { emoji: "📣", name: "Come out publicly", sub: "everyone, at once", tag: "" },
+        fx: { run: (st) => { st.pending = comeOutOnline(st, p).pending; } } }] : []),
+      { card: { emoji: "😬", name: "Get into an argument", sub: "with a stranger, at midnight", tag: "" },
+        fx: { run: (st) => {
+          const so = socialState(st); so.drama++;
+          if (Math.random() < 0.3) { so.followers += rnd(20, 200); st.stats.happiness = clamp(st.stats.happiness - 6); push(st, `${p.emoji} It escalated, other people piled in, and you gained followers for all the wrong reasons. You did not sleep well.`); }
+          else { st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `${p.emoji} Forty minutes typing and deleting. You won an argument nobody was scoring, against someone who'll never think about it again.`); }
+        } } },
+      ...(acct.faked ? [{ card: { emoji: "⚠️", name: "Account under a fake age", sub: "could be closed", tag: "" }, fx: { run: (st) => {
+        if (Math.random() < 0.3) { delete socialState(st).accounts[p.id]; st.stats.happiness = clamp(st.stats.happiness - 7); push(st, `⚠️ ${p.name} closed your account. Years of things, gone, because of a birthday you typed at thirteen.`); }
+        else push(st, `⚠️ Nothing's happened yet. You keep meaning to fix the birth year and never do.`);
+      } } }] : []),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function comeOutOnline(state, p) {
+  const s = pClone(state);
+  const era = localAcceptance(s);
+  const soc = socialState(s);
+  s.pending = { emoji: "📣", title: "Post it publicly", text: `Everyone at once — school, family, work, people you haven't spoken to in years. ${era < 35 ? `In ${yearOf(s)}, in ${s.profile.country}, this is not a small thing to do.` : "No more individual conversations."}`, options: [
+    { label: "Post it", fx: { run: (st) => {
+      st.flags.outOnline = true;
+      const so = socialState(st);
+      Object.keys(st.family).forEach((k) => { st.outTo[k] = true; });
+      Object.keys(st.friends).forEach((k) => { st.outTo[k] = true; });
+      const warm = era > 45;
+      so.followers += rnd(10, 300);
+      st.stats.happiness = clamp(st.stats.happiness + (warm ? 16 : -6));
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 14);
+      push(st, warm
+        ? `📣 You posted it and put the phone face-down for an hour. When you looked: hundreds of replies, almost all of them kind, including three people you'd never have guessed. A cousin you barely know wrote the best one.`
+        : `📣 You posted it. The replies were a mixture, and the bad ones were very bad, and two family members phoned to ask you to take it down. You didn't. Some people you'd counted on said nothing at all, which was its own answer.`);
+      if (!warm) { Object.keys(st.family).forEach((k) => { const q = st.family[k]; if (q && q.acceptance < 40) q.rel = clamp(q.rel - 15); }); }
+    } } },
+    { label: "Draft it and don't post it", fx: { stats: { happiness: -3 }, emergent: { selfAwareness: +5 }, feed: "📣 You wrote the whole thing, read it nine times, and put it in drafts. It's still there. One day." } },
+  ] };
+  return s;
+}
+
+const SOCIAL_GROUP = { id: "social_media", emoji: "📱", name: "Online", cond: (s) => yearOf(s) >= 1997 && !inPrison(s), items: [
+  { id: "socialhub", minAge: 8, emoji: "📱", label: "Social media", cost: 1, special: "socialhub" },
+] };
+ACT_GROUPS.push(SOCIAL_GROUP);
+
+const SOCIAL_POOL = [
+  { id: "socialThrowback", w: 4, minAge: 14, maxAge: 90, cd: 700, cond: (s) => s.social && Object.keys(s.social.accounts || {}).length > 0 && (s.flags.legalName || usedName(s) !== s.profile.first),
+    run: (s) => ({ event: { emoji: "🕰", title: "The algorithm has no tact", text: `A "memories" notification: a photo of you from years ago, name and all, served up cheerfully at 8 a.m.`, options: [
+      { label: "Delete the whole account history", fx: { stats: { happiness: -3 }, emergent: { discipline: +4 }, feed: "🕰 An afternoon of scrolling back through a person you used to be, deleting as you went. Necessary. Strange. A little like a funeral." } },
+      { label: "Leave it — it happened", fx: { stats: { happiness: +5 }, emergent: { selfAwareness: +7 }, feed: "🕰 You left it up. That was you, and you got here from there, and there's no shame in the getting." } },
+    ] } }) },
+  { id: "socialOuted", i: 1, w: 4, minAge: 13, maxAge: 60, cd: 900,
+    cond: (s) => s.social && Object.keys(s.social.accounts || {}).length > 0 && isOutQueer(s) && !s.flags.outOnline && ["mom", "dad"].some((k) => closetedFrom(s, k)),
+    run: (s) => {
+      const k = ["mom", "dad"].find((k2) => closetedFrom(s, k2));
+      return { event: { emoji: "📲", title: "Tagged", text: `Someone tagged you in a photo from a night you were entirely yourself, and ${s.family[k].name} is on the same platform, and the internet does not do discretion.`, options: [
+        { label: "Own it before they ask", fx: { run: (st) => { st.outTo[k] = true; const q = st.family[k]; if (!q.known.includes("acceptance")) q.known.push("acceptance"); st.pending = comeOutReact(st, "family", k, -6, "outed").pending; } } },
+        { label: "Untag and hope", fx: { run: (st) => { bumpSuspicion(st, k, 20); st.stats.happiness = clamp(st.stats.happiness - 5); push(st, `📲 Untagged within the minute. The internet is forever and your mother is observant, and you spent a week waiting for a conversation that didn't come. Yet.`); } } },
+      ] } }; } },
+];
+POOL.push(...SOCIAL_POOL);
+
+/* ═══════════════ SCHOOL SOCIAL TRANSITION — LEGAL FRAMEWORK & INSTITUTIONS ═══════════════ */
+
+/* — what the law and the era actually allow, where you live — */
+function schoolLegal(s) {
+  const era = localAcceptance(s);
+  const y = yearOf(s);
+  const faith = SCHOOL_TYPES[s.school?.type || "public"].faith || 0;
+  const strict = SCHOOL_TYPES[s.school?.type || "public"].strict || 0;
+  let tier;
+  if (era < 12) tier = "criminalised";      // being out is itself dangerous
+  else if (era < 30) tier = "none";          // no policy exists; pure individual discretion
+  else if (era < 50) tier = "emerging";      // guidance exists, inconsistently applied
+  else if (era < 72) tier = "protected";     // real protections, process required
+  else tier = "strong";                      // established rights, routine process
+  // religious and very strict schools lag their country
+  if (faith >= 2 && tier !== "criminalised") tier = tier === "strong" ? "emerging" : tier === "protected" ? "emerging" : "none";
+  else if (strict >= 3 && (tier === "strong" || tier === "protected")) tier = "emerging";
+  return {
+    tier,
+    needsParent: ["none", "emerging", "protected"].includes(tier) && ageYears(s) < 18,
+    needsDocs: ["emerging", "protected"].includes(tier),
+    canAppeal: ["protected", "strong"].includes(tier),
+    legalRecords: tier === "strong" || (tier === "protected" && y >= 2010),
+    era, faith, strict,
+  };
+}
+const LEGAL_LABEL = {
+  criminalised: "There is no legal route here. Asking is itself a risk.",
+  none: "No policy exists. Whatever happens depends entirely on who you ask.",
+  emerging: "There's some guidance, applied unevenly, and paperwork nobody is sure about.",
+  protected: "There's a process. It's slow, and it mostly works.",
+  strong: "This is routine here. There's a form for it.",
+};
+
+/* — the things you can ask for — */
+const TRANS_REQUESTS = {
+  name:      { label: "Preferred name in the register", emoji: "📛", weight: 0, tier: "none" },
+  pronouns:  { label: "Pronouns from staff", emoji: "🗣", weight: 0, tier: "none" },
+  lists:     { label: "Class lists & seating", emoji: "📋", weight: 5, tier: "none" },
+  id:        { label: "Student ID card", emoji: "🪪", weight: 12, tier: "emerging" },
+  email:     { label: "School email account", emoji: "📧", weight: 8, tier: "emerging", minYear: 1998 },
+  uniform:   { label: "The other uniform", emoji: "👔", weight: 18, tier: "none" },
+  activities:{ label: "Gendered activities & sports", emoji: "🏐", weight: 25, tier: "emerging" },
+  restroom:  { label: "Restroom access", emoji: "🚻", weight: 30, tier: "emerging" },
+  changing:  { label: "Changing rooms", emoji: "🚿", weight: 38, tier: "protected" },
+  documents: { label: "Name on graduation documents", emoji: "🎓", weight: 45, tier: "strong", legal: 1 },
+};
+const TIER_RANK = { criminalised: 0, none: 1, emerging: 2, protected: 3, strong: 4 };
+
+/* — how you ask matters as much as what you ask — */
+const CHANNELS = {
+  teacher:  { label: "Ask a teacher privately", emoji: "🤫", sub: "quiet, personal, no paper trail", formal: 0, bonus: 8 },
+  headInf:  { label: "Speak to the head informally", emoji: "☕", sub: "catch them after assembly", formal: 0.4, bonus: 2 },
+  formal:   { label: "Submit a formal request", emoji: "📄", sub: "in writing, on the record", formal: 1, bonus: 0 },
+  parents:  { label: "Have your parents contact the school", emoji: "👪", sub: "needs a supportive parent", formal: 0.8, bonus: 18, needsParent: 1 },
+  meeting:  { label: "Request a full meeting", emoji: "🏛", sub: "you, parents, staff, admin", formal: 1, bonus: 12, needsParent: 1 },
+};
+
+function supportiveParent(s) {
+  const cands = ["mom", "dad"].filter((k) => s.family[k] && !s.family[k].deceased && s.outTo[k] && s.family[k].acceptance > 55);
+  return cands.length ? s.family[cands[0]] : null;
+}
+
+/* — an individual's response comes from who they are — */
+function staffDisposition(s, t) {
+  // professionalism can override personal belief; fear of consequences can override both
+  const lg = schoolLegal(s);
+  const belief = t.beliefs ?? 50;          // personal view of people like you
+  const prof = t.professionalism ?? 50;    // does the job regardless
+  const empathy = t.empathy ?? 50;
+  const rules = t.ruleRespect ?? 50;
+  const legalFear = t.legalFear ?? 50;
+  const rel = t.rel ?? 50;
+  let score = belief * 0.3 + prof * 0.2 + empathy * 0.2 + rel * 0.15;
+  // where there are protections, rule-followers and the legally nervous comply regardless of belief
+  if (TIER_RANK[lg.tier] >= 3) score += (rules * 0.3 + legalFear * 0.3) - 15;
+  // where there are none, rule-followers hide behind their absence
+  if (TIER_RANK[lg.tier] <= 1) score -= rules * 0.2;
+  if (lg.faith >= 2) score -= (t.religious ?? 40) * 0.35;
+  return clamp(Math.round(score));
+}
+
+function resolveRequest(state, reqKey, chanKey, staffKey) {
+  const s = pClone(state);
+  const lg = schoolLegal(s);
+  const req = TRANS_REQUESTS[reqKey];
+  const chan = CHANNELS[chanKey];
+  const staff = staffKey ? s.school.faculty[staffKey] : s.school.faculty.head;
+  const disp = staffDisposition(s, staff);
+  const parent = supportiveParent(s);
+  if (!s.school.trans) s.school.trans = { granted: {}, refused: {}, pending: {}, attempts: 0, rep: 0 };
+  const tr = s.school.trans;
+  tr.attempts++;
+
+  // base likelihood: legal tier vs how heavy the ask is, plus who you asked and how
+  let score = disp + chan.bonus - req.weight;
+  score += (TIER_RANK[lg.tier] - TIER_RANK[req.tier]) * 22;
+  if (parent && (chanKey === "parents" || chanKey === "meeting")) score += 10;
+  if (tr.refused[reqKey]) score -= 15;                       // asking again after a no
+  if (s.school.trouble > 2) score -= 10;
+  // H1/H2 (Module 11 stx): record the ask, then bend the odds by how coherently
+  // you already present here and how much the office still believes you.
+  stxOnAsk(s, staffKey || "head", staff, reqKey, chanKey);
+  score = Math.round(score * stxCoherenceMult(s) * stxCredMult(s));
+  const roll = score + rnd(-12, 12);
+
+  const grant = (note) => { tr.granted[reqKey] = true; delete tr.refused[reqKey]; applyGrant(s, reqKey); push(s, note); s.stats.happiness = clamp(s.stats.happiness + rnd(8, 15)); };
+  const refuse = (note, formal) => { tr.refused[reqKey] = formal ? "formal" : "informal"; push(s, note); s.stats.happiness = clamp(s.stats.happiness - rnd(6, 12)); };
+
+  let outcome, text;
+  if (lg.tier === "criminalised") {
+    // even here, the individual in front of you still matters
+    if (chanKey === "teacher" && disp > 36 && ((staff.empathy ?? 50) > 65 || (staff.professionalism ?? 50) > 78) && Math.random() < 0.55) {
+      outcome = "quietAlly";
+      tr.quiet = true;
+      text = `${staff.name} closes the door before answering. "I can't put anything on paper. I can't tell anyone I said this." A pause. "But I'll use your name when it's just us, and I'll make sure you're not put in the worst rooms."`;
+      push(s, `🕯 No policy, no record, no protection — one adult, quietly deciding to be decent at some risk to themselves. It is not what you asked for. It is not nothing.`);
+      s.stats.happiness = clamp(s.stats.happiness + 9);
+    } else {
+      outcome = "danger";
+      tr.refused[reqKey] = "formal";
+      s.school.trouble = (s.school.trouble || 0) + rnd(1, 3);
+      text = `${staff.name} listens, and the temperature changes. In ${s.profile.country}, ${yearOf(s)}, what you have just described is not something a school can be seen to permit — and now they know about you.`;
+      s.stats.happiness = clamp(s.stats.happiness - rnd(9, 16));
+      if (Math.random() < 0.4) { s.flags.schoolThreat = { by: "head", day: s.ageDays }; }
+    }
+  } else if (roll > 72) {
+    outcome = "granted";
+    grant(`${req.emoji} ${staff.name} said yes, and meant it. ${chanKey === "teacher" ? "Quietly, without making you explain twice." : "It was in place within the week."}`);
+    text = `Immediate approval. ${staff.name} didn't need convincing.`;
+  } else if (roll > 55) {
+    outcome = "review";
+    tr.pending[reqKey] = { since: s.ageDays, staff: staffKey || "head" };
+    text = `"I'll need to take this to someone above me." It goes into review — which is not a no, and is not yet a yes.`;
+    push(s, `${req.emoji} Your request went into administrative review. Now you wait.`);
+  } else if (roll > 42 && lg.needsParent && !parent) {
+    outcome = "needsParent";
+    text = `"We'd need this in writing from a parent or guardian." Which means telling them, properly, and having them on your side.`;
+    push(s, `${req.emoji} Refused for now — the school wants a parent's authorisation you can't yet give them.`);
+  } else if (roll > 42 && lg.needsDocs && req.legal) {
+    outcome = "needsDocs";
+    text = `"Bring us the legal documentation and we'll change it that day." A legal name change, at your age, in ${yearOf(s)} — a door with another door behind it.`;
+    push(s, `${req.emoji} Blocked on paperwork you don't have.`);
+  } else if (roll > 30) {
+    outcome = "partial";
+    tr.granted[reqKey] = "partial";
+    applyGrant(s, reqKey, true);
+    text = `A compromise: ${reqKey === "name" ? "teachers will use your name verbally, but the register stays as it is" : reqKey === "restroom" ? "you may use the staff toilet, alone, which is safety and exclusion in the same gesture" : reqKey === "uniform" ? "trousers are permitted; the rest is not" : "part of it, on conditions"}.`;
+    push(s, `${req.emoji} Partial approval. Better than nothing, and a long way from enough.`);
+    s.stats.happiness = clamp(s.stats.happiness + 3);
+  } else if (roll > 15) {
+    outcome = "informal";
+    refuse(`${req.emoji} ${staff.name} let you down gently and did nothing at all. "Let's revisit it next year."`, false);
+    text = `An informal no. No policy cited, no decision recorded, nothing to appeal.`;
+  } else {
+    outcome = "formal";
+    refuse(`${req.emoji} A formal refusal, in writing, citing a policy that was written before anyone imagined you.`, true);
+    text = `A formal refusal. It's on paper, which means it can be appealed — if there's anywhere to appeal to.`;
+    if (chan.formal >= 0.8 && lg.canAppeal) tr.appealable = reqKey;
+  }
+
+  // H4 (stx): metadata only — who/when/how. Status derives from s.school.trans,
+  // so the board can never disagree with what the engine actually did.
+  stxNote(s, reqKey, { chan: chanKey, by: staffKey || "head", byName: staff.name, tries: 1,
+    outcome: outcome === "quietAlly" ? "informal" : outcome === "danger" ? "refusedFormal" : outcome });
+  if (outcome === "quietAlly") { stxReq(s, reqKey).st = "informal"; stxOnInformal(s, staffKey || "head", reqKey); }
+  // H3 (stx): a burned reputation floors an otherwise-yes into paperwork.
+  const stxFloor = stxCredFloor(s);
+  if (stxFloor && outcome === "granted") stxSet(s, reqKey, stxFloor, { by: staffKey || "head", byName: staff.name });
+
+  const opts = [];
+  if (outcome === "review") opts.push({ label: "Wait it out", fx: { emergent: { prudence: +3 }, feed: `⏳ You waited. Some of these come back.` } });
+  if (outcome === "needsParent") {
+    if (parent) opts.push({ label: `Ask ${parent.name} to write it`, fx: { run: (st) => { st.pending = resolveRequest(st, reqKey, "parents", staffKey).pending; } } });
+    else opts.push({ label: "You'd have to come out at home first", fx: { stats: { happiness: -4 }, feed: "🏠 Which is a whole other conversation, and not this week's." } });
+  }
+  if (outcome === "formal" && lg.canAppeal) opts.push({ label: "Escalate to the school board", fx: { run: (st) => { st.pending = escalateRequest(st, reqKey).pending; } } });
+  if (["informal", "formal", "partial"].includes(outcome)) {
+    opts.push({ label: "Do it anyway, without permission", fx: { run: (st) => {
+      applyGrant(st, reqKey);
+      st.school.trouble = (st.school.trouble || 0) + 2;
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10);
+      st.stats.happiness = clamp(st.stats.happiness + 8);
+      push(st, `✊ You did it without their permission. It is now a discipline problem rather than a policy question, and it is also simply true.`);
+    } } });
+  }
+  opts.push({ label: "Leave it there for now", fx: {} });
+  s.pending = { emoji: req.emoji, title: `${staff.name} — ${req.label}`, text, options: opts };
+  return s;
+}
+
+function applyGrant(s, reqKey, partial) {
+  if (!s.school.present) s.school.present = { name: "birth", uniform: "assigned", pe: "assigned", pronouns: false, outTo: [] };
+  const p = s.school.present;
+  if (reqKey === "name" && !partial) p.name = "chosen";
+  if (reqKey === "name" && partial) p.name = "verbal";
+  if (reqKey === "pronouns") p.pronouns = true;
+  if (reqKey === "uniform") p.uniform = "other";
+  if (reqKey === "changing") p.pe = "alone";
+  if (reqKey === "restroom") p.restroom = partial ? "staff" : "preferred";
+}
+
+function escalateRequest(state, reqKey) {
+  const s = pClone(state);
+  const lg = schoolLegal(s);
+  // H5 (stx): going over someone's head is remembered by the person you skipped.
+  const stxPrev = stxReq(s, reqKey).by;
+  const stxLine = stxOnGoAround(s, stxPrev, "head", reqKey);
+  if (stxLine) push(s, stxLine);
+  stxSet(s, reqKey, "escalated", { by: "head", byName: (s.school.faculty.head || {}).name || "the head" });
+  const req = TRANS_REQUESTS[reqKey];
+  const win = Math.random() < 0.25 + (lg.tier === "strong" ? 0.4 : lg.tier === "protected" ? 0.2 : 0) + (supportiveParent(s) ? 0.15 : 0);
+  s.pending = { emoji: "🏛", title: "The school board", text: `Months of letters, a hearing you sit through in a room of adults discussing you in the third person.`, options: [
+    { label: win ? "Hear the decision" : "Hear the decision", fx: { run: (st) => {
+      if (win) { applyGrant(st, reqKey); st.school.trans.granted[reqKey] = true; delete st.school.trans.refused[reqKey];
+        st.stats.happiness = clamp(st.stats.happiness + 18);
+        st.emergent.courage = clamp((st.emergent.courage ?? 40) + 12);
+        push(st, `🏛 They found for you. The school was instructed to comply, and did, with visible reluctance. ${req.label} — won, on paper, in a way that will help whoever comes after you.`);
+        if (Math.random() < 0.35) push(st, `📰 A local paper picked it up. You were not named. Everyone knew anyway.`);
+      } else {
+        st.stats.happiness = clamp(st.stats.happiness - 14);
+        push(st, `🏛 They found for the school, citing "operational discretion". Months of your life, and the answer was still no. You learned exactly how much process is worth without will behind it.`);
+      }
+    } } },
+  ] };
+  return s;
+}
+
+/* — the hub — */
+function schoolTransMenu(state) {
+  const s = pClone(state);
+  const lg = schoolLegal(s);
+  if (!s.school.trans) s.school.trans = { granted: {}, refused: {}, pending: {}, attempts: 0, rep: 0 };
+  const tr = s.school.trans;
+  const y = yearOf(s);
+  const avail = Object.entries(TRANS_REQUESTS).filter(([k, r]) => !tr.granted[k] && (!r.minYear || y >= r.minYear));
+  s.pending = { emoji: "🏫", title: "Transitioning at school", layout: "grid",
+    text: `${LEGAL_LABEL[lg.tier]}${Object.keys(tr.granted).length ? ` Already in place: ${Object.keys(tr.granted).map((k) => TRANS_REQUESTS[k].label.toLowerCase()).join(", ")}.` : ""}`,
+    options: [
+      ...avail.map(([k, r]) => ({
+        card: { emoji: r.emoji, name: r.label, sub: tr.refused[k] ? `refused (${tr.refused[k]})` : tr.pending[k] ? "under review" : TIER_RANK[lg.tier] < TIER_RANK[r.tier] ? "unlikely here" : "", tag: stxTag(s, k).trim() },
+        hi: TIER_RANK[lg.tier] >= TIER_RANK[r.tier] ? 1 : 0,
+        fx: { run: (st) => { st.pending = channelMenu(st, k).pending; } } })),
+      { label: "📓 Where things stand", fx: { run: (st) => { st.pending = stxBoardMenu(st); } } },
+      { label: "Not yet — wait for a better time", fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness - 2); push(st, `⏸ You decided to wait. Sometimes that's strategy and sometimes it's fear, and you're not always sure which.`); } } },
+      CANCEL,
+    ] };
+  return s;
+}
+
+function channelMenu(state, reqKey) {
+  const s = pClone(state);
+  const lg = schoolLegal(s);
+  const parent = supportiveParent(s);
+  const staff = Object.entries(s.school.faculty).filter(([k]) => k !== "head");
+  s.pending = { emoji: "🚪", title: TRANS_REQUESTS[reqKey].label, layout: "grid", text: "How do you go about asking?",
+    options: [
+      ...Object.entries(CHANNELS).filter(([, c]) => !c.needsParent || parent).map(([ck, c]) => ({
+        card: { emoji: c.emoji, name: c.label, sub: c.sub, tag: "" },
+        fx: { run: (st) => {
+          if (ck === "teacher") { st.pending = pickStaffMenu(st, reqKey).pending; return; }
+          st.pending = resolveRequest(st, reqKey, ck, null).pending;
+        } } })),
+      ...(!parent ? [{ label: "(A supportive parent would open more doors)", fx: {} }] : []),
+      ...(!parent && stxCanLie(s, "parentOK") ? [{
+        label: `Say your parents already agreed${stxLieWarn(s, "parentOK")}`,
+        fx: { run: (st) => {
+          const who = Object.entries(st.school.faculty).filter(([k]) => k !== "head")[0];
+          const r = stxTellLie(st, "parentOK", who ? who[0] : "head", who ? who[1] : st.school.faculty.head);
+          push(st, r.line);
+          if (!r.caught) st.pending = resolveRequest(st, reqKey, "formal", null).pending;
+        } },
+      }] : []),
+      CANCEL,
+    ] };
+  return s;
+}
+
+function pickStaffMenu(state, reqKey) {
+  const s = pClone(state);
+  const staff = Object.entries(s.school.faculty).filter(([k]) => k !== "head");
+  s.pending = { emoji: "🧑‍🏫", title: "Who do you trust?", layout: "grid", text: "Some of them will do the right thing. You don't know which yet.",
+    options: [
+      ...staff.map(([k, t]) => ({
+        card: { emoji: "🧑‍🏫", name: t.name, sub: `${SUBJECTS[t.subject] || ""} · ${t.style}${(t.known || []).includes("disposition") ? (staffDisposition(s, t) > 55 ? " · safe" : " · risky") : ""}`, tag: "" },
+        fx: { run: (st) => {
+          const q = st.school.faculty[k];
+          if (!q.known) q.known = [];
+          if (!q.known.includes("disposition")) q.known.push("disposition");
+          st.pending = resolveRequest(st, reqKey, "teacher", k).pending;
+        } } })),
+      CANCEL,
+    ] };
+  return s;
+}
+
+/* — your own choices, independent of permission — */
+function selfTransMenu(state) {
+  const s = pClone(state);
+  if (!s.school.present) s.school.present = { name: "birth", uniform: "assigned", pe: "assigned", pronouns: false, outTo: [] };
+  const p = s.school.present;
+  const lg = schoolLegal(s);
+  const opts = [
+    { card: { emoji: "🙋", name: "Introduce yourself by your name", sub: "to whoever you meet", tag: "" },
+      fx: { run: (st) => { st.flags.selfIntro = true; movePres(st, 3); st.stats.happiness = clamp(st.stats.happiness + 7);
+        push(st, `🙋 You started saying your own name first, before anyone could reach for the other one. Some people took it. Some looked at the register and then at you.`); } } },
+    { card: { emoji: "✋", name: p.correcting ? "Stop correcting people" : "Correct people every time", sub: p.correcting ? "it's exhausting" : "every single time", tag: p.correcting ? "on" : "" },
+      fx: { run: (st) => { const q = st.school.present; q.correcting = !q.correcting;
+        if (q.correcting) { st.stats.happiness = clamp(st.stats.happiness + 4); st.emergent.courage = clamp((st.emergent.courage ?? 40) + 6);
+          push(st, `✋ Every time. Politely, immediately, without heat. It costs you something every single day and it works on about half of them.`); }
+        else { st.stats.happiness = clamp(st.stats.happiness - 5); push(st, `✋ You stopped correcting anyone. The days got easier and something underneath got heavier.`); } } } },
+    { card: { emoji: "📣", name: "Tell the whole class", sub: "all at once, on your terms", tag: "" },
+      fx: { run: (st) => { st.pending = classAnnounce(st).pending; } } },
+    { card: { emoji: "🚻", name: "Just use the restroom you should", sub: lg.tier === "criminalised" ? "genuinely dangerous here" : "without asking anyone", tag: "" },
+      fx: { run: (st) => {
+        const risk = 0.65 - lg.era / 200 + (lg.strict * 0.08);
+        movePres(st, 2);
+        if (Math.random() < risk) { st.school.trouble = (st.school.trouble || 0) + 2; st.stats.happiness = clamp(st.stats.happiness - 9);
+          push(st, `🚻 Someone complained within the fortnight. You were called in, and the conversation was about other people's comfort from beginning to end.`); }
+        else { st.stats.happiness = clamp(st.stats.happiness + 10);
+          push(st, `🚻 You just went. Nobody said anything, that day or ever, and the enormous thing turned out to be a door.`); }
+      } } },
+    { card: { emoji: "🛡", name: "Report the harassment", sub: "formally, in writing", tag: "" },
+      fx: { run: (st) => { st.pending = reportHarassment(st).pending; } } },
+    { card: { emoji: "⏸", name: "Pause the whole thing", sub: "go back to before, for now", tag: "" },
+      fx: { run: (st) => {
+        const q = st.school.present;
+        q.name = "birth"; q.pronouns = false; q.uniform = "assigned"; q.correcting = false;
+        movePres(st, -8);
+        st.stats.happiness = clamp(st.stats.happiness - 13);
+        st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) - 2);
+        push(st, `⏸ You put it all back. Register name, old uniform, no corrections. The relief lasted four days and then it was just grief with better paperwork.`);
+      } } },
+    CANCEL,
+  ];
+  s.pending = { emoji: "🫵", title: "What you do, regardless", layout: "grid", text: "Nobody's permission required for any of this. That doesn't make it free.", options: opts };
+  return s;
+}
+
+function classAnnounce(state) {
+  const s = pClone(state);
+  const lg = schoolLegal(s);
+  const cms = Object.entries(s.school.classmates || {});
+  s.pending = { emoji: "📣", title: "Telling everyone", text: `Standing up in front of a room of people who have known you as someone else. ${lg.era < 35 ? "In this school, in this decade, this is not a safe thing to do." : ""}`, options: [
+    { label: "Say it", fx: { run: (st) => {
+      const allies = [], hostiles = [];
+      Object.entries(st.school.classmates).forEach(([k, c]) => {
+        const score = c.ally * 0.6 + lg.era * 0.3 + c.rel * 0.1;
+        if (score > 55) { c.rel = clamp(c.rel + rnd(8, 20)); c.known.push("safe"); allies.push(c.name); }
+        else if (score < 25) { c.rel = clamp(c.rel - rnd(10, 25)); c.known.push("mean"); hostiles.push(c.name); }
+      });
+      st.school.present.outTo = Object.keys(st.school.classmates);
+      st.flags.outAtSchool = true;
+      st.emergent.courage = clamp((st.emergent.courage ?? 40) + 16);
+      st.stats.happiness = clamp(st.stats.happiness + (allies.length > hostiles.length ? 14 : -8));
+      push(st, `📣 You told the whole class. ${allies.length} of them were with you${allies.length ? ` — ${allies.slice(0, 3).join(", ")}${allies.length > 3 ? " and others" : ""}` : ""}. ${hostiles.length ? `${hostiles.length} made it clear they weren't.` : "Nobody openly turned on you, which you had not dared expect."} By lunchtime the whole school knew.`);
+      if (hostiles.length > allies.length) { st.school.trouble = (st.school.trouble || 0) + 1; st.flags.schoolBacklash = st.ageDays; }
+    } } },
+    { label: "Tell a few people instead", fx: { run: (st) => { st.pending = schoolOutMenu(st).pending; } } },
+    { label: "Not like this", fx: {} },
+  ] };
+  return s;
+}
+
+function reportHarassment(state) {
+  const s = pClone(state);
+  const lg = schoolLegal(s);
+  const head = s.school.faculty.head;
+  const takenSeriously = Math.random() < 0.15 + lg.era / 160 + (TIER_RANK[lg.tier] >= 3 ? 0.25 : 0) - lg.faith * 0.08;
+  s.pending = { emoji: "🛡", title: "Making it official", text: `You write it down: dates, names, what was said. You hand it to ${head.name}.`, options: [
+    { label: "See what happens", fx: { run: (st) => {
+      if (takenSeriously) { st.stats.happiness = clamp(st.stats.happiness + 10);
+        Object.values(st.school.classmates).forEach((c) => { if (c.mean > 70 && Math.random() < 0.5) c.mean = clamp(c.mean - 25); });
+        push(st, `🛡 It was taken seriously. Two people were suspended, an assembly happened, and the corridor noise stopped almost overnight. You had not believed that was possible.`);
+        if (Math.random() < 0.3) push(st, `📋 An administrative investigation followed, and the school changed a policy because of you.`);
+      } else {
+        st.stats.happiness = clamp(st.stats.happiness - 11);
+        push(st, `🛡 You were thanked for raising it, asked whether you might be "drawing attention", and nothing whatsoever happened. The people you named found out that you'd named them.`);
+        if (Math.random() < 0.4) { st.school.trouble = (st.school.trouble || 0) + 1; push(st, `😠 It got worse for a while after that.`); }
+      }
+    } } },
+    { label: "Ask your parents to raise it instead", cond: (st) => !!supportiveParent(st), fx: { run: (st) => {
+      const p = supportiveParent(st);
+      if (Math.random() < 0.3 + lg.era / 200) { st.stats.happiness = clamp(st.stats.happiness + 13);
+        push(st, `👪 ${p.name} came in and would not be managed. The tone of the meeting changed the moment they used the word "solicitor". Things improved that week.`);
+        if (TIER_RANK[lg.tier] >= 3 && Math.random() < 0.25) push(st, `⚖️ They took formal advice. The school settled quietly and changed the policy. Nobody ever apologised to you personally.`); }
+      else { st.stats.happiness = clamp(st.stats.happiness - 6); push(st, `👪 ${p.name} tried. They were listened to politely and comprehensively ignored, which enraged them more than it surprised you.`); }
+    } } },
+    CANCEL,
+  ] };
+  return s;
+}
+
+/* — institutional and social consequences that follow on their own — */
+const SCHOOL_TRANS_POOL = [
+  { id: "reviewOutcome", i: 1, w: 9, minAge: 10, maxAge: 20, cd: 90,
+    cond: (s) => inSchool(s) && s.school.trans && Object.keys(s.school.trans.pending || {}).length > 0 && Object.values(s.school.trans.pending).some((p) => s.ageDays - p.since > 60),
+    run: (s) => {
+      const key = Object.keys(s.school.trans.pending).find((k) => s.ageDays - s.school.trans.pending[k].since > 60);
+      const req = TRANS_REQUESTS[key];
+      const lg = schoolLegal(s);
+      delete s.school.trans.pending[key];
+      const ok = Math.random() < 0.25 + TIER_RANK[lg.tier] * 0.15 + (supportiveParent(s) ? 0.12 : 0);
+      if (ok) { applyGrant(s, key); s.school.trans.granted[key] = true;
+        return { auto: [`${req.emoji} The review came back: approved. Two months of nothing, and then a one-line email as if it had never been in doubt.`], fx: { stats: { happiness: +12 } } }; }
+      s.school.trans.refused[key] = "formal";
+      return { auto: [`${req.emoji} The review came back: declined, "at this time", with no indication of what a different time would look like.`], fx: { stats: { happiness: -10 } } };
+    } },
+
+  { id: "staffVaries", w: 6, minAge: 10, maxAge: 20, cd: 150,
+    cond: (s) => inSchool(s) && s.school.trans && Object.keys(s.school.trans.granted || {}).length > 0,
+    run: (s) => {
+      const staff = Object.entries(s.school.faculty).filter(([k]) => k !== "head");
+      if (!staff.length) return { auto: [] };
+      const [, t] = pick(staff);
+      const d = staffDisposition(s, t);
+      const prof = t.professionalism ?? 50;
+      if (d > 60) return { auto: [`🧑‍🏫 ${t.name} has never once got it wrong. Not a word about it, not a fuss — just consistent, from day one.`], fx: { stats: { happiness: +4 } } };
+      if (prof > 70) return { auto: [`🧑‍🏫 ${t.name} clearly disagrees with all of it, and uses your name and pronouns correctly every single time regardless. Professionalism turns out to be its own kind of decency.`], fx: { stats: { happiness: +3 } } };
+      if (d > 35) return { auto: [`🧑‍🏫 ${t.name} gets it right in front of the class and wrong in the corridor. You've stopped deciding whether that's carelessness or a position.`], fx: { stats: { happiness: -2 } } };
+      return { auto: [`🧑‍🏫 ${t.name} has simply carried on as before — your old name, every lesson, in a room where everyone now notices. Nobody has instructed them otherwise, so they won't.`], fx: { stats: { happiness: -5 } } };
+    } },
+
+  { id: "parentComplaint", i: 1, w: 5, minAge: 10, maxAge: 20, cd: 600,
+    cond: (s) => inSchool(s) && (s.flags.outAtSchool || (s.school.trans && Object.keys(s.school.trans.granted || {}).length > 0)) && (localAcceptance(s) < 80 || (SCHOOL_TYPES[s.school.type].faith || 0) >= 2),
+    run: (s) => {
+      const lg = schoolLegal(s);
+      return { event: { emoji: "📨", title: "Other people's parents", text: `A group of parents has written to the school about you — about restrooms, or changing rooms, or "what children are being told". You are discussed by name in a letter you were never meant to see.`, options: [
+        { label: "Let the school handle it", fx: { run: (st) => {
+          if (TIER_RANK[lg.tier] >= 3 && Math.random() < 0.6) { st.stats.happiness = clamp(st.stats.happiness + 6);
+            push(st, `📨 The school wrote back citing the law and did not budge. You found out months later, from a teacher who thought you should know.`); }
+          else { st.stats.happiness = clamp(st.stats.happiness - 12);
+            stxState(st).complaints = (stxState(st).complaints || 0) + 1;   // Q9: the head's risk model sees this
+            Object.keys(st.school.trans.granted || {}).forEach((k) => { if (Math.random() < 0.4) { delete st.school.trans.granted[k]; st.school.trans.refused[k] = "formal"; } });
+            push(st, `📨 The school folded. Arrangements you'd fought for were quietly withdrawn "pending review", and nobody would say by whom.`); }
+        } } },
+        { label: "Ask your parents to respond", cond: (st) => !!supportiveParent(st), fx: { run: (st) => {
+          const p = supportiveParent(st);
+          st.stats.happiness = clamp(st.stats.happiness + 8);
+          push(st, `📨 ${p.name} wrote back to all of them. It was three paragraphs long and one of the best things anyone has ever done for you. Two of the families went quiet. One apologised.`);
+        } } },
+        { label: "Leave the school", fx: { run: (st) => {
+          st.stats.happiness = clamp(st.stats.happiness - 4);
+          push(st, `📨 You'd had enough. A new school, mid-year, where nobody knows — which is its own bargain, with its own price.`);
+          enrollSchool(st, st.school.stage);
+          st.flags.outAtSchool = false;
+        } } },
+      ] } }; } },
+
+  { id: "peerPetition", i: 1, w: 4, minAge: 12, maxAge: 20, cd: 700,
+    cond: (s) => inSchool(s) && s.flags.outAtSchool && Object.keys(s.school.classmates || {}).length > 6,
+    run: (s) => {
+      const era = localAcceptance(s);
+      const supportive = era > 50;
+      return { event: { emoji: "📝", title: supportive ? "A petition, for you" : "A petition, about you", text: supportive
+        ? `Someone in your year started a petition asking the school to formally support trans students. It has more signatures than you would ever have guessed.`
+        : `A petition is going round about restroom access. It doesn't use your name. It doesn't need to.`,
+        options: supportive ? [
+          { label: "Sign it publicly", fx: { run: (st) => { st.emergent.courage = clamp((st.emergent.courage ?? 40) + 8); st.stats.happiness = clamp(st.stats.happiness + 14);
+            Object.values(st.school.classmates).forEach((c) => { if (c.ally > 55) c.rel = clamp(c.rel + 6); });
+            push(st, `📝 You signed it first. It went to the governors with 200 names on it, and a policy existed by the following term. You did that. Other people did it with you.`); } } },
+          { label: "Stay out of it", fx: { stats: { happiness: +4 }, feed: "📝 You let other people carry it, and they did, and that was allowed to be enough." } },
+        ] : [
+          { label: "Confront the organisers", fx: { run: (st) => { st.emergent.courage = clamp((st.emergent.courage ?? 40) + 10);
+            if (Math.random() < 0.4) { st.stats.happiness = clamp(st.stats.happiness + 7); push(st, `📝 You asked them, in front of people, to say what they meant. They couldn't do it out loud. It fizzled within a week.`); }
+            else { st.stats.happiness = clamp(st.stats.happiness - 9); st.school.trouble = (st.school.trouble || 0) + 1; push(st, `📝 It became a shouting match and you were the one disciplined for it.`); } } } },
+          { label: "Let it happen", fx: { run: (st) => { st.stats.happiness = clamp(st.stats.happiness - 11);
+            stxState(st).complaints = (stxState(st).complaints || 0) + 1;   // Q9
+            if (st.school.trans) Object.keys(st.school.trans.granted || {}).forEach((k) => { if (k === "restroom" || k === "changing") { delete st.school.trans.granted[k]; st.school.trans.refused[k] = "formal"; } });
+            push(st, `📝 It got enough signatures. The school "paused" your arrangements. Nobody told you directly — you found out from a sign on a door.`); } } },
+        ] } }; } },
+];
+POOL.push(...SCHOOL_TRANS_POOL);
+
+/* ═══════════════ STX · SCHOOL TRANSITION LEDGER & CREDIBILITY (Module 11) ═══════════════ */
+/* Prefix for everything in this block: stx / STX_ / s.stx / flags "stx_"
+   INTEGRATION NOTES (23) — five corrections applied to the incoming handoff,
+   each verified against the real file before changing anything:
+   1. s.outTo is an OBJECT keyed by person ({mom:true, work:true}), not an array.
+      The handoff's migrate coercion would have broken ~20 existing reads.
+   2. staffDisposition(s,t) returns clamp(0..100) with 50 neutral, not -100..100.
+   3. resolveRequest's outcome vocabulary does NOT map 1:1 onto STX_STATES:
+      its "informal" is an informal REFUSAL, STX's is an unofficial GRANT, and
+      "quietAlly" is the real unofficial grant. Solved by deriving status from
+      s.school.trans instead of mapping strings — see stxDerivedState.
+   4. s.school.trans is pre-existing and authoritative; s.stx is metadata only.
+   5. movePres(st,amt) always moves TOWARD presTarget, so the handoff's
+      movePres(st,-2) would have had the opposite of the intended effect.
+   Open questions resolved: Q1 no school concealment audience exists (derived
+   from s.flags.outAtSchool + s.school.present + nonconformity instead);
+   Q2 presently/presTarget are both 0-100 masc↔fem, confirmed; Q3 schoolLegal
+   returns an object with .tier and the five documented strings; Q4 see (2);
+   Q5 faculty live at s.school.faculty and the head IS keyed "head"; Q6 all ten
+   TRANS_REQUESTS keys match exactly; Q7 see (1); Q8 no pre-existing claim/lie
+   options, STX_CLAIMS is entirely new; Q9 parent complaints wired below;
+   Q10 see (5). */
+const STX_STATES = {
+  none:          { t: "not asked yet",     e: "·",  rank: 0 },
+  asked:         { t: "asked, waiting",    e: "⏳", rank: 1 },
+  review:        { t: "under review",      e: "⏳", rank: 1 },
+  escalated:     { t: "escalated upward",  e: "⚖", rank: 1 },
+  needsParent:   { t: "blocked: needs a parent",  e: "⚠", rank: 2 },
+  needsDocs:     { t: "blocked: needs paperwork", e: "⚠", rank: 2 },
+  informal:      { t: "unofficial — one person only", e: "🤝", rank: 3 },
+  partial:       { t: "partly in place",   e: "◐", rank: 3 },
+  granted:       { t: "in place",          e: "✅", rank: 4 },
+  refused:       { t: "refused",           e: "✖", rank: 5 },
+  refusedFormal: { t: "refused in writing", e: "❌", rank: 5 },
+  revoked:       { t: "taken back",        e: "↩", rank: 5 },
+  withdrawn:     { t: "you withdrew it",   e: "—",  rank: 5 },
+};
+
+/* Display names for the ten existing TRANS_REQUESTS keys. If 23 finds different keys in the
+   real TRANS_REQUESTS, only this table changes — nothing else in this block hardcodes them. */
+const STX_REQ_LABEL = {
+  name:       { e: "✏️", n: "Your name" },
+  pronouns:   { e: "🗣", n: "Your pronouns" },
+  lists:      { e: "📋", n: "Registers & class lists" },
+  id:         { e: "🪪", n: "Student ID card" },
+  email:      { e: "✉️", n: "School email address" },
+  uniform:    { e: "👔", n: "Uniform / dress code" },
+  activities: { e: "⚽", n: "Sports & activities" },
+  restroom:   { e: "🚻", n: "Restrooms" },
+  changing:   { e: "🚪", n: "Changing rooms" },
+  documents:  { e: "📄", n: "Official records" },
+};
+const STX_REQ_ORDER = ["name", "pronouns", "lists", "email", "id", "uniform", "activities", "restroom", "changing", "documents"];
+
+/* ---------- state accessors (s.stx is the ONLY authoritative record of school-trans status) */
+function stxInit() {
+  return { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, log: [] };
+}
+function stxState(s) {
+  if (!s.stx) s.stx = stxInit();
+  return s.stx;
+}
+function stxReq(s, key) {
+  const x = stxState(s);
+  if (!x.req[key]) x.req[key] = { st: "none", day: -999, chan: null, by: null, byName: null, tries: 0, note: null };
+  return stxReconcile(s, key, x.req[key]);
+}
+/* INTEGRATION (23) — SINGLE SOURCE OF TRUTH.
+   s.school.trans {granted,refused,pending} already exists and is written by
+   resolveRequest/applyGrant/escalateRequest and read in 14 places (including the
+   parent-complaint clawbacks). It stays AUTHORITATIVE for "do I have this?".
+   s.stx.req therefore stores only metadata the engine has nowhere else — who
+   decided, when, via which channel, how many tries, the paper trail — and
+   RECONCILES its status field from school.trans on every read.
+
+   This also dissolves the vocabulary collision the handoff's H4 would have
+   created: resolveRequest's "informal" means an informal REFUSAL while STX's
+   means an unofficial GRANT, and its "quietAlly" is the actual unofficial grant.
+   Deriving from school.trans (where a quietAlly sets tr.quiet, not tr.granted)
+   gets both right without mapping the strings at all. */
+function stxDerivedState(s, key) {
+  const tr = s.school && s.school.trans;
+  if (!tr) return null;
+  if (tr.granted && tr.granted[key]) return tr.granted[key] === "partial" ? "partial" : "granted";
+  if (tr.pending && tr.pending[key]) return "review";
+  if (tr.refused && tr.refused[key]) return tr.refused[key] === "formal" ? "refusedFormal" : "refused";
+  return null;
+}
+// States that live only in this module and have no school.trans representation.
+const STX_LOCAL_ONLY = ["informal", "escalated", "withdrawn", "revoked", "asked"];
+function stxReconcile(s, key, r) {
+  const d = stxDerivedState(s, key);
+  if (!d) return r;                                   // engine has no opinion — keep local
+  if (d === "review" && STX_LOCAL_ONLY.indexOf(r.st) >= 0 && r.st !== "asked") return r;
+  if (r.st !== d) r.st = d;                           // engine wins
+  return r;
+}
+/* Metadata-only write used by the resolveRequest/applyGrant hooks. Deliberately
+   does NOT set r.st — status derives from school.trans, so the board can never
+   disagree with what the engine actually did. */
+function stxNote(st, key, opts) {
+  const o = opts || {};
+  const r = stxReq(st, key);
+  r.day = st.ageDays;
+  if (o.chan) r.chan = o.chan;
+  if (o.by) r.by = o.by;
+  if (o.byName) r.byName = o.byName;
+  if (o.note) r.note = o.note;
+  if (o.tries) r.tries = (r.tries || 0) + 1;
+  // needsParent / needsDocs (and any other outcome resolveRequest reports without
+  // writing to school.trans) have no engine-side representation — record them
+  // locally so the board doesn't show "not asked yet" after a real refusal.
+  const derived = stxDerivedState(st, key);
+  if (!derived && o.outcome && STX_STATES[o.outcome]) r.st = o.outcome;
+  const shown = derived || o.outcome || r.st;
+  const S = STX_STATES[shown] || STX_STATES.none;
+  stxLog(st, S.e + " " + ((STX_REQ_LABEL[key] || {}).n || key) + " \u2014 " + S.t + (o.byName ? " (" + o.byName + ")" : ""));
+  return r;
+}
+/* movePres(st, amt) in the real file ALWAYS moves toward presTarget (dir is
+   computed from the target, and amt is abs()'d) — so movePres(st,-2) would push
+   you further INTO transition, the opposite of friction. Nudge away directly. */
+function stxNudgeAwayFromTarget(st, amt) {
+  if (typeof presently !== "function" || typeof presTarget !== "function") return;
+  const cur = presently(st), t = presTarget(st);
+  const away = t > cur ? -1 : 1;
+  st.emergent.pres = clamp(Math.round(cur + away * Math.abs(amt)));
+}
+
+function stxIs(s, key, ...states) { return states.indexOf(stxReq(s, key).st) >= 0; }
+function stxHas(s, key) { return stxIs(s, key, "granted", "partial", "informal"); }
+function stxGrantedCount(s) { return STX_REQ_ORDER.filter((k) => stxIs(s, k, "granted")).length; }
+
+/* The single write path for request outcomes. applyGrant/resolveRequest/escalateRequest all
+   route through this so the board can never disagree with what actually happened. */
+function stxSet(st, key, state, opts) {
+  const o = opts || {};
+  const r = stxReq(st, key);
+  const prev = r.st;
+  r.st = state;
+  r.day = st.ageDays;
+  if (o.chan) r.chan = o.chan;
+  if (o.by) r.by = o.by;
+  if (o.byName) r.byName = o.byName;
+  if (o.note) r.note = o.note;
+  if (o.tries) r.tries = (r.tries || 0) + 1;
+  stxLog(st, (STX_STATES[state] || STX_STATES.none).e + " " + ((STX_REQ_LABEL[key] || {}).n || key) + " — " + (STX_STATES[state] || STX_STATES.none).t + (o.byName ? " (" + o.byName + ")" : ""));
+  return prev;
+}
+function stxLog(st, line) {
+  const x = stxState(st);
+  x.log.push({ day: st.ageDays, t: line });
+  if (x.log.length > 40) x.log.shift();
+}
+function stxWhen(s, day) {
+  if (day == null || day < 0) return "";
+  const y = Math.floor(day / 365.25);
+  return "at " + y;
+}
+
+/* ---------- 1 · THE STATUS BOARD (fixes "shows nothing") -------------------------------- */
+/* Short suffix appended to request option labels in the existing request menu, so the player
+   can see state without opening anything. */
+function stxTag(s, key) {
+  const r = stxReq(s, key);
+  if (r.st === "none") return "";
+  return "  " + (STX_STATES[r.st] || STX_STATES.none).e;
+}
+
+function stxBoardText(s) {
+  const x = stxState(s);
+  const rows = STX_REQ_ORDER.map((k) => ({ k, r: stxReq(s, k), L: STX_REQ_LABEL[k] || { e: "•", n: k } }));
+  const done = rows.filter((o) => o.r.st === "granted").length;
+  const part = rows.filter((o) => o.r.st === "partial" || o.r.st === "informal").length;
+  const wait = rows.filter((o) => STX_STATES[o.r.st].rank === 1).length;
+  const stuck = rows.filter((o) => STX_STATES[o.r.st].rank === 2).length;
+  const no = rows.filter((o) => STX_STATES[o.r.st].rank === 5).length;
+
+  const head = done + " of " + STX_REQ_ORDER.length + " settled" +
+    (part ? " · " + part + " half-there" : "") +
+    (wait ? " · " + wait + " waiting" : "") +
+    (stuck ? " · " + stuck + " blocked" : "") +
+    (no ? " · " + no + " refused" : "");
+
+  const body = rows.map((o) => {
+    const S = STX_STATES[o.r.st] || STX_STATES.none;
+    let line = S.e + " " + o.L.n + " — " + S.t;
+    if (o.r.byName && o.r.st !== "none") line += " · " + o.r.byName;
+    if (o.r.day > 0 && o.r.st !== "none") line += " · " + stxWhen(s, o.r.day);
+    if (o.r.tries > 1 && STX_STATES[o.r.st].rank >= 2) line += " · asked " + o.r.tries + "×";
+    return line;
+  }).join("\n");
+
+  const cred = stxCredTier(s);
+  const credLine = cred === "trusted" ? "The office takes you at your word."
+    : cred === "ok" ? "Nobody in the office has reason to doubt you."
+    : cred === "doubted" ? "There is a note on your file. Things you say get checked now."
+    : "Your word carries nothing here. Everything you claim, they verify first.";
+
+  const seen = stxPresentAtSchool(s);
+  const seenLine = seen >= 75 ? "Walking in, you read as yourself to almost everyone."
+    : seen >= 45 ? "You read as yourself to some of them, some of the time."
+    : seen >= 20 ? "Most of what they see is still the old version of you."
+    : "Nothing about how you look here contradicts the name on the register.";
+
+  const gap = stxCoherenceNote(s);
+
+  return head + "\n\n" + body + "\n\n" + seenLine + "\n" + credLine + (gap ? "\n" + gap : "");
+}
+
+function stxBoardMenu(s) {
+  const opts = [{ label: "Close", fx: {} }];
+  const x = stxState(s);
+  if (x.log.length) {
+    opts.unshift({
+      label: "Read the whole history",
+      fx: { run: (st) => { st.pending = stxHistoryMenu(st); } },
+    });
+  }
+  const revocable = STX_REQ_ORDER.filter((k) => stxIs(s, k, "asked", "review", "escalated"));
+  if (revocable.length) {
+    opts.unshift({
+      label: "Withdraw a pending request",
+      fx: { run: (st) => { st.pending = stxWithdrawMenu(st); } },
+    });
+  }
+  return {
+    emoji: "📓",
+    title: "Where things stand",
+    text: stxBoardText(s),
+    options: opts,
+  };
+}
+
+function stxHistoryMenu(s) {
+  const x = stxState(s);
+  const lines = x.log.slice(-18).map((e) => stxWhen(s, e.day) + " — " + e.t);
+  return {
+    emoji: "🗂",
+    title: "The paper trail",
+    text: lines.length ? lines.join("\n") : "Nothing on file yet.",
+    options: [{ label: "Back", fx: { run: (st) => { st.pending = stxBoardMenu(st); } } }],
+  };
+}
+
+function stxWithdrawMenu(s) {
+  const keys = STX_REQ_ORDER.filter((k) => stxIs(s, k, "asked", "review", "escalated"));
+  const opts = keys.map((k) => ({
+    label: "Withdraw: " + (STX_REQ_LABEL[k] || { n: k }).n,
+    fx: {
+      run: (st) => {
+        stxSet(st, k, "withdrawn");
+        push(st, "You tell the office you'd rather leave it. The secretary crosses a line through something you never got to read, and that is the end of it.");
+        applyFx(st, { stats: { happiness: -rnd(1, 4) } });
+      },
+    },
+  }));
+  opts.push({ label: "Leave them pending", fx: { run: (st) => { st.pending = stxBoardMenu(st); } } });
+  return { emoji: "↩️", title: "Withdraw a request", text: "Pulling a request back stops the waiting. It also tells them you can be waited out.", options: opts };
+}
+
+/* ---------- 2 · HOW YOU SHOW UP HERE × TRANSITION AT SCHOOL ------------------------------ */
+/* Derived, never stored. Single source: presently/presTarget + concealment + granted requests. */
+
+function stxPresAlign(s) {
+  // 0..100: how close your day-to-day presentation is to your target.
+  if (typeof presently !== "function" || typeof presTarget !== "function") return 50;
+  const now = presently(s), tgt = presTarget(s);
+  if (typeof now !== "number" || typeof tgt !== "number") return 50;
+  return clamp(100 - Math.abs(now - tgt));
+}
+
+/* Adapter: does the school audience see the real you? OPEN QUESTION #1 — exact concealment
+   field name unknown to this module. Defensive across the plausible shapes; 23 should replace
+   the body with the one true read once located. */
+function stxSchoolSees(s) {
+  // INTEGRATION FIX (23): there is no "school" concealment audience in the real
+  // file — concealTargets(s) covers family + up to 4 friends only, and the store
+  // is s.flags.hideStyle. So visibility at school is derived from what the
+  // building actually observes: whether you're out there, what's been applied to
+  // your record via applyGrant (s.school.present), and how nonconforming you read.
+  if (!inSchool(s)) return false;
+  if (s.flags && s.flags.outAtSchool) return true;
+  const pr = s.school && s.school.present;
+  if (pr && (pr.name === "chosen" || pr.uniform === "other" || pr.pronouns)) return true;
+  if (typeof nonconformity === "function") {
+    const nc = nonconformity(s);
+    if (typeof nc === "number" && nc > 55) return true;
+  }
+  return false;
+}
+
+/* 0..100 — how far you visibly present as yourself *inside this building*. */
+function stxPresentAtSchool(s) {
+  if (!inSchool(s)) return 0;
+  let v = stxPresAlign(s);
+  if (!stxSchoolSees(s)) v = Math.min(v, 22);          // boy-moding/girl-moding at the gate caps it hard
+  if (stxHas(s, "uniform")) v += 14;                    // permission to dress removes the daily ceiling
+  if (stxHas(s, "name")) v += 8;
+  if (stxHas(s, "pronouns")) v += 6;
+  if (stxIs(s, "uniform", "refusedFormal")) v -= 10;    // a written no is enforced daily
+  if (typeof nonconformity === "function") {
+    const nc = nonconformity(s);
+    if (typeof nc === "number") v += Math.round((nc - 50) / 8);
+  }
+  return clamp(v);
+}
+
+/* -1.0 … +1.0 — do the staff see something that matches what you're asking them for?
+   This is the whole point of the integration: asking for a name while presenting as the
+   register expects reads to staff as abstract; asking after months of visibly living it
+   reads as housekeeping. Feeds resolveRequest odds. */
+function stxCoherence(s) {
+  const seen = stxPresentAtSchool(s);
+  const base = (seen - 45) / 55;                        // 45 is "ambiguous"; below that, negative
+  const backing = (stxGrantedCount(s) * 0.06);          // precedent compounds
+  return Math.max(-1, Math.min(1, base + backing));
+}
+
+function stxCoherenceNote(s) {
+  if (!inSchool(s)) return "";
+  const c = stxCoherence(s);
+  const asked = STX_REQ_ORDER.some((k) => stxReq(s, k).st !== "none");
+  if (c <= -0.5 && asked) return "You are asking them to change a register for someone they have never met. They can hear the gap in it too.";
+  if (c <= -0.5) return "Whatever you decide to ask for, they will be picturing the person who walks in every morning.";
+  if (c >= 0.5) return "By now the paperwork is the only thing still arguing. Everyone in the building has already made up their mind.";
+  return "";
+}
+
+/* Multiplier applied to the odds inside resolveRequest. Deterministic; no RNG here. */
+function stxCoherenceMult(s) { return 1 + stxCoherence(s) * 0.45; }
+
+/* How far you can push your presentation here before the building pushes back. Granted
+   requests literally raise the ceiling — that is the mechanical reward for the paperwork. */
+function stxPresCap(s) {
+  if (!inSchool(s)) return 100;
+  let cap = 34;
+  if (stxHas(s, "name")) cap += 12;
+  if (stxHas(s, "pronouns")) cap += 10;
+  if (stxHas(s, "uniform")) cap += 22;
+  if (stxHas(s, "lists")) cap += 6;
+  if (stxHas(s, "restroom")) cap += 8;
+  if (stxHas(s, "changing")) cap += 6;
+  if (typeof schoolLegal === "function") {
+    const tier = schoolLegal(s);
+    const t = typeof tier === "string" ? tier : (tier && tier.tier);
+    if (t === "strong") cap += 14; else if (t === "protected") cap += 8;
+    else if (t === "criminalised") cap -= 18;
+  }
+  return clamp(cap);
+}
+/* True when you are visibly further along than the building has agreed to. Drives friction. */
+function stxOverCap(s) { return inSchool(s) && stxPresentAtSchool(s) > stxPresCap(s) + 8; }
+
+/* ---------- 3 · STAFF: MEMORY, NOT DICE ------------------------------------------------- */
+/* A teacher is a person with a job. The head is a job with a person attached. They are
+   modelled differently on purpose. */
+
+function stxStaffMem(s, key) {
+  const x = stxState(s);
+  if (!x.staff[key]) x.staff[key] = { asked: [], stance: 0, trust: 0, around: 0, overruled: 0, backed: 0, burned: 0, reprimanded: 0, informal: [], last: -999 };
+  return x.staff[key];
+}
+
+/* disp: the number from 06's staffDisposition(), passed in by the caller. If 23 can't supply
+   it at a given call site, we fall back to the raw attribute read — same inputs, same result. */
+function stxRawDisp(p) {
+  if (!p) return 0;
+  const b = p.beliefs == null ? 50 : p.beliefs;
+  const e = p.empathy == null ? 50 : p.empathy;
+  const pr = p.professionalism == null ? 50 : p.professionalism;
+  const rr = p.ruleRespect == null ? 50 : p.ruleRespect;
+  const lf = p.legalFear == null ? 50 : p.legalFear;
+  const rel = p.religious == null ? 0 : p.religious;
+  return Math.round((b - 50) * 0.9 + (e - 50) * 0.6 + (pr - 50) * 0.25 - (rr - 50) * 0.2 - (lf - 50) * 0.3 - rel * 0.25);
+}
+
+/* -100..100. Innate disposition + everything that has happened between you. */
+function stxStaffStance(s, key, p, disp) {
+  const m = stxStaffMem(s, key);
+  // INTEGRATION FIX (23): the real staffDisposition(s,t) returns clamp(0..100)
+  // with ~50 neutral, NOT -100..100. Rescale to this module's centred axis.
+  const base = typeof disp === "number" ? (disp - 50) * 2 : stxRawDisp(p);
+  let v = base + m.stance;
+  v += m.backed * 6;
+  v -= m.around * 14;            // you went over their head
+  v -= m.burned * 22;            // you lied to this person
+  v -= m.reprimanded * 8;        // they got in trouble for helping you
+  v += Math.min(12, m.informal.length * 5);
+  const lf = p && p.legalFear != null ? p.legalFear : 50;
+  const emp = p && p.empathy != null ? p.empathy : 50;
+  // A reprimand doesn't move everyone the same way: the cautious retreat, the stubborn dig in.
+  if (m.reprimanded) v += (emp - lf) * 0.12 * m.reprimanded;
+  return Math.max(-100, Math.min(100, Math.round(v)));
+}
+
+function stxStaffMood(s, key, p, disp) {
+  const v = stxStaffStance(s, key, p, disp);
+  if (v >= 45) return "ally";
+  if (v >= 15) return "willing";
+  if (v >= -10) return "correct";     // will do exactly what policy requires, no more
+  if (v >= -40) return "reluctant";
+  return "hostile";
+}
+
+function stxStaffLine(s, key, p, disp) {
+  const m = stxStaffMem(s, key), mood = stxStaffMood(s, key, p, disp);
+  const nm = (p && p.name) || "They";
+  if (m.burned) return nm + " listens with their hands folded. Whatever you say now gets checked against the file.";
+  if (m.around) return nm + " has not forgotten that you went past them to someone with a bigger office.";
+  if (m.reprimanded && mood === "ally") return nm + " already took the hit for this once and is still here.";
+  if (m.reprimanded) return nm + " keeps glancing at the door. Last time cost them something.";
+  if (m.informal.length && mood !== "hostile") return nm + " has been quietly getting it right for weeks without being asked to.";
+  return { ally: nm + " looks glad you came to them.", willing: nm + " hears you out properly.", correct: nm + " reaches for the policy folder before you finish the sentence.", reluctant: nm + " lets the silence sit a beat too long.", hostile: nm + " has already decided, and you are still talking." }[mood];
+}
+
+/* Hooks the existing request flow calls. */
+function stxOnAsk(st, key, p, reqKey, chan) {
+  const m = stxStaffMem(st, key);
+  if (m.asked.indexOf(reqKey) < 0) m.asked.push(reqKey);
+  m.last = st.ageDays;
+  if (p && p.name) stxReq(st, reqKey).byName = p.name;
+  stxReq(st, reqKey).by = key;
+  stxReq(st, reqKey).chan = chan || null;
+}
+/* Going over someone's head. The old system had no memory of this; now it costs. */
+function stxOnGoAround(st, fromKey, toKey, reqKey) {
+  if (!fromKey || fromKey === toKey) return null;
+  const m = stxStaffMem(st, fromKey);
+  m.around += 1;
+  m.stance -= 8;
+  return "Word gets back, the way it always does in a building this size. You skipped a step, and the person you skipped noticed.";
+}
+/* A teacher acting below the institutional line, off the record. */
+function stxOnInformal(st, key, reqKey) {
+  const m = stxStaffMem(st, key);
+  if (m.informal.indexOf(reqKey) < 0) m.informal.push(reqKey);
+  m.stance += 4;
+  stxSet(st, reqKey, "informal", { by: key });
+}
+/* The head finds out a teacher has been freelancing. */
+function stxReprimand(st, key, reqKey, p) {
+  const m = stxStaffMem(st, key);
+  m.reprimanded += 1;
+  const lf = p && p.legalFear != null ? p.legalFear : 50;
+  const emp = p && p.empathy != null ? p.empathy : 50;
+  const holds = emp - lf > 10 || (emp > 70 && lf < 60);
+  if (!holds) {
+    m.informal = m.informal.filter((r) => r !== reqKey);
+    if (stxIs(st, reqKey, "informal")) stxSet(st, reqKey, "revoked", { by: key, note: "reprimand" });
+    return { held: false, line: ((p && p.name) || "They") + " catches you before registration. The apology is real and it changes nothing: from Monday it is the name on the list, every time." };
+  }
+  m.backed += 1;
+  return { held: true, line: ((p && p.name) || "They") + " got a letter in their pigeonhole about it and used your name in front of the whole class anyway, the next morning, louder than necessary." };
+}
+
+/* The head/dean decides on institutional risk, not sympathy. Sympathy only breaks ties.
+   Returns a deterministic score; resolveRequest turns it into an outcome. */
+/* INTEGRATION FIX (23): TRANS_REQUESTS[key].weight is already the authoritative
+   institutional-risk number (0-45) used by resolveRequest's own scoring. Derive
+   from it rather than keeping a second, divergent table (no duplicated state). */
+const STX_RISK_FALLBACK = { name: 12, pronouns: 14, lists: 26, email: 22, id: 34, uniform: 30, activities: 46, restroom: 58, changing: 66, documents: 72 };
+const STX_REQ_RISK = new Proxy({}, {
+  get(_, k) {
+    if (typeof TRANS_REQUESTS !== "undefined" && TRANS_REQUESTS[k] && typeof TRANS_REQUESTS[k].weight === "number") {
+      return Math.round(TRANS_REQUESTS[k].weight * 1.6);
+    }
+    return STX_RISK_FALLBACK[k] ?? 30;
+  },
+});
+
+function stxHeadScore(s, reqKey, headP, disp) {
+  let v = 50;
+  const tierRaw = typeof schoolLegal === "function" ? schoolLegal(s) : null;
+  const tier = typeof tierRaw === "string" ? tierRaw : (tierRaw && tierRaw.tier) || "none";
+  v += { criminalised: -55, none: -18, emerging: 0, protected: 20, strong: 38 }[tier] || 0;
+  v -= (STX_REQ_RISK[reqKey] || 30) * 0.5;
+  v += stxGrantedCount(s) * 4;                                   // precedent is the head's friend
+  v += stxCoherence(s) * 18;
+  v -= (stxState(s).complaints || 0) * 9;                        // parents who ring up
+  v += stxState(s).inst * 0.35;
+  v -= (100 - stxState(s).cred) * 0.22;                          // a doubted student is a liability
+  const stance = stxStaffStance(s, "head", headP, disp);
+  v += stance * 0.18;                                            // person attached to the job: tiebreak only
+  if (typeof localAcceptance === "function") {
+    const la = localAcceptance(s);
+    if (typeof la === "number") v += (la - 50) * 0.25;
+  }
+  return Math.round(v);
+}
+
+/* ---------- 4 · COMING OUT DOESN'T RESET ------------------------------------------------ */
+/* Authoritative per-person record lives on the person's own known[] array, so RelCard and
+   every existing known.includes() gate keeps working. s.outTo stays the aggregate. */
+const STX_OUT_MARK = { orientation: "outO", gender: "outG" };
+
+function stxPerson(s, group, key) {
+  const bag = s[group] || (s.school && s.school[group]) || null;
+  return bag ? bag[key] || null : null;
+}
+function stxIsOutTo(s, group, key, what) {
+  const p = stxPerson(s, group, key);
+  if (!p) return false;
+  if (!p.known) p.known = [];
+  const mark = STX_OUT_MARK[what] || "outO";
+  return p.known.indexOf(mark) >= 0;
+}
+/* MUST be called on the live st inside fx.run — never inside a pClone'd menu builder (Gotcha #2,
+   which is the actual cause of the come-out option reappearing). */
+/* Which identity axis a coming-out conversation is actually about for this
+   character right now. Gender takes precedence once discovered, because that is
+   the disclosure with material consequences at school. */
+function stxCurrentAxis(s) {
+  if (s.discovered && s.discovered.gender && typeof isQueerG === "function" && isQueerG(s)) return "gender";
+  return "orientation";
+}
+function stxMarkOut(st, group, key, what, how) {
+  const p = stxPerson(st, group, key);
+  if (!p) return false;
+  if (!p.known) p.known = [];
+  const mark = STX_OUT_MARK[what] || "outO";
+  if (p.known.indexOf(mark) < 0) p.known.push(mark);
+  if (how && p.known.indexOf("outVia_" + how) < 0) p.known.push("outVia_" + how);
+  p.outDay = st.ageDays;
+  // INTEGRATION FIX (23): s.outTo is an OBJECT keyed by person. The handoff
+  // arrayified it here too (second site) — that would corrupt every existing
+  // read at runtime, not just on migrate. Per-axis detail lives in known[];
+  // outTo keeps its original meaning: "I have come out to this person".
+  if (!st.outTo || typeof st.outTo !== "object" || Array.isArray(st.outTo)) st.outTo = {};
+  st.outTo[key] = true;
+  return true;
+}
+/* cond for the "come out to X" option — hide it once it has actually happened, for both axes. */
+function stxCanComeOut(s, group, key, what) {
+  const p = stxPerson(s, group, key);
+  if (!p) return false;
+  return !stxIsOutTo(s, group, key, what);
+}
+/* What you get instead, once they already know. Keeps the slot useful rather than empty. */
+function stxAlreadyOutMenu(s, group, key, what) {
+  const p = stxPerson(s, group, key) || { name: "them" };
+  return {
+    emoji: "💬",
+    title: p.name + " already knows",
+    text: "You told " + p.name + " " + stxWhen(s, p.outDay || -1) + ". There is nothing left to confess, which leaves the harder part: what they do about it day to day.",
+    options: [
+      { label: "Ask them to use your name", fx: { run: (st) => { const q = stxPerson(st, group, key); if (q) { q.rel = clamp((q.rel || 50) + rnd(-3, 6)); if (!q.known) q.known = []; if (q.known.indexOf("usesName") < 0 && (q.acceptance || 50) > 45) q.known.push("usesName"); } push(st, (q => q ? q.name : "They")(stxPerson(st, group, key)) + " says it back to you once, carefully, like testing a step."); } } },
+      { label: "Ask how they actually feel about it", fx: { run: (st) => { const q = stxPerson(st, group, key); const acc = q ? (q.acceptance == null ? 50 : q.acceptance) : 50; push(st, acc > 65 ? "They tell you the truth, which is that they were more worried about you than about this." : acc > 35 ? "They say the right words in the wrong order, and you can hear them trying." : "They say they love you and then say nothing else, and the nothing else is the answer."); applyFx(st, { stats: { happiness: acc > 55 ? rnd(2, 6) : -rnd(1, 5) } }); } } },
+      { label: "Leave it", fx: {} },
+    ],
+  };
+}
+/* Migration repair: reconcile any historical s.outTo aggregate down onto people. */
+function stxRepairOut(s) {
+  // INTEGRATION FIX (23): s.outTo is an OBJECT keyed by person — {mom:true,
+  // dad:true, work:true, public:true} — read that way in ~20 places across the
+  // file. The handoff assumed an array of "group:key:mark" tokens; coercing it
+  // would have destroyed every existing read. Backfill known[] from the object.
+  if (!s.outTo || typeof s.outTo !== "object" || Array.isArray(s.outTo)) return;
+  // Legacy outTo records only THAT you came out, not on which axis. Infer the
+  // axis(es) the character actually has, so a bi cis player never gets outG.
+  const marks = [];
+  if (typeof isQueerO === "function" && isQueerO(s) && s.discovered && s.discovered.orientation) marks.push("outO");
+  if (typeof isQueerG === "function" && isQueerG(s) && s.discovered && s.discovered.gender) marks.push("outG");
+  if (!marks.length) return;
+  Object.keys(s.outTo).forEach((k) => {
+    if (!s.outTo[k]) return;
+    if (k === "work" || k === "public" || k === "school") return; // not people
+    const p = (s.family && s.family[k]) || (s.friends && s.friends[k]) ||
+              (s.romance && s.romance[k]) || (s.relatives && s.relatives[k]) ||
+              (s.children && s.children[k]);
+    if (!p) return;
+    if (!p.known) p.known = [];
+    marks.forEach((m) => { if (p.known.indexOf(m) < 0) p.known.push(m); });
+  });
+}
+
+/* ---------- 5 · LYING STOPS WORKING ----------------------------------------------------- */
+/* Every claim you can't back is a debt. The school's ability to call it in is CE-dependent. */
+const STX_CLAIMS = {
+  parentOK:  { n: "your parents already agreed", check: 78, sting: 34, revokes: ["name", "pronouns", "lists", "email", "uniform"], calls: true },
+  docs:      { n: "the paperwork is coming",     check: 62, sting: 26, revokes: ["id", "documents", "lists"], calls: false },
+  teacherOK: { n: "another teacher already said yes", check: 70, sting: 30, revokes: [], calls: false },
+  medical:   { n: "you're under a doctor for this", check: 66, sting: 30, revokes: ["restroom", "changing", "activities"], calls: false },
+  legalName: { n: "the name change is legally done", check: 84, sting: 40, revokes: ["id", "documents", "email"], calls: false },
+};
+
+function stxCredTier(s) {
+  const x = stxState(s);
+  const c = x.cred;
+  let tier = c >= 85 ? "trusted" : c >= 60 ? "ok" : c >= 30 ? "doubted" : "burned";
+  // INTEGRATION FIX (23): tier read only `cred`, so a save whose catch counter
+  // and score had diverged could show "trusted" after two catches. Catches now
+  // floor the tier directly, matching the module's stated rule: one catch =
+  // doubted, two = burned.
+  const caught = x.caught || 0;
+  const rank = { trusted: 0, ok: 1, doubted: 2, burned: 3 };
+  const floor = caught >= 2 ? "burned" : caught === 1 ? "doubted" : null;
+  if (floor && rank[floor] > rank[tier]) tier = floor;
+  return tier;
+}
+
+/* Era + institution decide how easy verification is. Deterministic, no RNG. */
+function stxVerifyEase(s) {
+  const y = typeof yearOf === "function" ? yearOf(s) : 2000;
+  let m = y < 1975 ? 0.55 : y < 1990 ? 0.7 : y < 2000 ? 0.85 : y < 2010 ? 1.0 : y < 2018 ? 1.15 : 1.3;
+  const t = (s.school && (s.school.type || s.school.kind)) || "";
+  if (/faith|religio|catholic|convent|parochial|madras|seminar/i.test(t)) m += 0.15;
+  if (/board|private|prep|grammar|academy|military/i.test(t)) m += 0.1;
+  if (/home/i.test(t)) m -= 0.25;
+  return m;
+}
+
+/* Odds (0-97) the claim gets checked and falls apart. Rises steeply with repetition — this is
+   the whole fix: the second lie is worse than the first, the third is essentially suicide. */
+function stxLieRisk(s, claimKey, p) {
+  const C = STX_CLAIMS[claimKey] || STX_CLAIMS.docs;
+  const x = stxState(s);
+  const same = x.lies.filter((l) => l.claim === claimKey).length;
+  const total = x.lies.length;
+  let r = C.check * 0.55;
+  r += same * 20;                                   // same lie twice: they've heard it before
+  r += total * 11;                                  // any lie at all raises the baseline
+  r += x.caught * 22;                               // already been caught once
+  r += (100 - x.cred) * 0.3;
+  r *= stxVerifyEase(s);
+  if (p) {
+    r += ((p.ruleRespect == null ? 50 : p.ruleRespect) - 50) * 0.28;
+    r += ((p.professionalism == null ? 50 : p.professionalism) - 50) * 0.2;
+    r += ((p.legalFear == null ? 50 : p.legalFear) - 50) * 0.24;
+    r -= ((p.empathy == null ? 50 : p.empathy) - 50) * 0.14;
+  }
+  return Math.max(4, Math.min(97, Math.round(r)));
+}
+
+/* Below this, the option is gone entirely — nobody is taking your word for anything. */
+function stxCanLie(s, claimKey) {
+  const x = stxState(s);
+  if (x.cred < 30) return false;
+  if (x.caught >= 2) return false;
+  return stxLieRisk(s, claimKey) < 92;
+}
+function stxLieWarn(s, claimKey) {
+  const r = stxLieRisk(s, claimKey);
+  return r < 30 ? "They have no reason to check." : r < 55 ? "It would hold, probably, if nobody thinks to ring anyone." : r < 78 ? "This is the kind of thing that gets checked." : "You would be lying to someone who is already reaching for the phone.";
+}
+
+/* Resolve. Call inside fx.run. Returns {caught, line}. */
+function stxTellLie(st, claimKey, staffKey, p) {
+  const C = STX_CLAIMS[claimKey] || STX_CLAIMS.docs;
+  const x = stxState(st);
+  const risk = stxLieRisk(st, claimKey, p);
+  const caught = rnd(1, 100) <= risk;
+  x.lies.push({ claim: claimKey, staff: staffKey || null, day: st.ageDays, risk: risk, caught: caught });
+  if (!caught) {
+    x.cred = clamp(x.cred - 4);
+    stxLog(st, "Claimed " + C.n + " — not checked");
+    return { caught: false, line: "They write it down as fact. It sits in the file now, true until somebody looks." };
+  }
+  x.caught += 1;
+  x.cred = clamp(x.cred - C.sting - x.caught * 8);
+  if (staffKey) { const m = stxStaffMem(st, staffKey); m.burned += 1; m.stance -= 18; }
+  x.inst -= 12;
+  C.revokes.forEach((k) => { if (stxHas(st, k)) stxSet(st, k, "revoked", { note: "claim disproved" }); });
+  STX_REQ_ORDER.forEach((k) => { const r = stxReq(st, k); if (r.st === "asked" || r.st === "review") stxSet(st, k, "needsDocs", { note: "credibility" }); });
+  stxLog(st, "Caught out: " + C.n);
+  applyFx(st, { stats: { happiness: -rnd(8, 16), health: -rnd(0, 3) } });
+  const line = C.calls
+    ? "It takes one phone call. You hear your mother's voice through the receiver from four feet away — the tone, not the words — and the secretary's face does something complicated, and then it is over."
+    : "They ask for it in writing, then ask again the following week, and the third time they do not ask, they just look at you until you stop talking.";
+  return { caught: true, line: line };
+}
+
+/* Applied by resolveRequest to every honest request as well: a burned student gets the slow
+   procedure even when the answer would otherwise be yes. */
+function stxCredMult(s) {
+  const t = stxCredTier(s);
+  return t === "trusted" ? 1.06 : t === "ok" ? 1 : t === "doubted" ? 0.72 : 0.45;
+}
+function stxCredFloor(s) {
+  // Returns a forced outcome (or null) when credibility alone should block a grant.
+  return stxCredTier(s) === "burned" ? "needsDocs" : null;
+}
+
+/* ---------- POOL: the consequences that make the above visible -------------------------- */
+const STX_POOL = [
+  {
+    id: "stxOverCapFriction", i: 1, w: 5, minAge: 11, maxAge: 19, cd: 200,
+    cond: (s) => inSchool(s) && stxOverCap(s) && !inPrison(s),
+    run: (s) => ({
+      event: {
+        emoji: "🚸", title: "Out of step with the paperwork",
+        text: "You are further along than this building has agreed to. Someone in the corridor notices before first period — a lanyard, a haircut, the wrong queue — and stops you with the particular politeness of a person about to cite a rule.",
+        options: [
+          { label: "Point out what's already been agreed", cond: (s) => stxGrantedCount(s) > 0, fx: { run: (st) => { push(st, "You name the thing that was granted, and the date, and who signed it. They deflate slightly. It is not permission but it is a wall to stand behind."); applyFx(st, { stats: { happiness: rnd(1, 5) } }); } } },
+          { label: "Apologise and fix it before the bell", fx: { run: (st) => { push(st, "You undo it in the toilets with thirty seconds to spare and spend the whole of double maths feeling like a coat turned inside out."); applyFx(st, { stats: { happiness: -rnd(4, 9) } }); stxNudgeAwayFromTarget(st, 2); } } },
+          { label: "Keep walking", fx: { run: (st) => { push(st, "You keep walking. It goes in someone's book. Whether that book ever gets opened is not up to you."); stxState(st).inst -= 4; applyFx(st, { stats: { happiness: rnd(2, 7) } }); if (typeof bumpSuspicion === "function") bumpSuspicion(st, 6); } } },
+        ],
+      },
+    }),
+  },
+  {
+    id: "stxQuietAlly", i: 0, w: 4, minAge: 11, maxAge: 19, cd: 420,
+    cond: (s) => inSchool(s) && STX_REQ_ORDER.some((k) => stxIs(s, k, "informal")),
+    run: (s) => ({ auto: ["Nobody announced anything. But the register got read out this morning with your name in it, in the same flat voice as everyone else's, and the world did not end."], fx: { stats: { happiness: rnd(3, 8) } } }),
+  },
+  {
+    id: "stxPaperCatchesUp", i: 1, w: 4, minAge: 11, maxAge: 19, cd: 300,
+    cond: (s) => inSchool(s) && STX_REQ_ORDER.some((k) => stxIs(s, k, "informal")) && stxState(s).inst < 10,
+    run: (s) => {
+      const k = STX_REQ_ORDER.filter((x) => stxIs(s, x, "informal"))[0];
+      return {
+        event: {
+          emoji: "📎", title: "A letter in the pigeonhole",
+          text: "An email goes round about consistency of records. It doesn't name anyone. It doesn't have to — there is exactly one person in this school whose name appears two different ways on two different lists, and everybody reading it knows who.",
+          options: [
+            { label: "Go and thank them before they decide", fx: { run: (st) => { const key = stxReq(st, k).by || "t1"; const m = stxStaffMem(st, key); m.stance += 6; push(st, "You catch them by the photocopier and say it badly. They tell you not to worry about it in a voice that suggests you should."); } } },
+            { label: "Make it official before it's taken away", fx: { run: (st) => { stxSet(st, k, "review", { note: "forced formal" }); push(st, "You put it in writing yourself. It is the right move and it feels like handing over a bird."); } } },
+            { label: "Say nothing and hope", fx: { run: (st) => { push(st, "You say nothing. For eleven days nothing happens, which is almost worse than something."); stxState(st).inst -= 3; } } },
+          ],
+        },
+      };
+    },
+  },
+  {
+    id: "stxCredShadow", i: 0, w: 4, minAge: 11, maxAge: 19, cd: 260,
+    cond: (s) => inSchool(s) && stxState(s).caught > 0,
+    run: (s) => ({ auto: ["You ask for something ordinary — a form, a signature, a lost password — and watch them check it twice. That is the part nobody warns you about: the lie is finished, and the checking isn't."], fx: { stats: { happiness: -rnd(2, 5) } } }),
+  },
+];
+
+/* ---------- ACT item wiring ------------------------------------------------------------- */
+POOL.push(...STX_POOL);
+
+/* NOTE (23): the live "Where things stand" entry is an inline item inside
+   SCHOOL_GROUP (search: id: "stxBoard"), gated on discovered+queer gender.
+   The handoff's standalone STX_BOARD_ITEM const was a second, unregistered
+   copy of the same item — removed so a future patch can't wire it twice. */
+
+
+/* ═══════════════ AI NARRATION (LLM) ═══════════════ */
+/* Module 15. PRESENTATION-ONLY, by design and by contract:
+   - never called to decide what happens (no stats, fx, cond, eligibility, RNG)
+   - every AI surface has a synchronous hand-written fallback rendered first
+   - the response only ever overwrites a DISPLAY field, after the fact
+   - fetch failure / offline / timeout / disabled === module doesn't exist
+   - response is sanitized to plain capped text, never parsed as code or state
+   NOTE (integration, 2026-07): outside the claude.ai artifact runtime (i.e. in
+   the PWA and Android builds) the keyless api.anthropic.com call has no proxy
+   and will fail closed — which is safe, but means the feature is inert there.
+   See handoff open question #1; needs a product decision, not a silent key. */
+
+const AI_NARRATION_CONFIG = {
+  model: "claude-sonnet-4-6",
+  maxTokens: 220,
+  timeoutMs: 9000,
+  maxCallsPerSession: 60, // soft budget, resets on reload — NOT persisted
+  minIntervalMs: 1200,
+};
+
+// In-memory only — deliberately NOT part of save state. The hand-written text
+// remains the single authoritative source; this only remembers a rewrite.
+const _aiCache = new Map();
+const _aiState = { callsThisSession: 0, lastCallAt: 0, inFlight: new Set() };
+
+function aiNarrationAllowed(s) {
+  if (!s || !s.ai || !s.ai.enabled) return false;
+  if (_aiState.callsThisSession >= AI_NARRATION_CONFIG.maxCallsPerSession) return false;
+  return true;
+}
+
+// Deliberately narrow: only facts the PLAYER can already see. Nothing from
+// s.hidden unless discovered, no other person's hidden identity. Keeps the
+// CE rule intact by handing the model the facts the engine already gated on.
+function buildNarrationContext(s, extra) {
+  const ctx = {
+    age: ageYears(s),
+    year: yearOf(s),
+    country: s.profile && s.profile.country,
+    // feed elements are objects ({date, text, ...}) — send text only.
+    recentFeed: Array.isArray(s.feed) ? s.feed.slice(-3).map((f) => (f && f.text) || "") : [],
+  };
+  return Object.assign(ctx, extra || {});
+}
+
+function _sanitizeAIText(raw) {
+  if (typeof raw !== "string") return null;
+  let t = raw.trim();
+  if (!t) return null;
+  if (t.length > 600) t = t.slice(0, 600); // hard cap — display only
+  return t;
+}
+
+// Always resolves, never throws — null means "keep the hand-written text".
+async function requestAINarration(prompt) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AI_NARRATION_CONFIG.timeoutMs);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: AI_NARRATION_CONFIG.model,
+        max_tokens: AI_NARRATION_CONFIG.maxTokens,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const block = Array.isArray(data.content) ? data.content.find((c) => c.type === "text") : null;
+    return _sanitizeAIText(block && block.text);
+  } catch (e) {
+    return null; // offline / aborted / malformed — always degrade silently
+  }
+}
+
+function _narrationPrompt(base, ctx) {
+  return (
+    "You are writing ONE short (2-4 sentence) piece of flavor text for a life-simulation game, " +
+    "in second person, literary/short-story register, no saccharine resolution. " +
+    "Rewrite/extend the following beat with concrete specific detail — do NOT change any facts, " +
+    "numbers, names, or outcomes implied by it, and do not introduce new plot facts:\n\n" +
+    "BEAT: " + base + "\n\nCONTEXT: " + JSON.stringify(ctx) + "\n\n" +
+    "Respond with ONLY the finished text, no preamble, no quotes."
+  );
+}
+
+// Background rewrite for a popup already sitting in s.pending.
+// onResolve(text) must ONLY assign a display field — never applyFx, never
+// touch options/cond.
+function enhancePopupNarration(s, popupSnapshot, onResolve) {
+  if (!aiNarrationAllowed(s)) return;
+  if (!popupSnapshot || !popupSnapshot.text) return;
+  const key = popupSnapshot.id || (popupSnapshot.title + "|" + popupSnapshot.text).slice(0, 120);
+  if (_aiState.inFlight.has(key)) return;
+  if (_aiCache.has(key)) { onResolve(_aiCache.get(key)); return; }
+  const now = Date.now();
+  if (now - _aiState.lastCallAt < AI_NARRATION_CONFIG.minIntervalMs) return;
+  _aiState.lastCallAt = now;
+  _aiState.callsThisSession++;
+  _aiState.inFlight.add(key);
+  const prompt = _narrationPrompt(popupSnapshot.text, buildNarrationContext(s));
+  requestAINarration(prompt).then((text) => {
+    _aiState.inFlight.delete(key);
+    if (!text) return;
+    _aiCache.set(key, text);
+    onResolve(text);
+  });
+}
+
+// Reusable primitive for other modules (e.g. 07's conversation menus) to get
+// an AI-flavored NPC line with a hand-written fallback. Intentionally NOT
+// wired to any button here — surfacing it is 07's territory.
+const AI_FALLBACK_LINES = [
+  "They don't have much to say right now, but they seem glad you stopped by.",
+  "Small talk — nothing memorable, but not nothing either.",
+  "You talk for a few minutes. It's fine. Some days are just fine.",
+];
+
+function generateNPCLine(s, person, situationText) {
+  const fallback = pick(AI_FALLBACK_LINES);
+  if (!aiNarrationAllowed(s)) return Promise.resolve(fallback);
+  const ctx = buildNarrationContext(s, {
+    personName: person && person.name,
+    personRole: person && person.role,
+    personTraits: person ? { warmth: person.warmth, kindness: person.kindness } : undefined,
+  });
+  const prompt = _narrationPrompt(situationText || "a short conversation", ctx);
+  return requestAINarration(prompt).then((text) => text || fallback);
+}
+
+const AI_GROUP = {
+  id: "ai",
+  emoji: "\u2728",
+  name: "AI Narration",
+  items: [
+    { id: "aiSettings", minAge: 0, emoji: "\u2728", label: "AI Narration Settings", cost: 0, special: "aiSettings" },
+  ],
+};
+ACT_GROUPS.push(AI_GROUP);
+
+function aiSettingsMenu(s) {
+  const on = !!(s.ai && s.ai.enabled);
+  const ensure = (st) => { if (!st.ai) st.ai = { enabled: false, level: "flavor" }; return st.ai; };
+  return {
+    id: "aiSettingsMenu",
+    emoji: "\u2728",
+    title: "AI Narration",
+    text: on
+      ? "AI narration is on. When it's available, some event and conversation text gets rewritten with extra, unique detail. It never changes what actually happens \u2014 only how it's described. Offline, or if the request fails, you just get the regular text."
+      : "AI narration is off. Turn it on to have some events and conversations get an extra AI-written pass of flavour. This never changes outcomes, stats, or options \u2014 only wording.",
+    options: [
+      on
+        ? { label: "Turn off", fx: { run: (st) => { ensure(st).enabled = false; push(st, "\u2728 AI narration turned off. Back to the written word."); } } }
+        : { label: "Turn on", fx: { run: (st) => { ensure(st).enabled = true; push(st, "\u2728 AI narration turned on. Some moments will read a little differently from here."); } } },
+      { label: "Flavour: subtle", cond: (s) => !!(s.ai && s.ai.enabled), fx: { run: (st) => { ensure(st).level = "flavor"; } } },
+      { label: "Flavour: rich", cond: (s) => !!(s.ai && s.ai.enabled), fx: { run: (st) => { ensure(st).level = "rich"; } } },
+      { label: "Close", fx: {} },
+    ],
+  };
+}
+
+/* ═══════════════ STORAGE ═══════════════ */
+
+const SAVE_KEY = "lifesim:save";
+async function saveGame(s) { try { await window.storage.set(SAVE_KEY, JSON.stringify(s)); } catch (e) { console.error("save failed", e); } }
+async function loadGame() { try { const r = await window.storage.get(SAVE_KEY); return r ? migrate(JSON.parse(r.value)) : null; } catch { return null; } }
+async function wipeGame() { try { await window.storage.delete(SAVE_KEY); } catch {} }
+
+/* ═══════════════ UI ═══════════════ */
+
+function StatBar({ label, emoji, value, accent }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
+        <span>{emoji} {label}</span><span style={{ fontVariantNumeric: "tabular-nums" }}>{value}</span>
+      </div>
+      <div style={{ height: 6, background: "#E4E4DF", borderRadius: 3 }}>
+        <div style={{ width: `${value}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .5s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+function Modal({ children, accent }) {
+  return (
+    <div className="fadeBg" style={{ position: "fixed", inset: 0, background: "rgba(22,23,26,.5)", backdropFilter: "blur(3px)", zIndex: 50, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "9dvh 16px 16px" }}>
+      <div className="rise" style={{ background: CARD, borderRadius: 18, padding: 18, borderTop: `4px solid ${accent}`, width: "100%", maxWidth: 420, maxHeight: "80dvh", overflowY: "auto", boxShadow: "0 18px 50px rgba(0,0,0,.22)" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ConfirmBox({ ask, accent, onYes, onNo }) {
+  if (!ask) return null;
+  return (
+    <div className="fadeBg" style={{ position: "fixed", inset: 0, background: "rgba(22,23,26,.55)", backdropFilter: "blur(3px)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="rise" style={{ background: CARD, borderRadius: 18, padding: 20, width: "100%", maxWidth: 360, borderTop: `4px solid ${ask.danger ? "#B4443C" : accent}`, boxShadow: "0 18px 50px rgba(0,0,0,.25)" }}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>{ask.title}</div>
+        <div style={{ fontSize: 14, lineHeight: 1.55, opacity: 0.8, marginBottom: 18 }}>{ask.body}</div>
+        <div style={{ display: "flex", gap: 9 }}>
+          <button className="btn" onClick={onNo} style={{ flex: 1, padding: 12, borderRadius: 11, border: "1px solid #DCDCD6", background: PAPER, color: INK, fontSize: 14, cursor: "pointer" }}>Cancel</button>
+          <button className="btn" onClick={onYes} style={{ flex: 1, padding: 12, borderRadius: 11, border: "none", background: ask.danger ? "#B4443C" : accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{ask.yes || "Yes, do it"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Sheet({ children, accent, onClose }) {
+  return (
+    <div className="fadeBg" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(22,23,26,.45)", backdropFilter: "blur(2px)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div className="slideUp" onClick={(e) => e.stopPropagation()} style={{ background: CARD, width: "100%", maxWidth: 480, maxHeight: "82dvh", overflowY: "auto", borderRadius: "20px 20px 0 0", borderTop: `4px solid ${accent}`, padding: "10px 16px 28px", boxShadow: "0 -8px 40px rgba(0,0,0,.2)" }}>
+        <div style={{ width: 38, height: 4, borderRadius: 3, background: "#D6D6D0", margin: "0 auto 14px" }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const smallBtn = (ready) => ({ flex: 1, padding: "9px 6px", borderRadius: 10, border: "1px solid #D8D8D2", background: ready ? PAPER : "#EBEBE6", fontSize: 12.5, cursor: ready ? "pointer" : "default", opacity: ready ? 1 : 0.5, color: INK });
+
+function RelCard({ p, group, pkey, accent, state, apply, openKey, onToggle, confirm }) {
+  const age = ageYears(state);
+  const knows = (t) => (p.known || []).includes(t);
+  if (p.deceased) {
+    return (
+      <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: "1px solid #E7E7E2", padding: "14px 16px", opacity: 0.75 }}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 17 }}>🕯 {p.name}</div>
+        <div style={{ fontSize: 12, opacity: 0.55, marginTop: 3 }}>{p.role} · in loving memory</div>
+      </div>
+    );
+  }
+  const timeReady = state.ageDays - p.lastTime >= 30;
+  const talkReady = state.ageDays - p.lastTalk >= 60;
+  const giftReady = state.ageDays - p.lastGift >= 45;
+  const heart = p.rel > 75 ? "💖" : p.rel > 50 ? "💙" : p.rel > 25 ? "🤍" : "💔";
+  // H9 (stx): the come-out slot is now PER-AXIS. Previously this read the
+  // aggregate state.outTo[pkey], so telling someone you were bi permanently
+  // consumed the slot and you could never tell them you were trans. stxCanComeOut
+  // asks "are they out to this person on THIS axis", so the conversation returns
+  // when a second axis is discovered. Once nothing is left to tell, the slot
+  // becomes stxAlreadyOutMenu instead of vanishing.
+  const outEligible = isOutQueer(state) && !p.pet && !p.deceased && p.status !== "ex" && !(group === "romance" && p.status === "ex");
+  const canOut = outEligible && stxCanComeOut(state, group, pkey, stxCurrentAxis(state));
+  const alreadyOut = outEligible && !canOut && (state.outTo[pkey] || (p.known || []).some((t) => t === "outO" || t === "outG"));
+  const isRom = group === "romance";
+  const isActive = isRom && ["dating", "serious", "engaged", "married"].includes(p.status);
+  const open = openKey === pkey;
+  const anyReady = p.status !== "ex" && (timeReady || talkReady || giftReady || canOut);
+  return (
+    <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: `1px solid ${open ? accent + "55" : "#E7E7E2"}`, boxShadow: open ? `0 4px 18px ${accent}1F` : "0 1px 5px rgba(35,35,30,.06)", opacity: p.status === "ex" ? 0.62 : 1, overflow: "hidden", transition: "border-color .18s, box-shadow .18s" }}>
+      <div onClick={() => onToggle(pkey)} style={{ padding: "13px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 17, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+            {anyReady && !open && <span style={{ width: 7, height: 7, borderRadius: 4, background: accent, flexShrink: 0 }} />}
+          </div>
+          <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 2 }}>{p.role}{isRom && p.openOk ? " · open" : ""}{p.status === "ex" ? " · ex" : ""}</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 52 }}>
+            <div style={{ height: 5, background: "#EDEDE8", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ width: `${p.rel}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .4s" }} />
+            </div>
+          </div>
+          <span style={{ fontSize: 13 }}>{heart}</span>
+          <span style={{ fontSize: 11, opacity: 0.45, transform: open ? "rotate(90deg)" : "none", transition: "transform .2s", display: "inline-block" }}>▶</span>
+        </div>
+      </div>
+      {open && (
+        <div style={{ padding: "0 14px 14px" }}>
+          {!p.pet && p.status !== "ex" && (
+            <div style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.85, marginBottom: 11, paddingTop: 2 }}>
+              {p.known.length === 0 && <span style={{ opacity: 0.55 }}>You don't know them deeply yet. Talk to find out who they really are.</span>}
+              {p.known.map((t) => <div key={t}>· {traitText(t, p[t], p.name)}</div>)}
+            </div>
+          )}
+          {p.status === "ex" && !inPrison(state) && (
+            <button className="btn" onClick={() => apply((st) => exMenu(st, pkey))} style={{ ...smallBtn(true), width: "100%", borderColor: accent, color: accent }}>🕸 Where things stand</button>
+          )}
+          {(knows("orientation") || knows("acceptance") || p.distant) && (
+            <div style={{ margin: "0 0 10px", padding: "9px 11px", borderRadius: 10, background: "#FAF8F3", border: "1px solid #EEEDE6", fontSize: 12, lineHeight: 1.6 }}>
+              <div style={{ opacity: 0.5, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>What you know</div>
+              {knows("orientation") && <div>Orientation: <b>{p.orientation || "—"}</b></div>}
+              {knows("acceptance") && <div>On people like you: {p.acceptance > 70 ? "warm, genuinely" : p.acceptance > 45 ? "trying, imperfectly" : p.acceptance > 25 ? "uneasy" : "hostile"}</div>}
+              {p.distant && <div style={{ opacity: 0.6 }}>Lives far from you now</div>}
+            </div>
+          )}
+          {p.status !== "ex" && inPrison(state) && (
+            <button className="btn" disabled={state.ageDays - p.lastTalk < 45} onClick={() => apply((st) => writeLetter(st, group, pkey))} style={{ ...smallBtn(state.ageDays - p.lastTalk >= 45), width: "100%" }}>✉️ Write a letter</button>
+          )}
+          {p.status !== "ex" && !inPrison(state) && (() => {
+            const chip = (ready) => ({ ...smallBtn(ready), flex: "1 1 30%", minWidth: 0, padding: "9px 4px", fontSize: 12 });
+            const compReady = state.ageDays - (p.lastComp || 0) >= 25;
+            const spyReady = state.ageDays - (p.lastSpy || 0) >= 120;
+            const rift = !!state.flags["rift_" + pkey] || p.rel < 30;
+            return (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button className="btn" disabled={!timeReady} onClick={() => apply((st) => timeMenu(st, group, pkey))} style={chip(timeReady)}>
+                  {p.pet ? "🎾 Play" : isRom ? "💘 Date" : "🕰 Time"}
+                </button>
+                {!p.pet && <button className="btn" disabled={!talkReady} onClick={() => apply((st) => conversationMenu(st, group, pkey))} style={chip(talkReady)}>💬 Talk</button>}
+                <button className="btn" disabled={!giftReady} onClick={() => apply((st) => giftShop(st, group, pkey))} style={chip(giftReady)}>🎁 Gift</button>
+                {!p.pet && <button className="btn" disabled={!compReady} onClick={() => apply((st) => complimentMenu(st, group, pkey))} style={chip(compReady)}>😊 Compliment</button>}
+                {!p.pet && <button className="btn" onClick={() => apply((st) => movieMenu(st, group, pkey))} style={chip(true)}>🎬 Movies</button>}
+                {!p.pet && <button className="btn" onClick={() => apply((st) => concertMenu(st, group, pkey))} style={chip(true)}>🎤 Concert</button>}
+                {!p.pet && <button className="btn" onClick={() => apply((st) => moneyMenu(st, group, pkey))} style={chip(true)}>💵 Money</button>}
+                {!p.pet && rift && <button className="btn" onClick={() => apply((st) => apologizeAction(st, group, pkey))} style={{ ...chip(true), borderColor: accent, color: accent }}>🕊 Apologize</button>}
+                {!p.pet && <button className="btn" onClick={() => confirm({ title: `Insult ${p.name}?`, body: "Words like these don't come back. The bond takes real damage.", yes: "Say it", danger: true }, () => apply((st) => insultMenu(st, group, pkey)))} style={{ ...chip(true), color: "#B4443C" }}>😠 Insult</button>}
+                {!p.pet && <button className="btn" disabled={!spyReady} onClick={() => confirm({ title: `Spy on ${p.name}?`, body: "Going through their private things. If they catch you, trust breaks — and you'll carry it either way.", yes: "Snoop", danger: true }, () => apply((st) => spyAction(st, group, pkey)))} style={{ ...chip(spyReady), color: spyReady ? "#8A6D3B" : undefined }}>🕵 Spy</button>}
+                {canOut && <button className="btn" onClick={() => apply((st) => comeOutStart(st, group, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>🏳️‍🌈 Tell them who you are</button>}
+                {alreadyOut && <button className="btn" onClick={() => apply((st) => { const n = pClone(st); n.pending = stxAlreadyOutMenu(n, group, pkey, stxCurrentAxis(n)); return n; })} style={{ ...smallBtn(true), flexBasis: "100%", opacity: 0.9 }}>💬 They already know</button>}
+                {isRom && isActive && age >= ageOfConsent(state) && state.ageDays - (p.lastLove || 0) >= 20 && <button className="btn" onClick={() => apply((st) => makeLoveMenu(st, pkey))} style={chip(true)}>💞 Make love</button>}
+                {isRom && (p.status === "serious" || p.status === "dating") && <button className="btn" onClick={() => apply((st) => proposeMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>💍 Propose{p.status === "dating" ? " — early days" : ""}</button>}
+                {isRom && p.status === "engaged" && !state.spouse && <button className="btn" onClick={() => apply((st) => weddingMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>👰 Plan the wedding</button>}
+                {isActive && <button className="btn" onClick={() => confirm({ title: `Break up with ${p.name}?`, body: "This ends the relationship. It will hurt, and it can't be undone.", yes: "End it", danger: true }, () => apply((st) => { const n = pClone(st); const nm = n.romance[pkey]?.name; doBreakup(n, pkey, false); if (nm) push(n, `💔 You ended things with ${nm}. ${pick(["Said out loud, it sounded smaller and worse than it had in your head.", "There were tears, and a box of things to return, and a walk home that took a very long time.", "It was the right call and it still felt like standing in a doorway you couldn't go back through."])}`); return n; }))} style={{ ...smallBtn(true), color: "#B4443C", flexBasis: "100%" }}>💔 Break up</button>}
+                {group === "friends" && !p.pet && age >= 13 && p.rel > 45 && <button className="btn" onClick={() => apply((st) => askOutMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>💗 Ask them out</button>}
+                {group === "friends" && !p.pet && pkey !== "pet" && <button className="btn" onClick={() => confirm({ title: `Cut off ${p.name}?`, body: "They'll be gone from your life for good.", yes: "Let them go", danger: true }, () => apply((st) => unfriendAction(st, pkey)))} style={{ ...smallBtn(true), color: "#B4443C", flexBasis: "100%" }}>👋 Unfriend</button>}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════ OBITUARY ═══════════════ */
+
+function Obituary({ state, onReset, accent }) {
+  const topTrait = Object.entries(state.emergent).sort((a, b) => b[1] - a[1])[0];
+  const spouse = state.spouse ? state.romance[state.spouse] : Object.values(state.romance).find((p) => p.status === "married");
+  return (
+    <div className="rise" style={{ maxWidth: 480, margin: "0 auto", padding: "10dvh 20px 40px", textAlign: "center" }}>
+      <div style={{ fontSize: 40, marginBottom: 10 }}>🕊</div>
+      <div style={{ fontFamily: "Georgia, serif", fontSize: 26 }}>{usedName(state)} {state.profile.last}</div>
+      <div style={{ fontSize: 14, opacity: 0.65, margin: "6px 0 20px" }}>{state.birth.y} — {state.death.year} · {state.death.ageY} years</div>
+      <div style={{ background: CARD, border: "1px solid #E7E7E2", borderRadius: 16, padding: 18, boxShadow: "0 2px 10px rgba(35,35,30,.05)", textAlign: "left", fontSize: 14, lineHeight: 1.8 }}>
+        <div>Died of {state.death.cause}, in {state.profile.city}.</div>
+        {spouse && <div>{spouse.role === "Spouse" ? `Beloved spouse of ${spouse.name}.` : `Life partner of ${spouse.name}.`}</div>}
+        {state.education.degree && <div>Graduate — {state.education.degree}.</div>}
+        {state.career.job && <div>Worked as {state.career.job.title} ({INDUSTRIES[state.career.job.industry].name}).</div>}
+        {state.career.sideHustle && <div>Built something of their own: {state.career.sideHustle.type}.</div>}
+        {state.discovered.orientation && isQueerO(state) && <div>Lived — {state.outTo.public ? "openly and" : "in their own way,"} truthfully — as {state.hidden.orientation.toLowerCase()}.</div>}
+        {state.discovered.gender && isQueerG(state) && <div>{state.hidden.gender}, and unmistakably themselves.</div>}
+        {topTrait && <div>Remembered above all for their {topTrait[0]}.</div>}
+        <div style={{ opacity: 0.6, marginTop: 8 }}>{state.feed.length} moments lived.</div>
+      </div>
+      <button className="btn" onClick={onReset} style={{ marginTop: 24, width: "100%", padding: 14, borderRadius: 12, border: "none", background: accent, color: "#fff", fontSize: 16, fontWeight: 600, cursor: "pointer" }}>
+        ✦ Begin a new life
+      </button>
+    </div>
+  );
+}
+
+/* ═══════════════ CREATION ═══════════════ */
+
+function Creation({ onStart }) {
+  const [adv, setAdv] = useState(false);
+  const [form, setForm] = useState(() => {
+    const sex = pick(["Male", "Female"]);
+    const country = pick(Object.keys(COUNTRIES));
+    return { first: pick(nameList(country, sexKind(sex))), last: pick(nameList(country, "last")), birthYear: rnd(1970, 2040), country, city: pick(COUNTRIES[country].cities), sex, cls: pick(["Poor", "Working", "Middle", "Wealthy"]) };
+  });
+  const set = (k, v) => setForm((f) => {
+    const n = { ...f, [k]: v };
+    if (k === "country") { n.city = COUNTRIES[v].cities[0]; n.first = pick(nameList(v, sexKind(n.sex))); n.last = pick(nameList(v, "last")); }
+    if (k === "sex") {
+      n.first = pick(nameList(n.country, sexKind(v)));
+      if (n.gid && !genderOptionsFor(v).includes(n.gid)) n.gid = "random";
+      if (n.orient && n.orient !== "random" && !orientOptionsFor(v).includes(n.orient)) n.orient = "random";
+    }
+    return n;
+  });
+  const accent = DECADE_ACCENT[Math.floor(form.birthYear / 10) * 10] || "#888";
+  const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #D8D8D2", background: CARD, fontSize: 15, color: INK, boxSizing: "border-box" };
+  const labelStyle = { fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.6, margin: "14px 0 6px", display: "block" };
+  const chip = (active) => ({ padding: "8px 14px", borderRadius: 999, border: `1.5px solid ${active ? accent : "#D8D8D2"}`, background: active ? accent : CARD, color: active ? "#fff" : INK, fontSize: 14, cursor: "pointer", transition: "background .25s, border-color .25s, color .25s" });
+  return (
+    <div className="rise" style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px 48px" }}>
+      <div style={{ fontFamily: "Georgia, serif", fontSize: 28, marginBottom: 2 }}>A Life</div>
+      <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 20 }}>Every era writes on you differently. Choose where yours begins.</div>
+      <label style={labelStyle}>Name</label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input style={inputStyle} value={form.first} onChange={(e) => set("first", e.target.value)} />
+        <input style={inputStyle} value={form.last} onChange={(e) => set("last", e.target.value)} />
+        <button className="btn" style={{ ...chip(false), flexShrink: 0 }} onClick={() => set("first", pick(nameList(form.country, sexKind(form.sex))))}>🎲</button>
+      </div>
+      <label style={labelStyle}>Birth year — <span style={{ color: accent, fontWeight: 600 }}>{form.birthYear}</span></label>
+      <input type="range" min={1970} max={2040} value={form.birthYear} onChange={(e) => set("birthYear", +e.target.value)} style={{ width: "100%", accentColor: accent }} />
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, opacity: 0.5 }}><span>1970</span><span>2040</span></div>
+      <label style={labelStyle}>Birthplace</label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <select style={inputStyle} value={form.country} onChange={(e) => set("country", e.target.value)}>{Object.keys(COUNTRIES).map((c) => <option key={c}>{c}</option>)}</select>
+        <select style={inputStyle} value={form.city} onChange={(e) => set("city", e.target.value)}>{COUNTRIES[form.country].cities.map((c) => <option key={c}>{c}</option>)}</select>
+      </div>
+      <label style={labelStyle}>Biological sex</label>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {["Male", "Female", "Intersex"].map((x) => <button key={x} className="btn" style={chip(form.sex === x)} onClick={() => set("sex", x)}>{x}</button>)}
+      </div>
+      <label style={labelStyle}>Family class</label>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {["Poor", "Working", "Middle", "Wealthy"].map((x) => <button key={x} className="btn" style={chip(form.cls === x)} onClick={() => set("cls", x)}>{x}</button>)}
+      </div>
+      <label style={labelStyle}>Sexual orientation</label>
+      <select style={inputStyle} value={form.orient || "random"} onChange={(e) => set("orient", e.target.value)}>
+        <option value="random">🎲 Let life decide</option>
+        {orientOptionsFor(form.sex).map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+      <label style={labelStyle}>Gender identity</label>
+      <select style={inputStyle} value={form.gid || "random"} onChange={(e) => set("gid", e.target.value)}>
+        <option value="random">🎲 Let life decide</option>
+        {genderOptionsFor(form.sex).map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+      <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: CARD, border: "1px solid #E7E7E2", fontSize: 12.5, lineHeight: 1.5, opacity: 0.75 }}>
+        🔒 Whatever you choose stays hidden — your character still discovers who they are through living, the way everyone does. "Let life decide" rolls it secretly.
+      </div>
+      <button className="btn" onClick={() => setAdv(!adv)} style={{ marginTop: 20, width: "100%", padding: 11, borderRadius: 11, border: `1px dashed ${accent}77`, background: "transparent", color: accent, fontSize: 13.5, cursor: "pointer" }}>
+        {adv ? "▾ Hide advanced setup" : "▸ Advanced: starting stats & self-discovery"}
+      </button>
+
+      {adv && (
+        <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: CARD, border: "1px solid #E7E7E2" }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.6, marginBottom: 4 }}>Starting stats</div>
+          <div style={{ fontSize: 11.5, opacity: 0.55, lineHeight: 1.5, marginBottom: 12 }}>Leave on Random to let birth, class and luck decide.</div>
+          {[["stHealth", "Health", "❤️"], ["stHappiness", "Happiness", "🙂"], ["stSmarts", "Smarts", "🧠"], ["stLooks", "Looks", "✨"]].map(([k, label, em]) => (
+            <div key={k} style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <span style={{ fontSize: 13.5 }}>{em} {label}</span>
+                <span style={{ fontSize: 12.5, color: form[k] == null ? INK : accent, opacity: form[k] == null ? 0.5 : 1, fontWeight: form[k] == null ? 400 : 600 }}>
+                  {form[k] == null ? "🎲 Random" : form[k]}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="range" min="5" max="95" value={form[k] == null ? 50 : form[k]} onChange={(e) => set(k, +e.target.value)} style={{ flex: 1, accentColor: accent }} />
+                <button className="btn" onClick={() => set(k, form[k] == null ? 50 : null)} style={{ padding: "5px 9px", borderRadius: 8, border: "1px solid #DCDCD6", background: form[k] == null ? accent : PAPER, color: form[k] == null ? "#fff" : INK, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>🎲</button>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.6, margin: "18px 0 4px" }}>Self-discovery</div>
+          <div style={{ fontSize: 11.5, opacity: 0.55, lineHeight: 1.5, marginBottom: 10 }}>When it clicks for you. Some people always knew; some work it out at fifty.</div>
+          <label style={{ ...labelStyle, margin: "0 0 6px" }}>Realise your orientation at</label>
+          <select style={inputStyle} value={form.discOAt ?? "random"} onChange={(e) => set("discOAt", e.target.value === "random" ? "random" : +e.target.value)}>
+            <option value="random">🎲 Around 15 (default)</option>
+            {[6, 8, 10, 12, 13, 14, 16, 18, 20, 25, 30, 35, 40, 50, 60].map((a) => <option key={a} value={a}>Age {a}</option>)}
+          </select>
+          <label style={{ ...labelStyle, margin: "12px 0 6px" }}>Realise your gender at</label>
+          <select style={inputStyle} value={form.discGAt ?? "random"} onChange={(e) => set("discGAt", e.target.value === "random" ? "random" : +e.target.value)}>
+            <option value="random">🎲 Around 16 (default)</option>
+            {[4, 6, 8, 10, 12, 13, 14, 15, 17, 19, 22, 26, 30, 35, 40, 50, 60].map((a) => <option key={a} value={a}>Age {a}</option>)}
+          </select>
+          <div style={{ fontSize: 11.5, opacity: 0.5, lineHeight: 1.5, marginTop: 10 }}>Gender only applies if you're trans or non-binary — cis characters skip it.</div>
+        </div>
+      )}
+
+      <button className="btn" onClick={() => onStart(newCharacter({ ...form, curSym: COUNTRIES[form.country].cur }))}
+        style={{ marginTop: 24, width: "100%", padding: 14, borderRadius: 12, border: "none", background: accent, color: "#fff", fontSize: 17, fontWeight: 600, cursor: "pointer" }}>Begin life ✦</button>
+    </div>
+  );
+}
+
+/* ═══════════════ CAREER / UNIVERSITY PANEL ═══════════════ */
+
+function workHarder(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  if (!s.career.job) return s;
+  s.career.job.perf = clamp(s.career.job.perf + 4);
+  push(s, pick(["🔥 You stayed late and shipped something solid.", "🔥 Extra hours. The kind of work that gets noticed.", "🔥 You took the task nobody wanted and nailed it."]));
+  return advance(s, 3);
+}
+
+function askRaise(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  const j = s.career.job;
+  if (!j) return s;
+  s.flags.raiseDay = s.ageDays;
+  if (j.perf > 72 || Math.random() < 0.4) {
+    const old = j.salary;
+    j.salary = Math.round(j.salary * 1.12);
+    push(s, `💰 You made the case to ${j.boss} — and won. ${s.profile.curSym}${old} → ${s.profile.curSym}${j.salary}/mo. You walked back to your desk very casually.`);
+    s.stats.happiness = clamp(s.stats.happiness + 5);
+  } else {
+    j.perf = clamp(j.perf + 3);
+    push(s, `💰 ${j.boss} said "not this quarter" with a sympathetic face and a vague promise. You noted the date. And the face.`);
+    s.stats.happiness = clamp(s.stats.happiness - 2);
+  }
+  return advance(s, 2);
+}
+
+function quitJob(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  if (!s.career.job) return s;
+  push(s, `🚪 You quit ${s.career.job.title}. Terrifying, weightless, correct.`);
+  s.career.job = null;
+  s.stats.happiness = clamp(s.stats.happiness + 3);
+  return advance(s, 2);
+}
+
+function dropOutNow(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  if (!s.education.college) return s;
+  push(s, `🎓 You walked away from ${s.education.college.major}. The debt stays; the pressure lifts. Some educations happen elsewhere.`);
+  s.education.college = null;
+  s.education.stage = "done";
+  return advance(s, 3);
+}
+
+function MiniBar({ label, value, accent, note }) {
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+        <span style={{ opacity: 0.75 }}>{label}</span>
+        <span style={{ opacity: 0.55 }}>{note !== undefined ? note : Math.round(value)}</span>
+      </div>
+      <div style={{ height: 6, background: "#EDEDE8", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ width: `${clamp(value)}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .5s" }} />
+      </div>
+    </div>
+  );
+}
+
+function panelCard(accent) {
+  return { background: CARD, borderRadius: 14, padding: 15, marginBottom: 12, border: "1px solid #E7E7E2", boxShadow: "0 1px 5px rgba(35,35,30,.06)" };
+}
+
+function CareerPanel({ state, apply, accent, confirm }) {
+  const s = state;
+  const cur = s.profile.curSym;
+  const ed = s.education;
+  const col = ed.college;
+  const job = s.career.job;
+  const hustle = s.career.sideHustle;
+  const age = ageYears(s);
+  const hdr = { fontFamily: "Georgia, serif", fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: "1px dashed #EAEAE4" };
+  const act = { flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 12.5, cursor: "pointer" };
+  const raiseReady = job && (!s.flags.raiseDay || s.ageDays - s.flags.raiseDay > 300);
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+      {/* ——— EDUCATION ——— */}
+      <div style={panelCard(accent)}>
+        <div style={hdr}>🎓 Education</div>
+        {col ? (
+          <>
+            <div style={row}><span style={{ opacity: 0.6 }}>Studying</span><b>{col.major}</b></div>
+            <div style={row}><span style={{ opacity: 0.6 }}>Institution</span><span>{COLLEGE_TIERS[col.tier].name}</span></div>
+            <div style={row}><span style={{ opacity: 0.6 }}>Year</span><span>{Math.min(Math.floor((s.ageDays - col.startDay) / 365) + 1, col.major === "Medicine" ? 6 : 4)} of {col.major === "Medicine" ? 6 : 4}</span></div>
+            <div style={{ ...row, borderBottom: "none", marginBottom: 8 }}><span style={{ opacity: 0.6 }}>Tuition help</span><span>{col.help > 0 ? `family covers ${Math.round(col.help * 100)}%` : "you're on your own"}</span></div>
+            {(() => {
+              const need = col.major === "Medicine" ? 2190 : 1460;
+              const done = Math.min(need, s.ageDays - col.startDay);
+              const pct = (done / need) * 100;
+              const left = Math.max(0, need - done);
+              return <MiniBar label="Degree progress" value={pct} accent={accent} note={left > 0 ? `${Math.round(pct)}% · ${(left / 365).toFixed(1)} yrs left` : "finals!"} />;
+            })()}
+            <MiniBar label="GPA" value={col.gpa} accent={accent} note={(Math.round(col.gpa / 2.5) / 10).toFixed(1) + " / 4.0"} />
+            {s.education.debt > 0 && <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 10 }}>Student debt: {cur}{Math.round(s.education.debt).toLocaleString()} — repaid automatically at 15% of salary once you're working.</div>}
+            <div style={{ display: "flex", gap: 7 }}>
+              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study</button>
+              <button className="btn" style={{ ...act, borderColor: "#D9BFBF", color: "#B4443C" }} onClick={() => confirm({ title: "Drop out of college?", body: "Your debt stays; the degree doesn't. This can't be undone.", yes: "Drop out", danger: true }, () => apply(dropOutNow))}>Drop out</button>
+            </div>
+          </>
+        ) : ed.stage === "done" ? (
+          <>
+            <div style={row}><span style={{ opacity: 0.6 }}>Highest qualification</span><b>{ed.degree || "High school"}</b></div>
+            <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Student debt</span><span>{ed.debt > 0 ? `${cur}${Math.round(ed.debt).toLocaleString()}` : "none 🎉"}</span></div>
+          </>
+        ) : (
+          <>
+            <div style={row}><span style={{ opacity: 0.6 }}>Currently</span><b>{ed.stage === "primary" ? "Primary school" : ed.stage === "middle" ? "Middle school" : ed.stage === "high" ? "High school" : "Not in school yet"}</b></div>
+            {ed.extra && <div style={row}><span style={{ opacity: 0.6 }}>Extracurricular</span><span>{ed.extra}</span></div>}
+            <div style={{ margin: "12px 0 4px", fontSize: 12, opacity: 0.6 }}>Subjects</div>
+            {Object.entries(SUBJECTS).map(([k, n]) => <MiniBar key={k} label={n} value={ed.subjects[k]} accent={accent} />)}
+            {age >= 6 && <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study a subject</button>}
+          </>
+        )}
+      </div>
+
+      {/* ——— WORK ——— */}
+      <div style={panelCard(accent)}>
+        <div style={hdr}>💼 Work</div>
+        {job ? (
+          <>
+            <div style={row}><span style={{ opacity: 0.6 }}>Position</span><b>{job.title}</b></div>
+            <div style={row}><span style={{ opacity: 0.6 }}>Industry</span><span>{job.industry}</span></div>
+            <div style={row}><span style={{ opacity: 0.6 }}>Salary</span><b>{cur}{job.salary.toLocaleString()}/mo</b></div>
+            <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Manager</span><span>{job.boss}</span></div>
+            <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Career ladder</div>
+            <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>
+              {[1, 2, 3, 4].map((t) => (
+                <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= job.tier ? accent : "#EDEDE8" }} />
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, opacity: 0.6, marginBottom: 12 }}>
+              {job.tier >= 4 ? "You're at the top of this ladder." : `Rung ${job.tier} of 4 — strong performance opens the next one.`}
+            </div>
+            <MiniBar label="Performance" value={job.perf} accent={accent} />
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+              <button className="btn" style={act} onClick={() => apply(workHarder)}>🔥 Extra hours</button>
+              <button className="btn" disabled={!raiseReady} style={{ ...act, opacity: raiseReady ? 1 : 0.45, cursor: raiseReady ? "pointer" : "default" }} onClick={() => raiseReady && apply(askRaise)}>💰 Ask for a raise</button>
+              <button className="btn" style={{ ...act, flexBasis: "100%", borderColor: "#D9BFBF", color: "#B4443C" }} onClick={() => confirm({ title: `Quit your job?`, body: `Walking away from ${job.title}. No income until you find something new.`, yes: "Quit", danger: true }, () => apply(quitJob))}>🚪 Quit</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.5, marginBottom: 12 }}>
+              {s.flags.retired ? "Retired. The week is yours to shape." : col ? "Studying full-time. Work can wait." : inSchool(s) ? "Still in school — a first job may come knocking." : "Not currently employed."}
+            </div>
+            {!col && !inSchool(s) && !s.flags.retired && age >= 16 && (
+              <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doActivity(st, { cost: 4, special: "jobs" }))}>💼 Look for work</button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ——— SKILLS ——— */}
+      {(() => {
+        const SK = { voiceTraining: "Voice", music: "Music", martial: "Martial arts", gaming: "Gaming", cooking: "Cooking", courage: "Courage", discipline: "Discipline", kindness: "Kindness", prudence: "Prudence", selfAwareness: "Self-awareness" };
+        const have = Object.keys(SK).filter((k) => (s.emergent[k] ?? 0) > 0);
+        if (!have.length) return null;
+        return (
+          <div style={panelCard(accent)}>
+            <div style={hdr}>📈 Skills & character</div>
+            {have.map((k) => <MiniBar key={k} label={SK[k]} value={s.emergent[k]} accent={accent} />)}
+          </div>
+        );
+      })()}
+
+      {/* ——— WORK IN DEPTH ——— */}
+      {s.career.job && (() => {
+        const j = s.career.job;
+        const yrs = ((s.ageDays - (j.since || s.ageDays)) / 365).toFixed(1);
+        const perf = j.perf ?? 60;
+        return (
+          <div style={panelCard(accent)}>
+            <div style={hdr}>🏢 {j.title}</div>
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Field</span><span>{INDUSTRIES[j.industry] ? INDUSTRIES[j.industry].name : j.industry}</span></div>
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Salary</span><b>{cur}{j.salary}/mo</b></div>
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Manager</span><span>{j.boss}</span></div>
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Time in role</span><span>{yrs} yrs</span></div>
+            <div style={{ marginTop: 10 }}>
+              <MiniBar label="Performance" value={perf} accent={perf > 70 ? accent : perf > 40 ? "#C08A3E" : "#B4443C"}
+                note={perf > 80 ? "they'd fight to keep you" : perf > 55 ? "solid" : perf > 30 ? "on the radar" : "at risk"} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 5, special: "workhard" }))}>💪 Put the hours in</button>
+              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 3, special: "coast" }))}>😌 Coast</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ——— SIDE HUSTLE ——— */}
+      {hustle && (
+        <div style={panelCard(accent)}>
+          <div style={hdr}>🚀 Side hustle</div>
+          <div style={row}><span style={{ opacity: 0.6 }}>Venture</span><b>{hustle.type[0].toUpperCase() + hustle.type.slice(1)}</b></div>
+          <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Roughly earning</span><span>{cur}{(hustle.level * 220).toLocaleString()}/mo</span></div>
+          <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Scale</div>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[1, 2, 3, 4].map((t) => <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= hustle.level ? accent : "#EDEDE8" }} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ——— SCHOOL ——— */}
+      {inSchool(s) && s.school && (() => {
+        const cfg = SCHOOL_TYPES[s.school.type];
+        const fee = schoolFee(s);
+        const cms = Object.keys(s.school.classmates || {}).length;
+        return (
+          <div style={panelCard(accent)}>
+            <div style={hdr}>{cfg.emoji} {s.school.name}</div>
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Type</span><b>{cfg.name}</b></div>
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Year</span><span>{s.school.stage === "primary" ? "Primary" : s.school.stage === "middle" ? "Middle school" : "High school"}</span></div>
+            {fee > 0 && <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Fees</span><span>{cur}{fee}/term</span></div>}
+            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Classmates you know</span><span>{cms}</span></div>
+            <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Standing</span>
+              <span style={{ color: (s.school.trouble || 0) >= 2 ? "#B4443C" : INK }}>
+                {(s.school.trouble || 0) >= 2 ? "in trouble" : (s.school.skips || 0) > 2 ? "spotty attendance" : "no concerns"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 1, special: "classmates" }))}>👥 Class</button>
+              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 1, special: "faculty" }))}>🧑‍🏫 Teachers</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ——— TRANSITION ——— */}
+      {s.discovered.gender && isQueerG(s) && (() => {
+        const steps = [
+          { k: "social", label: "Living as yourself", done: usedName(s) !== s.profile.first },
+          { k: "voice", label: "Voice work", done: (s.emergent.voiceTraining ?? 0) > 15 },
+          { k: "hrt", label: "Hormone therapy", done: !!s.flags.hrt },
+          { k: "top", label: "Top surgery", done: !!s.flags.srg_top },
+          { k: "gcs", label: "Gender-affirming surgery", done: !!s.flags.srg_gcs },
+          { k: "face", label: "Facial surgery", done: !!s.flags.srg_face },
+          { k: "name", label: "Legal name", done: !!s.flags.legalName },
+          { k: "marker", label: "Gender marker", done: !!s.flags.marker },
+        ];
+        const doneN = steps.filter((x) => x.done).length;
+        const months = s.flags.hrt ? Math.floor((s.ageDays - s.flags.hrt) / 30) : 0;
+        return (
+          <div style={panelCard(accent)}>
+            <div style={hdr}>🦋 Your transition</div>
+            <MiniBar label="Journey so far" value={(doneN / steps.length) * 100} accent={accent} note={`${doneN} of ${steps.length} steps`} />
+            {s.flags.hrt && <MiniBar label="Time on HRT" value={Math.min(100, (months / 36) * 100)} accent={accent} note={months < 24 ? `${months} months` : `${(months / 12).toFixed(1)} years`} />}
+            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {steps.map((x) => (
+                <span key={x.k} style={{ fontSize: 11.5, padding: "3px 9px", borderRadius: 20, border: `1px solid ${x.done ? accent + "66" : "#E7E7E2"}`, background: x.done ? accent + "14" : "transparent", color: x.done ? accent : INK, opacity: x.done ? 1 : 0.45 }}>
+                  {x.done ? "✓ " : ""}{x.label}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 10, lineHeight: 1.5 }}>There's no finish line here and no required order — this is a map of what you've chosen, not a checklist you owe anyone.</div>
+          </div>
+        );
+      })()}
+
+      {/* ——— MONEY ——— */}
+      <div style={panelCard(accent)}>
+        <div style={hdr}>💵 Money</div>
+        <div style={row}><span style={{ opacity: 0.6 }}>In the bank</span><b>{cur}{Math.round(s.money).toLocaleString()}</b></div>
+        <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Monthly income</span><span>{cur}{((job ? job.salary : 0) + (hustle ? hustle.level * 220 : 0)).toLocaleString()}</span></div>
+      </div>
+    </div>
+  );
+}
+
+function HomePanel({ state, apply, accent }) {
+  const rowS = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: "1px dashed #EAEAE4" };
+  const s = state;
+  const age = ageYears(s);
+  const trans = s.discovered.gender && isQueerG(s);
+  const dys = dysphoriaLevel(s);
+  const pres = presently(s);
+  const hdr = { fontFamily: "Georgia, serif", fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+  const act = { flex: 1, padding: "11px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 13, cursor: "pointer" };
+  const b = s.flags.book;
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+      <div style={panelCard(accent)}>
+        <div style={hdr}>🏠 {HRE_TENURE_HEADER[hreTenure(s)] || "Home"}</div>
+        <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.55, marginBottom: 12 }}>
+          {hreIsHomeless(s) ? "Nowhere of your own right now. The Getting-by menu is in 🎯 Act."
+            : hreAtParents(s) ? "Your room is down the hall. It has a door, and the door shuts."
+            : HRE_TENURE_LINE[hreTenure(s)] || "Your own door, your own rules, your own washing-up."}
+        </div>
+        {!hreIsHomeless(s) && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 1, special: "room" }))}>🚪 Your room</button>
+            {hreAtParents(s) && <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 1, special: "parentsroom" }))}>🛏 Their room</button>}
+          </div>
+        )}
+      </div>
+
+      {b && (
+        <div style={panelCard(accent)}>
+          <div style={hdr}>📚 Currently reading</div>
+          <div style={{ fontSize: 14, marginBottom: 3 }}>{b.title}</div>
+          <div style={{ fontSize: 11.5, opacity: 0.55, marginBottom: 10 }}>{BOOK_GENRES[b.genre].emoji} {BOOK_GENRES[b.genre].name} · {b.pages} pages</div>
+          <MiniBar label="Progress" value={(b.read / b.pages) * 100} accent={accent} note={`page ${b.read} of ${b.pages}`} />
+          {s.flags.booksRead > 0 && <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 8 }}>Finished so far: {s.flags.booksRead}</div>}
+          <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => bookshelfMenu(st))}>📖 Read</button>
+        </div>
+      )}
+
+      {(() => {
+        const b = s.body || {};
+        const has = b.hair || b.color || b.nails || (b.laserFace || 0) > 0 || (b.laserBody || 0) > 0;
+        if (!has) return null;
+        return (
+          <div style={panelCard(accent)}>
+            <div style={hdr}>💆 Your look</div>
+            {b.hair && <div style={{ ...rowS }}><span style={{ opacity: 0.6 }}>Current cut</span><span style={{ textAlign: "right", maxWidth: "62%" }}>{b.hair}{b.color ? `, ${b.color}` : ""}</span></div>}
+            {!b.hair && b.color && <div style={{ ...rowS }}><span style={{ opacity: 0.6 }}>Colour</span><span>{b.color}</span></div>}
+            {b.nails && <div style={{ ...rowS }}><span style={{ opacity: 0.6 }}>Nails</span><span>{b.nails}</span></div>}
+            {(b.laserFace || 0) > 0 && <div style={{ marginTop: 8 }}><MiniBar label="Laser — face" value={(b.laserFace / 8) * 100} accent={accent} note={b.laserFace >= 8 ? "complete" : `${b.laserFace} of 8 sessions`} /></div>}
+            {(b.laserBody || 0) > 0 && <div style={{ marginTop: 4 }}><MiniBar label="Laser — body" value={(b.laserBody / 8) * 100} accent={accent} note={b.laserBody >= 8 ? "complete" : `${b.laserBody} of 8 sessions`} /></div>}
+            <div style={{ marginTop: 10 }}>
+              <MiniBar label="Style sense" value={styleSense(s)} accent={accent} />
+              <MiniBar label="Grooming" value={grooming(s)} accent={accent} />
+              {(s.emergent.makeupSkill ?? 0) > 0 && <MiniBar label="Makeup skill" value={s.emergent.makeupSkill} accent={accent} />}
+              {(s.emergent.stylingSkill ?? 0) > 0 && <MiniBar label="Styling" value={s.emergent.stylingSkill} accent={accent} />}
+            </div>
+            <div style={{ ...rowS, borderBottom: "none", marginTop: 8 }}>
+              <span style={{ opacity: 0.6 }}>People read you as</span><b>{styleLabel(s)}</b>
+            </div>
+            {nonconformity(s) > 15 && (
+              <div style={{ fontSize: 11.5, opacity: 0.7, marginTop: 8, lineHeight: 1.5, color: nonconformity(s) > 45 ? "#B4443C" : INK }}>
+                {nonconformity(s) > 45 ? "You read as visibly gender-nonconforming. In this time and place, people will have opinions." : "You're presenting a little against expectation. Some people will notice."}
+                {Object.keys(hiddenFrom(s)).length > 0 && ` Hiding it from ${Object.keys(hiddenFrom(s)).length} ${Object.keys(hiddenFrom(s)).length === 1 ? "person" : "people"}.`}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 1, special: "salon" }))}>💆 Salon</button>
+              <button className="btn" style={act} onClick={() => apply((st) => concealMenu(st))}>🫥 Who sees you</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {trans && (
+        <div style={panelCard(accent)}>
+          <div style={hdr}>🦋 Living as yourself</div>
+          <div style={{ marginBottom: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 5 }}>
+              <span style={{ opacity: 0.6 }}>Presentation</span><span>{presLabel(s)}</span>
+            </div>
+            <div style={{ height: 9, borderRadius: 6, background: "linear-gradient(90deg,#6C8EBF 0%,#EAEAE4 50%,#C77DA6 100%)", position: "relative" }}>
+              <div style={{ position: "absolute", left: `calc(${pres}% - 6px)`, top: -3, width: 12, height: 15, borderRadius: 4, background: accent, border: "2px solid #fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)" }} />
+              <div style={{ position: "absolute", left: `calc(${presTarget(s)}% - 1px)`, top: -5, width: 2, height: 19, background: INK, opacity: 0.35 }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, opacity: 0.45, marginTop: 4 }}>
+              <span>masculine</span><span>androgynous</span><span>feminine</span>
+            </div>
+            <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 8, lineHeight: 1.5 }}>
+              The marker is you; the line is where you're headed. {presGap(s) < 12 ? "You're about where you want to be." : `${presGap(s)} points to go.`}
+            </div>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <MiniBar label="Dysphoria" value={dys} accent={dys > 60 ? "#B4443C" : dys > 30 ? "#C08A3E" : accent}
+              note={dys > 65 ? "heavy" : dys > 40 ? "present most days" : dys > 15 ? "manageable" : "quiet lately"} />
+            <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 6, lineHeight: 1.5 }}>
+              Eases with presentation, hormones, surgery, your name in people's mouths — and being known by the people who matter.
+            </div>
+          </div>
+          {(s.emergent.voiceTraining ?? 0) > 0 && <div style={{ marginTop: 12 }}><MiniBar label="Voice training" value={s.emergent.voiceTraining} accent={accent} /></div>}
+        </div>
+      )}
+
+      {!trans && age >= 8 && (
+        <div style={panelCard(accent)}>
+          <div style={hdr}>🪞 The mirror</div>
+          <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.55, marginBottom: 12 }}>Clothes, hair, the way you carry yourself — small levers, real effects.</div>
+          <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => expressMenu(st))}>🪞 Try things on</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HealthPanel({ state, apply, accent }) {
+  const s = state;
+  const cur = s.profile.curSym;
+  const age = ageYears(s);
+  const conds = activeConds(s);
+  const sick = untreated(s);
+  const hdr = { fontFamily: "Georgia, serif", fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: "1px dashed #EAEAE4" };
+  const act = { flex: 1, padding: "11px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 13, cursor: "pointer" };
+  const hcLevel = HC[s.profile.country] ?? 0.3;
+  const outlook = s.stats.health > 75 ? "Strong" : s.stats.health > 55 ? "Decent" : s.stats.health > 35 ? "Fragile" : "Serious";
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+      <div style={panelCard(accent)}>
+        <div style={hdr}>🩺 Body</div>
+        <MiniBar label="Health" value={s.stats.health} accent={accent} note={outlook} />
+        <MiniBar label="Happiness" value={s.stats.happiness} accent={accent} />
+        <div style={{ ...row, borderBottom: "none", marginTop: 6 }}>
+          <span style={{ opacity: 0.6 }}>Age</span><span>{age}</span>
+        </div>
+        <div style={{ ...row, borderBottom: "none" }}>
+          <span style={{ opacity: 0.6 }}>Healthcare here</span>
+          <span>{hcLevel < 0.15 ? "mostly covered" : hcLevel > 0.6 ? "you pay, dearly" : "part-subsidised"}</span>
+        </div>
+        {sick.length > 0 && (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#B4443C", lineHeight: 1.5 }}>
+            {sick.length} untreated condition{sick.length > 1 ? "s" : ""} — untreated illness wears you down and shortens the odds.
+          </div>
+        )}
+      </div>
+
+      <div style={panelCard(accent)}>
+        <div style={hdr}>📋 Conditions</div>
+        {conds.length === 0 ? (
+          <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5 }}>Nothing on record. A check-up finds things earlier than symptoms do.</div>
+        ) : conds.map(([id, c]) => {
+          const cfg = CONDITIONS[id];
+          const yrs = Math.max(0, Math.floor((s.ageDays - c.since) / 365));
+          return (
+            <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px dashed #EAEAE4" }}>
+              <span style={{ fontSize: 20 }}>{cfg.emoji}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14 }}>{cfg.name}</div>
+                <div style={{ fontSize: 11.5, opacity: 0.55 }}>{yrs < 1 ? "diagnosed this year" : `${yrs} year${yrs > 1 ? "s" : ""}`}{c.known === false ? " · unmonitored" : ""}</div>
+              </div>
+              <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap", border: `1px solid ${c.treated ? accent + "66" : "#E0C3C0"}`, background: c.treated ? accent + "14" : "#FBF0EF", color: c.treated ? accent : "#B4443C" }}>
+                {c.treated ? "managed" : "untreated"}
+              </span>
+            </div>
+          );
+        })}
+        {sick.length > 0 && (
+          <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => treatMenu(st))}>💊 Treat something</button>
+        )}
+      </div>
+
+      <div style={panelCard(accent)}>
+        <div style={hdr}>🏥 Care</div>
+        <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.5, marginBottom: 12 }}>
+          Check-ups, specialists, donations and elective surgery — priced for {s.profile.country}.
+        </div>
+        <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doctorMenu(st))}>🩺 See a doctor</button>
+      </div>
+
+      {(s.emergent.selfAwareness ?? 0) > 0 && (
+        <div style={panelCard(accent)}>
+          <div style={hdr}>🧘 Mind</div>
+          <MiniBar label="Self-awareness" value={s.emergent.selfAwareness} accent={accent} />
+          {s.emergent.discipline !== undefined && <MiniBar label="Discipline" value={s.emergent.discipline} accent={accent} />}
+          {s.emergent.prudence !== undefined && <MiniBar label="Prudence" value={s.emergent.prudence} accent={accent} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════ GAME ═══════════════ */
+
+function Game({ state, setState, onReset }) {
+  const [showStats, setShowStats] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showActs, setShowActs] = useState(false);
+  const [openRel, setOpenRel] = useState(null);
+  const [openCat, setOpenCat] = useState(null);
+  const [ask, setAsk] = useState(null);
+  const confirm = (cfg, onYes) => setAsk({ ...cfg, onYes });
+  const toggleRel = (k) => setOpenRel((cur) => (cur === k ? null : k));
+  const [tab, setTab] = useState("life");
+  const feedRef = useRef(null);
+  const rootRef = useRef(null);
+  const year = yearOf(state);
+  const accent = DECADE_ACCENT[Math.floor(year / 10) * 10] || "#888";
+  const age = ageYears(state);
+
+  // Module 15: presentation-only AI narration. Fires in the background for a
+  // popup already on screen and only ever assigns pending.aiText (a display
+  // field). No-op when disabled/offline — the written text is already rendered.
+  useEffect(() => {
+    if (!state.pending) return;
+    enhancePopupNarration(state, state.pending, (text) => {
+      setState((prev) => (prev.pending ? { ...prev, pending: { ...prev.pending, aiText: text } } : prev));
+    });
+  }, [state.pending && state.pending.id, state.pending && state.pending.text]);
+
+  useEffect(() => {
+    if (tab === "life" && feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [state.feed.length, state.pending, tab]);
+
+  const apply = (fn) => { const n = fn(state); setState(n); saveGame(n); };
+  const doAdvance = () => apply((st) => advance(st, st.timeStep));
+  const doChoose = (opt) => apply((st) => chooseOption(st, opt));
+  const setStep = (d) => apply((st) => ({ ...JSON.parse(JSON.stringify(st)), timeStep: d }));
+
+  if (!state.alive) return <Obituary state={state} onReset={onReset} accent={accent} />;
+
+  const visibleOptions = state.pending ? state.pending.options.filter((o) => !o.cond || o.cond(state)) : [];
+  const rom = Object.entries(state.romance);
+  const activeRom = rom.filter(([, p]) => p.status !== "ex");
+  const exes = rom.filter(([, p]) => p.status === "ex");
+  const peopleCount = 2 + Object.keys(state.friends).length + activeRom.length;
+  const outEligible = isOutQueer(state);
+  const gpa = Math.round(Object.values(state.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length);
+  const feedView = state.feed.slice(-150);
+
+  const tabBtn = (id, label) => (
+    <button className="btn" onClick={() => setTab(id)}
+      style={{ flex: 1, padding: "10px 0", background: "none", border: "none", borderBottom: `2.5px solid ${tab === id ? accent : "transparent"}`, color: tab === id ? accent : INK, fontWeight: tab === id ? 700 : 400, fontSize: 14, cursor: "pointer", transition: "color .25s, border-color .25s" }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div ref={rootRef} style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column", background: PAPER, position: "relative" }}>
+      <ConfirmBox ask={ask} accent={accent} onYes={() => { const f = ask.onYes; setAsk(null); f && f(); }} onNo={() => setAsk(null)} />
+
+      {state.pending && (
+        <Modal accent={accent}>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 18, marginBottom: 4 }}>{state.pending.emoji} {state.pending.title}</div>
+          <div style={{ fontSize: 14, lineHeight: 1.55, marginBottom: 14, opacity: 0.85 }}>{state.pending.aiText || state.pending.text}</div>
+          {state.pending.layout === "grid" ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+                {visibleOptions.filter((o) => o.card).map((o, i) => (
+                  <button key={i} className="btn" onClick={() => doChoose(o)}
+                    style={{ padding: "13px 8px 11px", borderRadius: 13, border: `1px solid ${o.hi ? accent + "66" : "#E2E2DC"}`, background: o.hi ? accent + "0D" : PAPER, cursor: "pointer", color: INK, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, boxShadow: "0 1px 4px rgba(35,35,30,.05)" }}>
+                    <span style={{ fontSize: 26, lineHeight: 1.1 }}>{o.card.emoji}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, textAlign: "center", lineHeight: 1.25 }}>{o.card.name}</span>
+                    {o.card.sub && <span style={{ fontSize: 11, opacity: 0.55, textAlign: "center", lineHeight: 1.3 }}>{o.card.sub}</span>}
+                    {o.card.tag && <span style={{ fontSize: 10.5, color: accent, background: accent + "1A", borderRadius: 10, padding: "1px 8px", marginTop: 2 }}>{o.card.tag}</span>}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 9 }}>
+                {visibleOptions.filter((o) => !o.card).map((o, i) => (
+                  <button key={i} className="btn" onClick={() => doChoose(o)}
+                    style={{ padding: "11px", borderRadius: 10, border: "1px solid #E2E2DC", background: CARD, fontSize: 13.5, textAlign: "center", cursor: "pointer", color: INK, opacity: 0.85 }}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {visibleOptions.map((o, i) => (
+              <button key={i} className="btn" onClick={() => doChoose(o)}
+                style={{ padding: "12px", borderRadius: 10, border: "1px solid #D8D8D2", background: PAPER, fontSize: 14, textAlign: "left", cursor: "pointer", color: INK }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          )}
+        </Modal>
+      )}
+
+      {showActs && !state.pending && (
+        <Sheet accent={accent} onClose={() => { setShowActs(false); setOpenCat(null); }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 19 }}>What do you feel like doing?</div>
+            <button onClick={() => { setShowActs(false); setOpenCat(null); }} style={{ background: "none", border: "none", fontSize: 15, opacity: 0.5, cursor: "pointer" }}>✕</button>
+          </div>
+          {ACT_GROUPS.map((g) => {
+            if (inPrison(state) && g.id !== "prison") return null;
+            if (g.id === "journey" && !(state.discovered.gender && isQueerG(state))) return null;
+            if (g.cond && !g.cond(state)) return null;
+            const items = g.items.filter((a) => age >= (a.minAge || 0) && age <= (a.maxAge || 200) && (!a.cond || a.cond(state)));
+            if (!items.length) return null;
+            const open = openCat === g.id;
+            return (
+              <div key={g.id} style={{ marginBottom: 8, border: `1px solid ${open ? accent + "55" : "#E7E7E2"}`, borderRadius: 12, overflow: "hidden", background: open ? "#FCFCFA" : CARD }}>
+                <button className="btn" onClick={() => setOpenCat(open ? null : g.id)}
+                  style={{ width: "100%", padding: "13px 14px", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", color: INK, fontSize: 15 }}>
+                  <span>{g.emoji}&nbsp;&nbsp;{g.name}</span>
+                  <span style={{ fontSize: 11, opacity: 0.4, transform: open ? "rotate(90deg)" : "none", transition: "transform .2s", display: "inline-block" }}>▶</span>
+                </button>
+                {open && (
+                  <div style={{ padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {items.map((a) => {
+                      const broke = a.price && state.money < a.price;
+                      return (
+                        <button key={a.id} className="btn" disabled={broke}
+                          onClick={() => { if (broke) return; setShowActs(false); setOpenCat(null); if (a.danger) confirm(a.danger, () => apply((st) => doActivity(st, a))); else apply((st) => doActivity(st, a)); }}
+                          style={{ padding: "11px 12px", borderRadius: 10, border: "1px solid #E2E2DC", background: broke ? "#F0F0EB" : PAPER, fontSize: 14, textAlign: "left", cursor: broke ? "default" : "pointer", color: INK, opacity: broke ? 0.45 : 1, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <span>{a.emoji} {a.label}</span>
+                          <span style={{ opacity: 0.5, fontSize: 11.5, whiteSpace: "nowrap" }}>
+                            {a.price ? `${state.profile.curSym}${a.price} · ` : ""}{a.cost}d
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </Sheet>
+      )}
+
+      {/* header */}
+      <div style={{ padding: "12px 16px 0", borderBottom: `2px solid ${accent}`, background: `linear-gradient(180deg, ${accent}14, transparent)`, transition: "border-color .5s, background .5s" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <button onClick={() => setShowProfile(!showProfile)} style={{ background: "none", border: "none", fontFamily: "Georgia, serif", fontSize: 19, color: INK, cursor: "pointer", padding: 0 }}>
+            {usedName(state)} {state.profile.last} <span style={{ fontSize: 12, opacity: 0.5 }}>▾</span>
+          </button>
+          <div style={{ fontWeight: 700, fontSize: 15, color: accent, fontVariantNumeric: "tabular-nums" }}>
+            {state.profile.curSym}{state.money}{state.education.debt > 0 && <span style={{ fontSize: 11, opacity: 0.7 }}> · −{state.profile.curSym}{state.education.debt}</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, opacity: 0.65, marginTop: 2 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+            {ageLabel(state)} · {state.profile.city}
+            {statusChips(state).map((c, i) => (
+              <span key={i} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 20, background: c.startsWith("⛓") || c.startsWith("🏃") ? "#3B3B3B" : accent, color: "#fff", whiteSpace: "nowrap" }}>{c}</span>
+            ))}
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {fmtDate(currentDate(state))}
+            <b style={{ color: "#fff", background: accent, borderRadius: 20, padding: "1px 8px", fontSize: 11, letterSpacing: .3 }}>{Math.floor(year / 10) * 10}s</b>
+          </span>
+        </div>
+        <button onClick={() => setShowStats(!showStats)} style={{ margin: "6px 0", background: "none", border: "none", fontSize: 12, color: accent, cursor: "pointer", padding: 0 }}>
+          {showStats ? "hide stats ▴" : "stats ▾"}
+        </button>
+        {showStats && (
+          <div className="rise" style={{ paddingBottom: 8 }}>
+            <StatBar label="Health" emoji="🩺" value={state.stats.health} accent={accent} />
+            <StatBar label="Happiness" emoji="😊" value={state.stats.happiness} accent={accent} />
+            <StatBar label="Smarts" emoji="🧠" value={state.stats.smarts} accent={accent} />
+            <StatBar label="Looks" emoji="✨" value={state.stats.looks} accent={accent} />
+            {Object.entries(state.emergent).map(([k, v]) => (
+              <StatBar key={k} label={k[0].toUpperCase() + k.slice(1)} emoji="🌱" value={v} accent="#8A8A82" />
+            ))}
+          </div>
+        )}
+        {showProfile && (
+          <div className="rise" style={{ padding: "4px 0 8px", fontSize: 13, lineHeight: 1.7 }}>
+            <div>Gender identity: {state.discovered.gender ? state.hidden.gender : "❓ not yet discovered"}</div>
+            <div>Orientation: {state.discovered.orientation ? state.hidden.orientation : "❓ not yet discovered"}</div>
+            {inSchool(state) && <div>School: {state.education.stage} · GPA {gpa}{state.education.extra ? ` · ${state.education.extra}` : ""}</div>}
+            {state.education.college && <div>College: {state.education.college.major} ({COLLEGE_TIERS[state.education.college.tier].name}) · GPA {state.education.college.gpa}</div>}
+            {state.education.degree && <div>Degree: {state.education.degree}</div>}
+            {state.career.job && <div>Job: {state.career.job.title}, {INDUSTRIES[state.career.job.industry].name} · perf {state.career.job.perf}</div>}
+            {state.career.sideHustle && <div>Hustle: {state.career.sideHustle.type} (lvl {state.career.sideHustle.level})</div>}
+            {state.flags.hobby && <div>Hobby: {{ music: "🎵 Music", sport: "⚽ Sports", art: "🎨 Art", games: "🎮 Gaming" }[state.flags.hobby]}</div>}
+            {outEligible && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                {state.career.job && !state.outTo.work && (
+                  <button className="btn" onClick={() => apply(comeOutWork)} style={{ ...smallBtn(true), flex: "none", borderColor: accent, color: accent }}>🏳️‍🌈 Come out at work</button>
+                )}
+                {!state.outTo.public && Object.keys(state.outTo).filter((k) => state.outTo[k]).length >= 2 && (
+                  <button className="btn" onClick={() => apply(comeOutPublic)} style={{ ...smallBtn(true), flex: "none", borderColor: accent, color: accent }}>🏳️‍🌈 Live fully openly</button>
+                )}
+              </div>
+            )}
+            <button onClick={() => confirm({ title: "Start a new life?", body: "This life will be erased permanently.", yes: "Begin again", danger: true }, onReset)} style={{ marginTop: 6, fontSize: 12, color: "#B4443C", background: "none", border: "none", cursor: "pointer", padding: 0 }}>⟲ Start a new life</button>
+          </div>
+        )}
+        <div style={{ display: "flex" }}>
+          {tabBtn("life", "📖 Life")}
+          {tabBtn("people", `👥 People (${peopleCount})`)}
+          {tabBtn("career", "🎓 Career")}
+          {tabBtn("home", "🏠 Home")}
+          {tabBtn("health", "🩺 Health")}
+        </div>
+      </div>
+
+      {/* body */}
+      {tab === "life" ? (
+        <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "16px 16px 8px" }}>
+          <div style={{ position: "relative", paddingLeft: 18 }}>
+            <div style={{ position: "absolute", left: 5, top: 0, bottom: 0, width: 2, background: "#E0E0DA" }} />
+            {state.feed.length > 150 && <div style={{ fontSize: 11, opacity: 0.45, marginBottom: 12 }}>· earlier years archived ·</div>}
+            {feedView.map((e, i) => e.world ? (
+              <div key={i} className="rise" style={{ position: "relative", margin: "16px 0 16px -18px", padding: "10px 12px", borderRadius: 10, background: "#ECEDE9", border: "1px dashed #C9CAC4", fontSize: 13, lineHeight: 1.5 }}>
+                <span style={{ opacity: 0.55, fontSize: 11, display: "block", marginBottom: 2 }}>🌍 Meanwhile, in the world · {e.date}</span>
+                {e.text}
+              </div>
+            ) : (
+              <div key={i} className="rise" style={{ position: "relative", marginBottom: 14 }}>
+                <div style={{ position: "absolute", left: -18, top: 5, width: 8, height: 8, borderRadius: 4, background: accent }} />
+                <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 2 }}>{e.date}</div>
+                <div style={{ fontSize: 15, lineHeight: 1.5 }}>{e.text}</div>
+              </div>
+            ))}
+            {state.feed.length === 0 && <div style={{ opacity: 0.5, fontSize: 14 }}>Your story begins when you take your first step through time.</div>}
+          </div>
+        </div>
+      ) : tab === "people" ? (
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+          {activeRom.length > 0 && (<>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.55, marginBottom: 10 }}>💘 Romance</div>
+            {activeRom.map(([k, p]) => <RelCard key={k} p={p} group="romance" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
+          </>)}
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.55, margin: "6px 0 10px" }}>Family</div>
+          <RelCard p={state.family.mom} group="family" pkey="mom" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
+          <RelCard p={state.family.dad} group="family" pkey="dad" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
+          {state.family.stepmom && <RelCard p={state.family.stepmom} group="family" pkey="stepmom" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />}
+          {state.family.stepdad && <RelCard p={state.family.stepdad} group="family" pkey="stepdad" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />}
+          {Object.entries(state.family).filter(([k]) => k.startsWith("sib") || k.startsWith("stepsib")).map(([k, p]) => (
+            <RelCard key={k} p={{ ...p, role: sibAgeLabel(state, p) }} group="family" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
+          ))}
+          {Object.keys(state.relatives || {}).length > 0 && (<>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>🌳 Relatives</div>
+            {Object.entries(state.relatives).map(([k, p]) => (
+              <RelCard key={k} p={p} group="relatives" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
+            ))}
+          </>)}
+          {Object.keys(state.children || {}).length > 0 && (<>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>👶 Children</div>
+            {Object.entries(state.children).map(([k, c]) => <RelCard key={k} p={{ ...c, role: childAgeLabel(state, c) }} group="children" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
+          </>)}
+          {Object.keys(state.friends).length > 0 && (<>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>Friends & companions</div>
+            {Object.entries(state.friends).map(([k, p]) => <RelCard key={k} p={p} group="friends" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
+          </>)}
+          {exes.length > 0 && (<>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>Past chapters</div>
+            {exes.map(([k, p]) => <RelCard key={k} p={p} group="romance" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
+          </>)}
+          <div style={{ fontSize: 12, opacity: 0.5, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+            Time deepens bonds · talks reveal who people are · coming out is always your choice and your pace.
+          </div>
+        </div>
+      ) : tab === "career" ? (
+        <CareerPanel state={state} apply={apply} accent={accent} confirm={confirm} />
+      ) : tab === "home" ? (
+        <HomePanel state={state} apply={apply} accent={accent} />
+      ) : (
+        <HealthPanel state={state} apply={apply} accent={accent} />
+      )}
+
+      {/* action area */}
+      <div style={{ padding: "8px 16px calc(14px + env(safe-area-inset-bottom))", borderTop: "1px solid #E7E7E2", background: PAPER }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          {TIME_STEPS.map((t) => (
+            <button key={t.d} className="btn" onClick={() => setStep(t.d)}
+              style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 13, cursor: "pointer", fontVariantNumeric: "tabular-nums",
+                border: `1.5px solid ${state.timeStep === t.d ? accent : "#D8D8D2"}`,
+                background: state.timeStep === t.d ? accent : CARD,
+                color: state.timeStep === t.d ? "#fff" : INK }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn" onClick={() => setShowActs(true)}
+            style={{ flex: 1, padding: 13, borderRadius: 12, border: `1.5px solid ${accent}`, background: CARD, color: accent, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
+            🎯 Act
+          </button>
+          <button className="btn" onClick={doAdvance}
+            style={{ flex: 2, padding: 13, borderRadius: 12, border: "none", background: `linear-gradient(135deg, ${accent}, ${accent}D0)`, color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer", boxShadow: `0 4px 14px ${accent}44` }}>
+            Live on ⏳ {TIME_STEPS.find((t) => t.d === state.timeStep)?.label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════ APP ═══════════════ */
+
+export default function App() {
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { loadGame().then((s) => { if (s) setState(s); setLoading(false); }); }, []);
+
+  const onStart = (s) => { setState(s); saveGame(s); };
+  const onReset = async () => {
+    await wipeGame(); setState(null);
+  };
+
+  return (
+    <div style={{ minHeight: "100dvh", background: PAPER, color: INK, fontFamily: "-apple-system, 'Segoe UI', Roboto, sans-serif" }}>
+      <style>{`
+        @keyframes riseIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
+        .slideUp { animation: slideUp .28s cubic-bezier(.22,.9,.3,1) both; }
+        button { font-family: inherit; }
+        ::selection { background: rgba(0,0,0,.12); }
+        .rise { animation: riseIn .35s ease both; }
+        .fadeBg { animation: fadeIn .25s ease both; }
+        .btn { transition: transform .12s ease, filter .2s ease, background .25s, border-color .25s, color .25s; }
+        .btn:active { transform: scale(.965); }
+        .btn:hover { filter: brightness(.97); }
+        @media (prefers-reduced-motion: reduce) { .rise, .fadeBg, .slideUp { animation: none; } .btn { transition: none; } }
+      `}</style>
+      {loading ? (
+        <div style={{ padding: 40, textAlign: "center", opacity: 0.5 }}>Loading your life…</div>
+      ) : state ? (
+        <Game state={state} setState={setState} onReset={onReset} />
+      ) : (
+        <Creation onStart={onStart} />
+      )}
+    </div>
+  );
+}
