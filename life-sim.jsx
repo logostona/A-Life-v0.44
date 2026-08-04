@@ -1366,7 +1366,6 @@ const POOL = [
     { label: "Dig in — ask for help, restructure everything", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 12); }, stats: { happiness: +4 }, emergent: { discipline: +8 }, feed: `You asked for help — advisors, friends, extensions. Turns out that's not weakness; it's the actual skill.` } },
     { label: "Drop out", fx: { run: (st) => { st.education.college = null; st.education.stage = "done"; }, stats: { happiness: +3 }, feed: `🕳 You walked away from college. Relief first, questions later. The debt, sadly, graduated with honors.` } },
   ] } }) },
-  { id: "collegeGrad", w: 1, minAge: 19, maxAge: 40, cd: 60, cond: (s) => !!s.education.college && s.ageDays - s.education.college.startDay >= (s.education.college.major === "Medicine" ? 2190 : 1460), run: (s) => { gainDegree(s); return { auto: [] }; } },
 
   /* ——— CAREER ——— */
   { id: "salary", w: 6, minAge: 16, maxAge: 80, cd: 30, cond: (s) => !!s.career.job, run: (s) => {
@@ -2111,6 +2110,284 @@ const HRE_DEV = {
 
 function hreRegionOf(country) { return HRE_REGION[country] || "universal"; }
 function hreDevOf(country) { return HRE_DEV[country] || "middle"; }
+
+/* ═══════════════════════════ EDU · S01 ═══════════════════════════
+   Ladder & country/era system model. Pure data + pure resolver: no state, no
+   wiring, no player-visible change. EDU is additive until its inversion phase
+   — delete every edu* symbol and the game behaves identically.
+
+   WHY THIS EXISTS. Measured before writing it (see EDU-PHASE0-EXIT.md): the
+   current game applies NO country or era gating to tertiary access at all.
+   A character born in Nigeria in 1935 reaches university 88% of the time,
+   more often than one born in Sweden in 1995 (63%) or the UK in 1935 (50%).
+   College entry runs off class and smarts alone. `tertiaryAccess` and
+   `femaleAccess` below are the numbers that exist to fix that.
+
+   ─── the 23-stage vision list is not 23 rungs of one ladder ───
+   The vision document lists 23 items (the architecture doc says 21; the list
+   itself has 23). They are not all the same KIND of thing, and flattening
+   them into one enum would break the single-canonical-stage design that
+   eduSetStage depends on — a character at a religious boarding secondary
+   school would need three simultaneous values.
+
+   They separate cleanly into four kinds:
+     RUNG      sequential, age-banded, one at a time      → EDU_STAGES below
+     VARIANT   same rung, different institution kind      → S02 archetypes
+               (technical / military / religious secondary)
+     MODIFIER  orthogonal attribute of the institution    → boarding, which
+               the vision doc itself calls "not a separate academic level",
+               and which architecture §8.4 already routes to hreSetTenure
+     OVERLAY   not education state at all                 → medical residency,
+               postdoc and academic research are module 09 jobs carrying an
+               EDU overlay, per architecture §8.2
+   Adult education and preparatory courses are re-entry/parallel MODES rather
+   than rungs — an adult finishing secondary school at 40 is at the upperSec
+   rung, reached by a different route, not on a 24th rung of the ladder.
+   Every vision item is accounted for by `visionKind` below, so nothing is
+   silently dropped and the mapping can be argued with. */
+
+const EDU_STAGE_KINDS = ["rung", "variant", "modifier", "overlay", "mode"];
+
+/* The canonical ladder. `visionKind` traces each vision-document item to the
+   kind of thing it actually is; only kind "rung" is a value eduSetStage may
+   ever hold. tier groups rungs for the CE tables and for S05's progression. */
+const EDU_STAGES = {
+  none:          { ord: 0,  tier: "pre",     label: "Not in education",        visionKind: "rung" },
+  nursery:       { ord: 1,  tier: "early",   label: "Nursery / daycare",       visionKind: "rung", exitCredential: null },
+  preschool:     { ord: 2,  tier: "early",   label: "Preschool / kindergarten", visionKind: "rung", exitCredential: null },
+  primary:       { ord: 3,  tier: "school",  label: "Primary education",       visionKind: "rung", exitCredential: "primaryCert" },
+  lowerSec:      { ord: 4,  tier: "school",  label: "Lower secondary",         visionKind: "rung", exitCredential: "lowerSecCert" },
+  upperSec:      { ord: 5,  tier: "school",  label: "Secondary education",     visionKind: "rung", exitCredential: "secondaryDiploma" },
+  prep:          { ord: 6,  tier: "bridge",  label: "Preparatory course",      visionKind: "mode", exitCredential: null },
+  vocational:    { ord: 7,  tier: "tertiary", label: "Vocational education",   visionKind: "rung", exitCredential: "vocationalCert" },
+  community:     { ord: 8,  tier: "tertiary", label: "Community college",      visionKind: "rung", exitCredential: "associate" },
+  university:    { ord: 9,  tier: "tertiary", label: "University",             visionKind: "rung", exitCredential: "bachelor" },
+  gradCert:      { ord: 10, tier: "postgrad", label: "Graduate certificate",   visionKind: "rung", exitCredential: "gradCert" },
+  mba:           { ord: 11, tier: "postgrad", label: "MBA",                    visionKind: "rung", exitCredential: "mba" },
+  masters:       { ord: 12, tier: "postgrad", label: "Master's degree",        visionKind: "rung", exitCredential: "masters" },
+  profMasters:   { ord: 13, tier: "postgrad", label: "Professional master's",  visionKind: "rung", exitCredential: "profMasters" },
+  doctorate:     { ord: 14, tier: "postgrad", label: "Doctorate (PhD)",        visionKind: "rung", exitCredential: "phd" },
+  profDoctorate: { ord: 15, tier: "postgrad", label: "Professional doctorate", visionKind: "rung", exitCredential: "profDoctorate" },
+  done:          { ord: 99, tier: "post",    label: "Education complete",      visionKind: "rung" },
+};
+
+/* Vision items that are deliberately NOT rungs, kept here so the mapping is
+   explicit and testable rather than an omission somebody has to notice. */
+const EDU_NON_RUNG = {
+  technicalSecondary: { kind: "variant",  rung: "upperSec", owner: "S02 archetype" },
+  militarySecondary:  { kind: "variant",  rung: "upperSec", owner: "S02 archetype" },
+  religiousSecondary: { kind: "variant",  rung: "upperSec", owner: "S02 archetype" },
+  boarding:           { kind: "modifier", rung: null,       owner: "S02 attribute + HRE tenure (arch §8.4)" },
+  adultEducation:     { kind: "mode",     rung: null,       owner: "S10 re-entry" },
+  medicalResidency:   { kind: "overlay",  rung: null,       owner: "module 09 job + EDU overlay (arch §8.2)" },
+  postdoc:            { kind: "overlay",  rung: null,       owner: "module 09 job + EDU overlay (arch §8.2)" },
+  academicResearch:   { kind: "overlay",  rung: null,       owner: "module 09 job + EDU overlay (arch §8.2)" },
+};
+
+/* ─── the country/era system model ───
+   Same resolver shape as hreLaw: UNIVERSAL → DEV[tier] → REGION → COUNTRY,
+   merged in that order, each layer overriding only the keys it names, each
+   entry era-banded.
+
+   EVERY NUMBER BELOW IS `provisional: true` AND MUST BE TREATED AS SUCH.
+   None of it is sourced. It is shaped to be the right KIND of curve — mass
+   secondary before mass tertiary, female access trailing then converging,
+   compulsory schooling ratcheting up — so the resolver can be built and
+   tested against something plausible. Module 22 tranche 2 supplies the real
+   dates and rates. The resolver being correct is not the same as the history
+   being correct, and eduSystemCoverage() reports the gap rather than hiding
+   it. This is the same discipline HRE's law tables ship under at 20% country
+   coverage; EDU's surface is larger, so the discipline matters more. */
+
+const EDU_ERA_BANDS = [1900, 1930, 1950, 1970, 1990, 2010, 2030];
+
+/* A band list is [{ from, ...keys }] sorted ascending; the band in force is
+   the last one whose `from` is <= the year. */
+const EDU_SYSTEM_UNIVERSAL = [
+  { from: -Infinity, compulsoryTo: 0, tracking: "none", tertiaryAccess: 0.01, femaleAccess: 0.10,
+    entryExam: null, provisional: true },
+];
+
+const EDU_SYSTEM_DEV = {
+  high: [
+    { from: 1900, compulsoryTo: 12, tertiaryAccess: 0.02, femaleAccess: 0.35, tracking: "hard" },
+    { from: 1930, compulsoryTo: 14, tertiaryAccess: 0.05, femaleAccess: 0.50, tracking: "hard" },
+    { from: 1950, compulsoryTo: 15, tertiaryAccess: 0.10, femaleAccess: 0.62, tracking: "soft" },
+    { from: 1970, compulsoryTo: 16, tertiaryAccess: 0.25, femaleAccess: 0.82, tracking: "soft" },
+    { from: 1990, compulsoryTo: 16, tertiaryAccess: 0.45, femaleAccess: 1.00, tracking: "soft" },
+    { from: 2010, compulsoryTo: 18, tertiaryAccess: 0.70, femaleAccess: 1.00, tracking: "soft" },
+    { from: 2030, compulsoryTo: 18, tertiaryAccess: 0.78, femaleAccess: 1.00, tracking: "soft" },
+  ],
+  upper: [
+    { from: 1900, compulsoryTo: 10, tertiaryAccess: 0.01, femaleAccess: 0.22, tracking: "hard" },
+    { from: 1930, compulsoryTo: 11, tertiaryAccess: 0.02, femaleAccess: 0.32, tracking: "hard" },
+    { from: 1950, compulsoryTo: 12, tertiaryAccess: 0.04, femaleAccess: 0.45, tracking: "hard" },
+    { from: 1970, compulsoryTo: 14, tertiaryAccess: 0.12, femaleAccess: 0.65, tracking: "soft" },
+    { from: 1990, compulsoryTo: 15, tertiaryAccess: 0.25, femaleAccess: 0.90, tracking: "soft" },
+    { from: 2010, compulsoryTo: 17, tertiaryAccess: 0.50, femaleAccess: 1.00, tracking: "soft" },
+    { from: 2030, compulsoryTo: 17, tertiaryAccess: 0.60, femaleAccess: 1.00, tracking: "soft" },
+  ],
+  middle: [
+    { from: 1900, compulsoryTo: 0,  tertiaryAccess: 0.005, femaleAccess: 0.12, tracking: "hard" },
+    { from: 1930, compulsoryTo: 8,  tertiaryAccess: 0.010, femaleAccess: 0.18, tracking: "hard" },
+    { from: 1950, compulsoryTo: 10, tertiaryAccess: 0.02,  femaleAccess: 0.28, tracking: "hard" },
+    { from: 1970, compulsoryTo: 11, tertiaryAccess: 0.06,  femaleAccess: 0.45, tracking: "hard" },
+    { from: 1990, compulsoryTo: 13, tertiaryAccess: 0.14,  femaleAccess: 0.68, tracking: "soft" },
+    { from: 2010, compulsoryTo: 15, tertiaryAccess: 0.28,  femaleAccess: 0.92, tracking: "soft" },
+    { from: 2030, compulsoryTo: 16, tertiaryAccess: 0.38,  femaleAccess: 0.98, tracking: "soft" },
+  ],
+  low: [
+    { from: 1900, compulsoryTo: 0,  tertiaryAccess: 0.002, femaleAccess: 0.06, tracking: "none" },
+    { from: 1930, compulsoryTo: 0,  tertiaryAccess: 0.004, femaleAccess: 0.10, tracking: "none" },
+    { from: 1950, compulsoryTo: 8,  tertiaryAccess: 0.010, femaleAccess: 0.18, tracking: "hard" },
+    { from: 1970, compulsoryTo: 10, tertiaryAccess: 0.030, femaleAccess: 0.32, tracking: "hard" },
+    { from: 1990, compulsoryTo: 11, tertiaryAccess: 0.060, femaleAccess: 0.50, tracking: "hard" },
+    { from: 2010, compulsoryTo: 13, tertiaryAccess: 0.120, femaleAccess: 0.75, tracking: "soft" },
+    { from: 2030, compulsoryTo: 14, tertiaryAccess: 0.180, femaleAccess: 0.88, tracking: "soft" },
+  ],
+};
+
+const EDU_SYSTEM_REGION = {
+  nordic:     [{ from: 1950, tertiaryAccess: 0.14, femaleAccess: 0.75 },
+               { from: 1970, tertiaryAccess: 0.30, femaleAccess: 0.95 },
+               { from: 1990, tertiaryAccess: 0.52, femaleAccess: 1.00, tracking: "none" }],
+  eastAsia:   [{ from: 1970, tertiaryAccess: 0.20 },
+               { from: 1990, tertiaryAccess: 0.42 },
+               { from: 2010, tertiaryAccess: 0.72 }],
+  mena:       [{ from: 1900, femaleAccess: 0.03 },
+               { from: 1950, femaleAccess: 0.12 },
+               { from: 1970, femaleAccess: 0.24 },
+               { from: 1990, femaleAccess: 0.45 },
+               { from: 2010, femaleAccess: 0.78 }],
+  subSaharan: [{ from: 1950, compulsoryTo: 6 },
+               { from: 1970, compulsoryTo: 9 },
+               { from: 1990, compulsoryTo: 11 }],
+  eastEu:     [{ from: 1950, tertiaryAccess: 0.09, femaleAccess: 0.70, tracking: "hard" },
+               { from: 1970, tertiaryAccess: 0.18, femaleAccess: 0.88 },
+               { from: 1990, tertiaryAccess: 0.32, femaleAccess: 1.00 }],
+  southAsia:  [{ from: 1950, femaleAccess: 0.14 },
+               { from: 1990, femaleAccess: 0.52 },
+               { from: 2010, femaleAccess: 0.85 }],
+};
+
+/* Country layer. Deliberately PARTIAL — a handful of systems whose structure
+   is distinctive enough that the region layer misrepresents them. Coverage is
+   reported honestly by eduSystemCoverage() rather than padded out with rows
+   invented to make the number look better. */
+const EDU_SYSTEM_COUNTRY = {
+  Brazil:          [{ from: 1970, entryExam: { at: "upperSec", weight: 0.85, name: "vestibular" } },
+                    { from: 2010, entryExam: { at: "upperSec", weight: 0.80, name: "ENEM" } }],
+  China:           [{ from: 1952, entryExam: { at: "upperSec", weight: 0.95, name: "gaokao" }, tracking: "hard" },
+                    { from: 1977, entryExam: { at: "upperSec", weight: 0.95, name: "gaokao" }, tertiaryAccess: 0.05 },
+                    { from: 2010, tertiaryAccess: 0.40 }],
+  Japan:           [{ from: 1950, entryExam: { at: "upperSec", weight: 0.90, name: "entrance exam" }, tracking: "hard" },
+                    { from: 1990, tertiaryAccess: 0.48 }],
+  "South Korea":   [{ from: 1970, entryExam: { at: "upperSec", weight: 0.92, name: "suneung" } },
+                    { from: 2010, tertiaryAccess: 0.85 }],
+  Germany:         [{ from: 1900, tracking: "hard" },
+                    { from: 1970, tracking: "hard", tertiaryAccess: 0.18 },
+                    { from: 2010, tracking: "hard", tertiaryAccess: 0.62 }],
+  "United Kingdom":[{ from: 1951, entryExam: { at: "upperSec", weight: 0.70, name: "A-levels" } },
+                    { from: 1988, entryExam: { at: "upperSec", weight: 0.70, name: "GCSE/A-levels" } }],
+  "United States": [{ from: 1926, entryExam: { at: "upperSec", weight: 0.45, name: "SAT" } },
+                    { from: 1970, tertiaryAccess: 0.35 },
+                    { from: 2010, tertiaryAccess: 0.68 }],
+  India:           [{ from: 1950, entryExam: { at: "upperSec", weight: 0.80, name: "board exams" } }],
+  France:          [{ from: 1900, entryExam: { at: "upperSec", weight: 0.75, name: "baccalauréat" } }],
+  Russia:          [{ from: 2009, entryExam: { at: "upperSec", weight: 0.85, name: "EGE" } }],
+};
+
+/* ─── resolver ───
+   Pure: no RNG, no Date, no country conditionals. Table rows only. */
+function eduSystemBandAt(bands, year) {
+  if (!Array.isArray(bands) || !bands.length) return null;
+  let out = null;
+  for (const b of bands) if (year >= b.from) out = b;
+  return out;
+}
+function eduSystemStack(country, year) {
+  return [
+    eduSystemBandAt(EDU_SYSTEM_UNIVERSAL, year),
+    eduSystemBandAt(EDU_SYSTEM_DEV[hreDevOf(country)], year),
+    eduSystemBandAt(EDU_SYSTEM_REGION[hreRegionOf(country)], year),
+    eduSystemBandAt(EDU_SYSTEM_COUNTRY[country], year),
+  ];
+}
+function eduSystemMerge(layers) {
+  const out = { provisional: true };
+  for (const layer of layers) {
+    if (!layer) continue;
+    for (const k in layer) {
+      if (k === "from") continue;            // band bookkeeping, never a resolved key
+      out[k] = layer[k];                     // later layer wins, key by key
+    }
+  }
+  return out;
+}
+/* The resolved ladder for a country/year: which rungs exist, at what ages,
+   and which are compulsory. Ages are the universal defaults shifted by the
+   resolved compulsoryTo — the CE layer decides how long you must stay, not
+   how the rungs are named. */
+const EDU_RUNG_AGES = {
+  nursery:    [0, 3],   preschool: [3, 6],    primary:  [6, 11],
+  lowerSec:   [11, 15], upperSec:  [15, 18],  prep:     [17, 20],
+  vocational: [16, 20], community: [18, 21],  university: [18, 23],
+  gradCert:   [21, 24], mba:       [24, 28],  masters:  [22, 25],
+  profMasters:[23, 27], doctorate: [24, 30],  profDoctorate: [24, 31],
+};
+function eduLadderFor(sys) {
+  const out = [];
+  for (const id in EDU_RUNG_AGES) {
+    const [minAge, maxAge] = EDU_RUNG_AGES[id];
+    out.push({ id, minAge, maxAge,
+      compulsory: minAge < (sys.compulsoryTo || 0),
+      exitCredential: EDU_STAGES[id] ? EDU_STAGES[id].exitCredential || null : null });
+  }
+  return out;
+}
+function eduSystemFor(country, year) {
+  const sys = eduSystemMerge(eduSystemStack(country, year));
+  sys.stages = eduLadderFor(sys);
+  return sys;
+}
+function eduSystem(s) {
+  return eduSystemFor(s.profile.country, yearOf(s));
+}
+
+/* How much of the world this model actually covers at country level — the
+   direct analogue of hreLawCoverage(). Reports the gap; never closes it by
+   inventing rows. */
+function eduSystemCoverage() {
+  const all = Object.keys(COUNTRIES);
+  const named = all.filter((c) => !!EDU_SYSTEM_COUNTRY[c]);
+  const byRegion = {};
+  for (const c of all) {
+    const r = hreRegionOf(c);
+    byRegion[r] = byRegion[r] || { total: 0, named: 0 };
+    byRegion[r].total++;
+    if (EDU_SYSTEM_COUNTRY[c]) byRegion[r].named++;
+  }
+  return {
+    countries: all.length,
+    countryLevel: named.length,
+    pct: Math.round((named.length / all.length) * 100),
+    regionsWithOverride: Object.keys(EDU_SYSTEM_REGION).length,
+    byRegion,
+    provisional: true,
+    note: "every band is provisional; module 22 tranche 2 owns the real dates",
+  };
+}
+
+/* Share of the cohort reaching post-secondary, for THIS character. The number
+   the 88%-Nigeria-1935 measurement exists to correct. Sex is read through the
+   identity model's birth assignment, because femaleAccess describes a
+   historical barrier applied on how a person was read, not on chromosomes. */
+function eduTertiaryOdds(s) {
+  const sys = eduSystem(s);
+  let p = sys.tertiaryAccess != null ? sys.tertiaryAccess : 0.01;
+  if (assignedSex(s) === "Female") p *= (sys.femaleAccess != null ? sys.femaleAccess : 1);
+  return Math.max(0, Math.min(1, p));
+}
 
 /* ═══════════════════════════ S03 · GEOGRAPHY ═══════════════════════════ */
 /* There is no map. There is a hierarchy:
