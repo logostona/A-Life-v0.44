@@ -288,7 +288,11 @@ ok("invariant 2: EDU adds no new country conditional",
 {
   const c = H.mkChar({ country: "Brazil", birthYear: 1990 });
   ok("legacy education state is untouched", c.education && c.education.stage === "pre");
-  ok("S01 adds no state slice", c.edu === undefined);
+  /* s.edu now exists — S09 (P3) introduced it. What must remain true is that
+     S01 writes nothing into it: the ladder and CE model are pure data plus a
+     pure resolver, and a newborn's edu slice is untouched by them. */
+  ok("S01 writes nothing into the state slice",
+    c.edu && c.edu.stage === "none" && c.edu.inst === null && c.edu.record.length === 0);
   ok("eduSystem() works off a real character", !!M.eduSystem(c).tertiaryAccess);
 }
 

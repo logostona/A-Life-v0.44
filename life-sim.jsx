@@ -703,6 +703,10 @@ function newCharacter(form) {
     ai: { enabled: false, level: "flavor" },
     hre: hreInit(hreSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random()),
                  form.country, form.city, form.cls, +form.birthYear),
+    /* EDU S09. Its migrate() backfill lands in the same patch as this
+       initializer — invariant 9, and Gotcha #4, which is the most frequently
+       repeated bug in this project's history. */
+    edu: eduInit(eduSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random())),
     stx: { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] },
     alive: true, death: null,
   };
@@ -711,6 +715,10 @@ function newCharacter(form) {
 function migrate(s) {
   if (!s.ai) s.ai = { enabled: false, level: "flavor" };
   hreMigrate(s);
+  /* EDU S09 — runs after hreMigrate because its seed derivation falls back to
+     s.hre.seed, and backfills the canonical stage from the still-authoritative
+     legacy state. Additive: nothing reads s.edu to make a decision yet. */
+  eduMigrate(s);
   if (!s.stx) s.stx = { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] };
   if (!s.stx.req) s.stx.req = {};
   if (!s.stx.staff) s.stx.staff = {};
@@ -2867,6 +2875,192 @@ function eduCrystallise(bp) {
    needs for schoolLegal() — handed over rather than re-derived, so neither has
    to infer institutional character from a SCHOOL_TYPES string (arch §5, §8.3,
    §8.5; OQ-5 still open with 11). */
+/* ═══════════════════════════ EDU · S09 ═══════════════════════════
+   State, the legacy shim, and migration.
+
+   STILL ADDITIVE. `s.education.stage` and `s.school` remain AUTHORITATIVE
+   through every phase up to the inversion (arch §7). `s.edu` is written but
+   nothing reads it to make a decision, so deleting every edu* symbol would
+   still leave the game behaving identically. What P3 buys is the thing every
+   later phase depends on: proof that the canonical vocabulary can be derived
+   from the legacy state without disagreeing with it.
+
+   The shim derives ONLY what legacy actually says. Legacy has six stage
+   values — pre / primary / middle / high / college / done — and no concept of
+   nursery, preschool, vocational or postgraduate study at all. So
+   eduLegacyStage maps "pre" to `none` rather than guessing at nursery from
+   the character's age: inventing a fact the legacy state never held would
+   make the equivalence test pass by fabrication. Those rungs become reachable
+   when S04/S05 drive progression, not before. */
+
+const EDU_STATE_V = 1;
+
+/* Legacy → canonical. Total by construction: every legacy value maps, and an
+   unrecognised one falls through to `none` rather than undefined, because a
+   shim that can return undefined turns one bad save into a crash everywhere. */
+const EDU_LEGACY_STAGE_MAP = {
+  pre: "none", primary: "primary", middle: "lowerSec",
+  high: "upperSec", college: "university", done: "done",
+};
+function eduLegacyStage(s) {
+  if (!s || !s.education) return "none";
+  /* An enrolled character is in the stage their SCHOOL says, if the two ever
+     disagree — s.school is the more specific record and enrollSchool writes
+     both. Falls back to education.stage, which is what exists post-school. */
+  const fromSchool = s.school && s.school.stage ? EDU_LEGACY_STAGE_MAP[s.school.stage] : null;
+  const fromEdu = EDU_LEGACY_STAGE_MAP[s.education.stage];
+  return fromSchool || fromEdu || "none";
+}
+
+/* Sole writer for s.edu.stage (arch §6), mirroring hreSetTenure. Funnelling
+   every change through one function is what makes the stage history auditable
+   and what lets P4's progression attach without touching a caller. Closing a
+   stage appends one row to `record` — one row per completed stage, never a
+   per-term transcript, because s.school already shows what an unbounded
+   per-entity array costs (Phase 0 §2). */
+function eduSetStage(s, stage, inst) {
+  if (!EDU_STAGES[stage]) return false;
+  if (EDU_STAGES[stage].visionKind !== "rung") return false;   // variants/modifiers are not stages
+  eduMigrate(s);
+  const prev = s.edu.stage;
+  if (prev && prev !== stage && prev !== "none") {
+    s.edu.record.push({
+      stage: prev,
+      instId: s.edu.inst ? s.edu.inst.id : null,
+      from: s.edu.since || 0,
+      to: s.ageDays || 0,
+      outcome: EDU_STAGES[stage].ord > EDU_STAGES[prev].ord ? "completed" : "left",
+      /* no `credential` field: it is EDU_STAGES[stage].exitCredential, and the
+         cred ledger below already records what was actually awarded. `record`
+         is the structure the 2.5 KB budget is mostly spent on, so a derivable
+         field is not worth its bytes. */
+    });
+    if (EDU_STAGES[prev].exitCredential) {
+      /* Deliberately just {id, year}. `stage` is derivable — each exitCredential
+         belongs to exactly one rung — and `instId` is already on the matching
+         `record` row. Institution ids are ~39 characters, so repeating one into
+         every credential cost ~440 bytes on a full ladder and pushed s.edu over
+         its 2.5 KB budget on its own. The ledger says what you hold; the record
+         says where you earned it. */
+      s.edu.cred.push({ id: EDU_STAGES[prev].exitCredential, year: yearOf(s) });
+    }
+  }
+  s.edu.stage = stage;
+  s.edu.since = s.ageDays || 0;
+  if (inst !== undefined) s.edu.inst = inst || null;
+  return true;
+}
+
+/* Do the canonical and legacy views agree? The direct analogue of
+   hreTenureAgreesWithLegacy, and the gate every phase after this one rests on.
+   Compares the DERIVED value against the stored mirror, so a drift between
+   them is visible rather than silently absorbed. */
+function eduStageAgreesWithLegacy(s) {
+  if (!s || !s.edu) return true;                 // nothing to disagree with yet
+  return s.edu.stage === eduLegacyStage(s);
+}
+/* While legacy is authoritative, this is how the mirror is kept in step.
+   P8's inversion deletes it — at that point s.edu.stage IS the truth and
+   there is nothing to sync from. */
+function eduSyncStage(s) {
+  if (!s || !s.edu) return false;
+  const want = eduLegacyStage(s);
+  if (s.edu.stage === want) return false;
+  s.edu.stage = want;
+  s.edu.since = s.ageDays || 0;
+  return true;
+}
+/* The reader every other module should use. Returns the legacy-derived value
+   while legacy is authoritative, so no caller has to know which phase we are
+   in — and at inversion this becomes `return s.edu.stage` and nothing else
+   changes. */
+function eduStage(s) { return eduLegacyStage(s); }
+
+function eduSeedFrom(entropy) {
+  return hreMix(hreHash("edu:seed:v" + EDU_STATE_V + ":" + String(entropy)), 0x85ebca6b);
+}
+function eduInit(seed) {
+  return {
+    v: EDU_STATE_V,
+    seed: (seed >>> 0),
+    stage: "none",
+    since: 0,
+    inst: null,
+    track: null,
+    perf: { gpa: null, attendance: null, conduct: null },
+    record: [],
+    cred: [],
+    fin: { debt: 0, aid: 0, sponsor: null },
+    mem: { tab: "current", filt: null },
+  };
+}
+
+/* Guarded version ladder followed by a version-independent repair pass — the
+   shape hreMigrate uses, and the reason its migration survived a genuine
+   pre-S06 fixture. The repair pass is what catches a hand-edited or truncated
+   save that carries a CURRENT `v` but is missing a field: a ladder alone
+   would skip it entirely because the version already looks right. */
+const EDU_STATE_LADDER = {
+  /* 1: initial schema. Future versions add a function keyed by the version
+     they upgrade FROM, run in ascending order. */
+};
+function eduMigrate(s) {
+  if (!s) return s;
+  /* Tracks whether the canonical stage needs seeding FROM legacy. This must
+     not happen on every call: eduSetStage migrates before it writes, so an
+     unconditional backfill silently reverted the sole writer's own write and
+     no stage transition was ever recorded. Backfilling belongs to creation and
+     to repair — keeping the mirror in step during play is eduSyncStage's job,
+     and it is called deliberately rather than as a side effect. */
+  let needsStageBackfill = false;
+  if (!s.edu || typeof s.edu !== "object" || Array.isArray(s.edu)) {
+    needsStageBackfill = true;
+    s.edu = eduInit(eduSeedFrom(
+      (s.profile ? (s.profile.first + ":" + s.profile.last + ":" + s.profile.country + ":" + s.profile.birthYear) : "unknown")
+      + ":" + (s.hre && s.hre.seed != null ? s.hre.seed : 0)));
+  }
+  /* guarded ladder */
+  let guard = 0;
+  while (s.edu.v < EDU_STATE_V && guard++ < 32) {
+    const step = EDU_STATE_LADDER[s.edu.v];
+    if (!step) { s.edu.v = EDU_STATE_V; break; }
+    step(s);
+    s.edu.v = s.edu.v + 1;
+  }
+  if (s.edu.v > EDU_STATE_V) s.edu.v = EDU_STATE_V;   // a save from the future is clamped, not trusted
+
+  /* version-independent repair pass */
+  const d = eduInit(s.edu.seed != null ? s.edu.seed : eduSeedFrom("repair"));
+  if (typeof s.edu.seed !== "number") s.edu.seed = d.seed;
+  if (!EDU_STAGES[s.edu.stage]) { s.edu.stage = "none"; needsStageBackfill = true; }
+  if (typeof s.edu.since !== "number") s.edu.since = 0;
+  if (s.edu.inst === undefined) s.edu.inst = null;
+  if (s.edu.track === undefined) s.edu.track = null;
+  if (!s.edu.perf || typeof s.edu.perf !== "object") s.edu.perf = d.perf;
+  for (const k of ["gpa", "attendance", "conduct"]) if (s.edu.perf[k] === undefined) s.edu.perf[k] = null;
+  if (!Array.isArray(s.edu.record)) s.edu.record = [];
+  if (!Array.isArray(s.edu.cred)) s.edu.cred = [];
+  if (!s.edu.fin || typeof s.edu.fin !== "object") s.edu.fin = d.fin;
+  if (typeof s.edu.fin.debt !== "number") s.edu.fin.debt = 0;
+  if (typeof s.edu.fin.aid !== "number") s.edu.fin.aid = 0;
+  if (s.edu.fin.sponsor === undefined) s.edu.fin.sponsor = null;
+  if (!s.edu.mem || typeof s.edu.mem !== "object") s.edu.mem = d.mem;
+
+  /* Backfill from legacy. A save that predates EDU still describes a real
+     education, and the canonical view must reflect it rather than claiming the
+     character never went to school. Idempotent: the credential is keyed, so a
+     second run does not duplicate it. */
+  if (needsStageBackfill) s.edu.stage = eduLegacyStage(s);
+  if (s.education) {
+    if (typeof s.education.debt === "number" && !s.edu.fin.debt) s.edu.fin.debt = s.education.debt;
+    if (s.education.degree && !s.edu.cred.some((c) => c.id === "bachelor")) {
+      s.edu.cred.push({ id: "bachelor", year: yearOf(s),
+                        field: s.education.degree, backfilled: true });
+    }
+  }
+  return s;
+}
+
 function eduInstitutionOpts(inst) {
   if (!inst) return null;
   return {

@@ -337,7 +337,10 @@ sec("8 · S02 is additive");
 
 {
   const c = H.mkChar({ country: "Brazil", birthYear: 1990 });
-  ok("no state slice is added", c.edu === undefined);
+  /* s.edu now exists — S09 (P3) introduced it. S02 is still generator-only:
+     nothing attends anything, so no institution has been crystallised into it. */
+  ok("S02 crystallises nothing into state",
+    c.edu && c.edu.inst === null && c.edu.record.length === 0);
   ok("legacy school state is untouched", c.school === null || c.school === undefined);
   ok("legacy education state is untouched", c.education.stage === "pre");
 }

@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phases 1 (S01) and 2 (S02) shipped.**
+### Status: **Phase 0 complete. Phases 1 (S01), 2 (S02) and 3 (S09) shipped.**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -188,7 +188,7 @@ Recorded so later phases assert against a known state rather than re-deriving it
   The suite pins the count at exactly 3 so a fourth fails.
 - **POOL budget:** 213 entries now. EDU's ceiling is +25 across the whole subsystem (invariant 6),
   so the end state must be ≤ 238.
-- **`s.edu` budget:** ≤ 2.5 KB. Currently 0 — S01 adds no state.
+- **`s.edu` budget:** ≤ 2.5 KB. Measured 226 bytes at creation, 2,159 after a budgeted 12-rung ladder with a crystallised institution. All 16 rungs overflows; unreachable in play.
 
 ---
 
@@ -256,9 +256,54 @@ match.
 
 ---
 
-## 9 · Sequencing note for Phase 3
+## 8c · What Phase 3 shipped
 
-P2 → P3 is next and strict: state needs both the ladder and the generator. Two things carried forward:
+`s.edu` schema v1, `eduInit`, `eduSeedFrom`, `eduSetStage` (sole writer), `eduLegacyStage`
+(the shim), `eduStageAgreesWithLegacy`, `eduSyncStage`, `eduStage` (the read-through), and
+`eduMigrate` — a guarded `v` ladder plus a version-independent repair pass. The
+`newCharacter()` initializer and the `migrate()` backfill landed in the same patch, per
+invariant 9 and Gotcha #4.
+
+**`test-edu-s09.js` — 109 assertions, all green** (roadmap target ~80).
+
+**The gate passed.** Shim equivalence was proven by driving 12 real lives across
+country × era × class and checking both views at **every step** — not by unit-testing the
+mapping table, which would pass happily while the derivation was wrong for anyone actually
+playing. Zero disagreements, zero undefined derivations, across a sweep covering 43 distinct
+ages and reaching primary, lower and upper secondary.
+
+**The shim derives only what legacy actually says.** Legacy has six values —
+`pre / primary / middle / high / college / done` — and no concept of nursery, preschool,
+vocational or postgraduate study. So `pre` maps to `none` rather than guessing nursery from
+the character's age. Inventing a fact the legacy state never held would have made the
+equivalence gate pass by fabrication. Those rungs become reachable when S04/S05 drive
+progression, and the suite pins that the shim never claims them.
+
+Three findings from building it:
+
+1. **`eduMigrate` clobbered its own sole writer.** The legacy backfill ran on every call, and
+   `eduSetStage` migrates before it writes — so every stage transition was silently reverted
+   and nothing was ever recorded. Backfilling now belongs to creation and repair; keeping the
+   mirror in step during play is `eduSyncStage`'s job, called deliberately rather than as a
+   side effect.
+2. **The 2.5 KB budget is real and was breached.** A 12-rung ladder with a crystallised elite
+   research university measured **2,599 bytes**. The cause was institution ids — ~39
+   characters — duplicated into all 18 `record` and `cred` rows. The credential ledger now
+   stores `{id, year}` only: `stage` is derivable (each exit credential belongs to exactly one
+   rung) and `instId` is already on the matching `record` row. Now **2,159 bytes**.
+   Recorded rather than hidden: walking all 16 rungs still exceeds budget. That path is
+   unreachable in play — several rungs are mutually exclusive — but P5/P8 should know the
+   headroom is finite, and the suite asserts it as the known overflow case.
+3. **Two P1/P2 assertions were superseded, not broken.** Both asserted `c.edu === undefined`,
+   which was correct when no state slice existed and is exactly what P3 changed. They now
+   assert what remains true: S01 writes nothing into the slice, and S02 crystallises nothing
+   into it.
+
+---
+
+## 9 · Sequencing note for Phase 4
+
+**P4 is next, and it is the highest-risk phase in the roadmap** — the only one that modifies an existing engine function. OQ-4 is answered (§1), so it can start. Two things carried forward:
 
 1. **S02 must not generate people.** `s.school` already spends 7.5 KB on classmates and faculty
    (§2). Institution attributes go to module 06 as `opts`.
