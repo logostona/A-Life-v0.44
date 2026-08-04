@@ -1,4 +1,20 @@
-const CACHE_NAME = "a-life-cache-v1";
+/* BUMP THIS ON EVERY DEPLOY — it is what actually ships an update.
+ *
+ * The fetch handler below is cache-first (`return cached || network`), and the
+ * activate handler only deletes caches whose name differs from this constant.
+ * So if the name does not change, an already-installed PWA serves the OLD
+ * bundle from cache on next launch, revalidates in the background, and only
+ * shows the new build on the launch after that — while `activate` purges
+ * nothing, because the name it is comparing against is its own.
+ *
+ * Changing the name makes `install` re-fetch every asset under a fresh key and
+ * `activate` delete the stale one; with skipWaiting() + clients.claim() already
+ * in place below, an existing installation picks the update up on next launch
+ * instead of the one after.
+ *
+ * v2 — UI redesign (dark theme + Compass Advance), HRE Phase 9 upkeep, S11 sale.
+ */
+const CACHE_NAME = "a-life-cache-v2";
 const ASSETS = [
   "./",
   "./index.html",
