@@ -869,6 +869,8 @@ function doBreakup(s, key, hard) {
 
 function gainDegree(s) {
   const c = s.education.college;
+  /* mirror the award into the EDU ledger; legacy still owns the fact */
+  eduAwardCredential(s, "bachelor", { field: c.major, instId: null });
   s.education.degree = c.major;
   s.education.college = null;
   s.education.stage = "done";
@@ -1110,13 +1112,30 @@ const MILESTONES = [
     const gpa = Object.values(s.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length;
     const bonus = (s.education.extra ? 8 : 0) + ({ Poor: 0, Working: 2, Middle: 5, Wealthy: 12 }[s.profile.cls]);
     const score = gpa + bonus;
+    /* EDU S05. Before this, EVERY character was offered at least a state
+       college place regardless of country or era — which is why a 1935
+       Nigerian reached university 88% of the time, more often than a 1995
+       Swede. The verdict turns the era's actual cohort share into a threshold
+       on this character's own standing: where places are plentiful almost
+       anyone clears it, where they are vanishingly rare only an exceptional
+       student does. The player's CHOICE is untouched; what changes is whether
+       the world had a place to offer. */
+    const v = eduTertiaryVerdict(s);
     const opts = [];
-    if (score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${s.profile.curSym}${collegeFee(s, "prestige")}/yr)`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
-    if (score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${s.profile.curSym}${collegeFee(s, "uni")}/yr)`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
-    opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${s.profile.curSym}${collegeFee(s, "state")}/yr)`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
-    opts.push({ label: "💼 Skip college — straight to work", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 High school done, diploma in hand. You chose the world over the lecture hall. The job board awaits (🎯 Act → Look for work)." } });
+    if (v.open && score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${s.profile.curSym}${collegeFee(s, "prestige")}/yr)`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
+    if (v.open && score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${s.profile.curSym}${collegeFee(s, "uni")}/yr)`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
+    if (v.open) opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${s.profile.curSym}${collegeFee(s, "state")}/yr)`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
+    opts.push({ label: v.open ? "💼 Skip college — straight to work" : "💼 Into work, then", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 School done. The job board awaits (🎯 Act → Look for work)." } });
+    /* Say WHY out loud. "You weren't good enough" and "there were forty places
+       in the entire country" are different sentences and the player is owed
+       the true one. */
+    const closed = v.genderBarred
+      ? `Not for you, though. In ${s.profile.country} in ${yearOf(s)}, the university gates are effectively shut to women, whatever your marks say.`
+      : v.scarce
+      ? `University is not on the table. In ${s.profile.country} in ${yearOf(s)} it is the destination of a tiny handful — a few thousand places in a country of millions — and they were never going to be yours.`
+      : `The places went to others. Your marks were not quite what this year's intake demanded.`;
     return { event: { emoji: "🎓", title: "Graduation day",
-      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${score > 82 ? "The letters that came back include a thick envelope from a prestigious university." : score > 62 ? "Solid options on the table." : "Your options are modest but real."} What's next?`,
+      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${v.open ? (score > 82 ? "The letters that came back include a thick envelope from a prestigious university." : score > 62 ? "Solid options on the table." : "Your options are modest but real.") : closed} What's next?`,
       options: opts } };
   } },
 ];
@@ -3059,6 +3078,167 @@ function eduMigrate(s) {
     }
   }
   return s;
+}
+
+/* ═══════════════════════ EDU · S04 + S05 ═══════════════════════
+   Academic performance, and progression.
+
+   THIS IS THE PHASE THAT STOPS BEING INVISIBLE. Everything before it was
+   additive; the tertiary gate below deliberately changes who reaches
+   university, because that is the bug the whole subsystem exists to fix.
+   Measured before EDU (EDU-PHASE0-EXIT.md §4): a character born in Nigeria in
+   1935 reached university 88% of the time, more often than one born in Sweden
+   in 1995. Entry consulted class and grades and nothing else.
+
+   Legacy stays AUTHORITATIVE (arch §7). EDU decides, then expresses the
+   decision through the existing legacy state, so `s.education.stage` and
+   `s.school` remain the source of truth and the P3 equivalence gate keeps
+   holding. Inversion is still P8.
+
+   Progression is SCHEDULE-DRIVEN (invariant 10). Nothing here goes through
+   POOL: POOL loses ~70% of what it is given, and a graduation that fires 30%
+   of the time is not a simulation. */
+
+/* S04 · academic performance.
+   Grades come from a WEIGHTED BLEND of the things that actually produce them,
+   never a single roll — that is the roadmap's requirement and also the only
+   way the number responds to the rest of the simulation. Pure and RNG-free:
+   the same character on the same day always has the same standing. */
+function eduAttendance(s) {
+  const skips = (s.school && s.school.skips) || 0;
+  const health = (s.stats && s.stats.health != null) ? s.stats.health : 60;
+  /* poor health costs attendance before it costs grades */
+  return clamp(Math.round(98 - skips * 6 - Math.max(0, 55 - health) * 0.35));
+}
+function eduConduct(s) {
+  const trouble = (s.school && s.school.trouble) || 0;
+  return clamp(Math.round(95 - trouble * 11));
+}
+function eduFamilySupport(s) {
+  const f = s.family || {};
+  const vals = ["mom", "dad"].map((k) => (f[k] && typeof f[k].rel === "number") ? f[k].rel : null)
+                             .filter((v) => v !== null);
+  if (!vals.length) return 45;
+  return clamp(Math.round(vals.reduce((a, b) => a + b, 0) / vals.length));
+}
+/* Institution quality, if the character is actually at one. Before S12 wires
+   attendance there is no crystallised institution, so this falls back to what
+   the country and era would typically provide rather than assuming average. */
+function eduInstQuality(s) {
+  if (s.edu && s.edu.inst && typeof s.edu.inst.quality === "number") return s.edu.inst.quality;
+  return clamp(Math.round(38 + eduDevScale(s.profile.country, yearOf(s)) * 45));
+}
+function eduPerf(s) {
+  const attendance = eduAttendance(s);
+  const conduct = eduConduct(s);
+  const smarts = (s.stats && s.stats.smarts != null) ? s.stats.smarts : 50;
+  const health = (s.stats && s.stats.health != null) ? s.stats.health : 60;
+  const support = eduFamilySupport(s);
+  const quality = eduInstQuality(s);
+  const gpa = clamp(Math.round(
+    smarts * 0.34 +
+    attendance * 0.20 +
+    quality * 0.18 +
+    support * 0.12 +
+    health * 0.08 +
+    conduct * 0.08
+  ));
+  return { gpa, attendance, conduct };
+}
+
+/* S05 · progression.
+   How far up the ladder this character's country and era will actually carry
+   them. `eduTertiaryOdds` gives the share of the cohort reaching post-secondary;
+   turning that share into a THRESHOLD on the character's own standing is what
+   makes it bite without removing the player's choice: where places are
+   plentiful almost anyone clears it, and where they are vanishingly rare only
+   an exceptional student does. */
+/* MEASURED, not assumed. The first version mapped the cohort share linearly
+   onto a 0-108 scale, which silently assumed admission scores were uniformly
+   distributed. They are not — they cluster hard around 58-91 — so a 5% share
+   demanded a score of 102.6 that almost nobody has, and "everyone goes to
+   university" was replaced by "nobody does", which is wrong in the opposite
+   direction and just as unrealistic.
+
+   These are the empirical quantiles of eduAdmissionScore across 70 characters
+   spanning 6 countries and 4 classes. Re-derive with:
+     node -e '<sample eduAdmissionScore over runLife, sort, print quantiles>'
+   Provisional in the same sense as everything else in EDU: if the underlying
+   stat distributions move, this table has to be re-measured, not guessed. */
+const EDU_SCORE_QUANTILES = [
+  [0.00, 34], [0.05, 41.4], [0.10, 47.4], [0.25, 58.0], [0.50, 72.3],
+  [0.75, 90.6], [0.90, 97.7], [0.95, 101.5], [1.00, 108],
+];
+function eduScoreQuantile(f) {
+  const x = Math.max(0, Math.min(1, f));
+  const q = EDU_SCORE_QUANTILES;
+  for (let i = 0; i < q.length - 1; i++) {
+    if (x >= q[i][0] && x <= q[i + 1][0]) {
+      const span = q[i + 1][0] - q[i][0];
+      const t = span === 0 ? 0 : (x - q[i][0]) / span;
+      return q[i][1] + t * (q[i + 1][1] - q[i][1]);
+    }
+  }
+  return q[q.length - 1][1];
+}
+function eduTertiaryGate(s) {
+  const p = eduTertiaryOdds(s);
+  if (p >= 0.999) return 0;
+  /* admit the top `p` of the cohort: the score the (1 - p) quantile clears */
+  return Math.round(eduScoreQuantile(1 - p));
+}
+/* The character's standing for admission purposes, on the same scale the
+   graduation screen already used — grades plus what the world counts alongside
+   them. Kept compatible with the legacy `score` so the existing tier
+   thresholds keep their meaning. */
+function eduAdmissionScore(s) {
+  const subj = (s.education && s.education.subjects) || {};
+  const keys = Object.keys(subj);
+  const gpa = keys.length ? keys.reduce((a, k) => a + subj[k], 0) / keys.length : eduPerf(s).gpa;
+  const bonus = ((s.education && s.education.extra) ? 8 : 0)
+    + ({ Poor: 0, Working: 2, Middle: 5, Wealthy: 12 }[s.profile.cls] || 0);
+  return gpa + bonus;
+}
+/* Does the world have a place for this person at all? Returns a structured
+   verdict rather than a boolean, because the REASON is what the graduation
+   screen needs to say out loud — "you are not good enough" and "there are 40
+   university places in the entire country this year" are different sentences
+   and the player deserves the true one. */
+function eduTertiaryVerdict(s) {
+  const score = eduAdmissionScore(s);
+  const gate = eduTertiaryGate(s);
+  const p = eduTertiaryOdds(s);
+  const sys = eduSystem(s);
+  const barred = assignedSex(s) === "Female" && (sys.femaleAccess != null && sys.femaleAccess < 0.35);
+  return {
+    open: score >= gate,
+    score: Math.round(score),
+    gate,
+    share: p,
+    scarce: p < 0.12,
+    genderBarred: barred,
+  };
+}
+
+/* Called from the scheduled block in advance(). Keeps the canonical mirror in
+   step with the still-authoritative legacy state and refreshes the performance
+   snapshot. Never sets s.pending — it is not allowed to interrupt the tick. */
+function eduOnTick(s) {
+  if (!s.edu) return;
+  eduSyncStage(s);
+  const inSchoolNow = !!s.school || (s.education && s.education.college);
+  if (inSchoolNow) {
+    s.edu.perf = eduPerf(s);
+  }
+  if (s.education && typeof s.education.debt === "number") s.edu.fin.debt = s.education.debt;
+}
+/* Award a credential through the ledger when legacy hands one out. Keyed, so
+   calling it twice for the same award cannot duplicate it. */
+function eduAwardCredential(s, id, extra) {
+  if (!s || !s.edu || !id) return false;
+  if (s.edu.cred.some((c) => c.id === id && !c.backfilled)) return false;
+  s.edu.cred.push(Object.assign({ id, year: yearOf(s) }, extra || {}));
+  return true;
 }
 
 function eduInstitutionOpts(inst) {
@@ -7760,6 +7940,7 @@ function advance(state, totalDays) {
       if (s.ageDays - s.education.college.startDay >= need) gainDegree(s);
     }
 
+
     for (let y = prevYear; y <= nowYear; y++) {
       if (WORLD_EVENTS[y] && !s.flags["w_" + y]) {
         s.flags["w_" + y] = true;
@@ -7796,6 +7977,19 @@ function advance(state, totalDays) {
         break;
       }
     }
+    /* EDU S05 — the scheduled-education step (OQ-4). Shares advance()'s
+       existing schedule-driven region rather than adding a second adjacent
+       line, and never sets s.pending, so progression can never depend on a
+       popup being dismissed.
+
+       Position is load-bearing and was moved here after measurement. Run
+       BEFORE the MILESTONES scan, the canonical mirror lagged a full step
+       every time a character advanced — milestones are what write
+       education.stage, so the mirror was always one step behind the truth it
+       mirrors. It cannot go at the end of the loop body either, because
+       `milestoneFired` continues past it precisely when a stage has just
+       changed. Here it runs after milestones on every step, fired or not. */
+    eduOnTick(s);
     if (milestoneFired) continue;
 
     if (Math.random() < Math.min(0.72, step * 0.09)) {

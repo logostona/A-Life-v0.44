@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phases 1 (S01), 2 (S02) and 3 (S09) shipped.**
+### Status: **Phase 0 complete. Phases 1–4 shipped (S01, S02, S09, S04+S05).**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -301,9 +301,66 @@ Three findings from building it:
 
 ---
 
-## 9 · Sequencing note for Phase 4
+## 8d · What Phase 4 shipped — **the first phase a player can see**
 
-**P4 is next, and it is the highest-risk phase in the roadmap** — the only one that modifies an existing engine function. OQ-4 is answered (§1), so it can start. Two things carried forward:
+Everything through P3 was additive. P4 is not, deliberately: the tertiary gate changes who
+reaches university, because that is the bug the subsystem exists to fix.
+
+**S04 — performance.** `eduPerf` blends smarts, attendance, institution quality, family
+support, health and conduct into a grade, weighted so no single input dominates — the
+roadmap's "never a single roll", and the only way the number responds to the rest of the
+simulation. Pure and RNG-free. Supporting components: `eduAttendance` (skips and health),
+`eduConduct` (trouble), `eduFamilySupport` (parents), `eduInstQuality` (the crystallised
+institution, or what the country and era would typically provide).
+
+**S05 — progression.** `eduTertiaryVerdict` turns the era's cohort share into a threshold on
+the character's own standing. The player's *choice* is untouched; what changes is whether the
+world had a place to offer. Legacy stays authoritative — EDU decides, then expresses the
+decision through existing legacy state, so P3's equivalence gate keeps holding.
+
+**Result — the 88% bug, closed:**
+
+| birth | before | after | model share |
+|---|---|---|---|
+| **Nigeria 1935** | **88%** | **0%** | 0.4% |
+| United Kingdom 1935 | 50% | 0% | 5% |
+| Sweden 1995 | 63% | 25% | 52% |
+| United States 2005 | — | 38% | 35% |
+
+The US 2005 figure landing at 38% against a 35% model share is the strongest evidence the
+calibration works. Sweden 1995's 25% is under its 52% share, but n = 8 and the auto-player
+also sometimes declines a place it was offered.
+
+Three findings:
+
+1. **The first gate over-corrected, and replaced one wrong answer with its opposite.** Mapping
+   the cohort share linearly onto a 0–108 scale silently assumed admission scores were
+   uniformly distributed. They are not — they cluster at 58–91 — so a 5% share demanded a score
+   of ~102.6 that almost nobody has, and *everyone goes* became *nobody goes*.
+   `EDU_SCORE_QUANTILES` is now the **measured** empirical distribution (70 characters, 6
+   countries, 4 classes), and the gate is the (1 − p) quantile of it.
+2. **`eduOnTick`'s position in `advance()` is load-bearing.** Placed before the `MILESTONES`
+   scan — which is what writes `education.stage` — the canonical mirror lagged a full step
+   every time a character advanced. It cannot go at the end of the loop body either, because
+   `if (milestoneFired) continue` skips past it *precisely* when a stage has just changed. It
+   now runs immediately after the milestone scan, on every step, fired or not.
+3. **A single step of lag is expected and harmless.** A POOL event can still change
+   `education.stage` after the tick has run. Nothing reads the mirror to make a decision before
+   inversion, so the suite asserts the useful property instead: lag must never *persist*, which
+   would mean the mirror had stopped tracking rather than merely trailing.
+
+**`test-edu-s04-s05.js` — 85 assertions, all green** (roadmap target ~85). The soak asserts
+observable outcomes only — someone aged, nobody stranded, zero dead ends — never step counts,
+per Gotcha #6's green 33,600-step run in which nobody aged a day.
+
+**Not deployed.** This is the first EDU phase whose behaviour is visible in play, so it should
+be looked at before it reaches anyone.
+
+---
+
+## 9 · Sequencing note for Phase 5
+
+**P5 (S03 admissions + S06 finance) is next.** Two things carried forward:
 
 1. **S02 must not generate people.** `s.school` already spends 7.5 KB on classmates and faculty
    (§2). Institution attributes go to module 06 as `opts`.
