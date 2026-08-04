@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phases 1–4 shipped (S01, S02, S09, S04+S05).**
+### Status: **Phase 0 complete. Phases 1–5 shipped (S01, S02, S09, S04+S05, S03+S06).**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -358,9 +358,66 @@ be looked at before it reaches anyone.
 
 ---
 
-## 9 · Sequencing note for Phase 5
+## 8e · What Phase 5 shipped — admissions, finance, and the absoluteness fix
 
-**P5 (S03 admissions + S06 finance) is next.** Two things carried forward:
+P4 fixed the 88% bug **absolutely**: the cohort share became a hard threshold, so a scarce era
+was *sealed* — a determined player had no path at all. That is its own kind of false. Real
+scarce systems were not sealed; they were narrow, and they had doors.
+
+**The fix is not to soften the era model.** S01's shares are unchanged. What P5 adds is the
+exceptions that actually existed, each rare and each conditioned on the thing that made it
+real:
+
+| route | condition | aid |
+|---|---|---|
+| `merit` | top 5% of the cohort distribution | ~92% |
+| `sponsorFaith` | religious schooling context, within 15 points of the gate | ~85% |
+| `sponsorState` | access rising >3 points across the character's own lifetime — what a post-independence or post-war expansion looks like in the data | ~85% |
+| `abroad` | wealthy family, scarce local system | none — it is paid for, not subsidised |
+
+**Finance is expressed as ratios to realised income, never absolute amounts** (arch §8.2, R8).
+Module 09's `TIER_SALARY` is flat across era and country and only ~29.8% of scheduled wages
+reach `s.money`, so an absolute tuition figure would inherit both distortions silently. The
+calibration reads true: US 2005 costs a poor family **53% of realised annual income** after
+aid — "a serious burden" — while Sweden is free.
+
+**Two calibration bugs, both found by measuring rather than by the suite:**
+
+1. **The exceptions became the backdoor they were written to avoid.** Flat rates inflated a
+   0.2% cohort share to an **11% admission rate — 55×** — mostly from `abroad` firing at 45%.
+   `eduExceptionScale` now scales every exception with the system's own capacity: a country
+   with almost no university places also has almost no scholarships or sponsorship budget. A
+   floor keeps a scarce era narrow rather than sealed.
+2. **An absolute score bar can land above the gate it is an exception to.** Raising the state
+   bar to q78 against a gate at q70 left a window of **zero width** — a route that could never
+   fire. The near-miss routes now set their bar *relative to the gate* (`gate − 15`), so a
+   window always exists whatever the era.
+
+**Where it landed:**
+
+| | admitted | model share | ratio |
+|---|---|---|---|
+| Nigeria 1935 | 4% | 0.2% | — |
+| Sweden 1935 | 14% | 10.5% | 1.3× |
+| India 1955 | 8% | 0.8% | — |
+| Sweden 1995 | 55% | 52% | 1.1× |
+| United States 2005 | 76% | 68% | 1.1× |
+
+Honest caveat on the two large ratios: `abroad` is **not domestic tertiary enrolment**, so
+counting it against `tertiaryAccess` overstates the inflation — those students are studying in
+another country entirely. The synthetic sampler is also 25% wealthy and uniform in ability,
+both unrepresentative of a real cohort. The absolute rates are the meaningful figures, and 4%
+for 1935 Nigeria is roughly the colonial-era elite plus a handful of scholarship students.
+
+**`test-edu-s03-s06.js` — 65 assertions, all green** (roadmap target ~70), including a
+calibration section in the shape of `test-hre-calib.js` and an assertion that **no country or
+era is completely sealed to every student**.
+
+---
+
+## 9 · Sequencing note for Phase 6
+
+**P6 (S12, the read-only interface) is next — the first browsable phase.** Two things carried forward:
 
 1. **S02 must not generate people.** `s.school` already spends 7.5 KB on classmates and faculty
    (§2). Institution attributes go to module 06 as `opts`.

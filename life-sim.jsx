@@ -1120,22 +1120,36 @@ const MILESTONES = [
        anyone clears it, where they are vanishingly rare only an exceptional
        student does. The player's CHOICE is untouched; what changes is whether
        the world had a place to offer. */
-    const v = eduTertiaryVerdict(s);
+    /* EDU S03/S05. The era's cohort share decides whether the ordinary door is
+       open; when it is shut, eduAdmit checks the exceptions that really
+       existed — merit scholarships, mission and state sponsorship, study
+       abroad — so a scarce era is narrow rather than sealed. The player's
+       choice is never removed; what changes is what the world had to offer,
+       and every price is shown as what it costs THIS family. */
+    const adm = eduAdmit(s, "state");
+    const open = adm.admitted;
+    const cost = (tier) => {
+      const ratio = eduNetCostRatio(s, tier, adm.route);
+      return `${s.profile.curSym}${collegeFee(s, tier)}/yr · ${eduAffordability(ratio)}${adm.aidShare > 0.5 ? " — funded" : adm.aidShare > 0.08 ? " after aid" : ""}`;
+    };
     const opts = [];
-    if (v.open && score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${s.profile.curSym}${collegeFee(s, "prestige")}/yr)`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
-    if (v.open && score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${s.profile.curSym}${collegeFee(s, "uni")}/yr)`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
-    if (v.open) opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${s.profile.curSym}${collegeFee(s, "state")}/yr)`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
-    opts.push({ label: v.open ? "💼 Skip college — straight to work" : "💼 Into work, then", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 School done. The job board awaits (🎯 Act → Look for work)." } });
-    /* Say WHY out loud. "You weren't good enough" and "there were forty places
-       in the entire country" are different sentences and the player is owed
-       the true one. */
-    const closed = v.genderBarred
-      ? `Not for you, though. In ${s.profile.country} in ${yearOf(s)}, the university gates are effectively shut to women, whatever your marks say.`
-      : v.scarce
-      ? `University is not on the table. In ${s.profile.country} in ${yearOf(s)} it is the destination of a tiny handful — a few thousand places in a country of millions — and they were never going to be yours.`
-      : `The places went to others. Your marks were not quite what this year's intake demanded.`;
+    if (open && score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${cost("prestige")})`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
+    if (open && score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${cost("uni")})`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
+    if (open) opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${cost("state")})`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
+    opts.push({ label: open ? "💼 Skip college — straight to work" : "💼 Into work, then", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 School done. The job board awaits (🎯 Act → Look for work)." } });
+
+    const routeLine = {
+      open: score > 82 ? "The letters that came back include a thick envelope from a prestigious university."
+          : score > 62 ? "Solid options on the table." : "Your options are modest but real.",
+      merit: `There was no place for someone like you in ${s.profile.country} in ${yearOf(s)} — and then there was, because your results were extraordinary enough that someone went looking for you. The scholarship covers nearly all of it.`,
+      sponsorFaith: `The ordinary doors were shut. The mission put your name forward and agreed to pay, which is how most people like you ever got through them.`,
+      sponsorState: `The ordinary doors were shut — but the state is building a graduate class it does not yet have, and it is paying for people to become it. You are one of them.`,
+      abroad: `There is no place for you in ${s.profile.country}. There is one overseas, and your family can pay for it. Not everyone gets to solve it this way.`,
+      none: adm.reason,
+    }[adm.route];
+
     return { event: { emoji: "🎓", title: "Graduation day",
-      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${v.open ? (score > 82 ? "The letters that came back include a thick envelope from a prestigious university." : score > 62 ? "Solid options on the table." : "Your options are modest but real.") : closed} What's next?`,
+      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${routeLine} What's next?`,
       options: opts } };
   } },
 ];
@@ -3240,6 +3254,175 @@ function eduAwardCredential(s, id, extra) {
   s.edu.cred.push(Object.assign({ id, year: yearOf(s) }, extra || {}));
   return true;
 }
+
+/* ═══════════════════════ EDU · S03 + S06 ═══════════════════════
+   Admission and selection, and finance.
+
+   WHY THIS PHASE EXISTS IN THIS FORM. P4's tertiary gate fixed the 88% bug —
+   a 1935 Nigerian no longer reaches university more often than a 1995 Swede —
+   but it fixed it ABSOLUTELY: the cohort share became a hard threshold, so a
+   determined player in a scarce era had no path at all. That is its own kind
+   of false. Real scarce systems were not sealed; they were narrow, and they
+   had doors. Mission and colonial scholarships found the very best students.
+   States expanding education after independence or war funded cohorts
+   deliberately. Wealthy families sent children abroad. Employers sponsored
+   technical training.
+
+   So the fix is not to soften the era model — the shares stay exactly as S01
+   resolves them — but to model the exceptions that actually existed. Each
+   route below is deliberately rare and has its own historical logic, so it
+   opens a real door without re-inflating the share it is an exception to.
+
+   DETERMINISM. Admission is a decision, not generation, but it still must not
+   use Math.random: two loads of the same save would otherwise disagree about
+   whether the character got in. Every draw goes through hreRng seeded from
+   s.edu.seed, so a given character's outcome is fixed and reproducible.
+
+   MONEY. Every figure here is a RATIO to realised income, never an absolute
+   amount (arch §8.2, R8). Module 09's TIER_SALARY is flat across era and
+   country and only ~29.8% of scheduled wages actually reach s.money, so an
+   absolute tuition figure would silently inherit both distortions.
+   HRE_INCOME_REALISATION is the single constant both subsystems derive from;
+   when module 09 fixes payroll it goes to 1.0 and EDU rebalances with it. */
+
+/* Family means, as a multiple of the reference earner's REALISED annual
+   income. Ratios, so a payroll fix rebalances this automatically. */
+const EDU_CLASS_INCOME_MULT = { Poor: 0.38, Working: 0.70, Middle: 1.0, Wealthy: 2.8 };
+function eduFamilyRealisedAnnual(s) {
+  const cls = EDU_CLASS_INCOME_MULT[s.profile.cls] || 1;
+  /* poorer countries and earlier eras are poorer in the same units */
+  const scale = 0.35 + 0.65 * eduDevScale(s.profile.country, yearOf(s));
+  return hreRealisedAnnual(HRE_REF_SALARY_MONTHLY) * cls * scale;
+}
+/* Annual tuition as a FRACTION of what the family actually receives in a year.
+   0 = free, 1 = a whole year's realised income, >1 = more than they earn. */
+function eduTuitionRatio(s, tier) {
+  const fee = collegeFee(s, tier);
+  const income = eduFamilyRealisedAnnual(s);
+  return income <= 0 ? 99 : fee / income;
+}
+const EDU_AFFORD_BANDS = [
+  [0.02, "free"], [0.10, "affordable"], [0.28, "a stretch"],
+  [0.65, "a serious burden"], [Infinity, "out of reach"],
+];
+function eduAffordability(ratio) {
+  for (const [lim, label] of EDU_AFFORD_BANDS) if (ratio < lim) return label;
+  return "out of reach";
+}
+
+/* ─── S06 · aid ───
+   Aid is a share of tuition removed, 0-1. Public systems and expanding states
+   carry most of it; a sponsored route carries nearly all of it, which is the
+   point of the sponsorship existing. */
+function eduAidShare(s, tier, route) {
+  const sys = eduSystem(s);
+  let aid = 0;
+  /* a broad public system subsidises everyone in it */
+  if (sys.tertiaryAccess != null) aid += Math.min(0.45, sys.tertiaryAccess * 0.6);
+  /* poorer families get more of what is available */
+  aid += { Poor: 0.22, Working: 0.14, Middle: 0.05, Wealthy: 0 }[s.profile.cls] || 0;
+  if (route === "merit") aid = Math.max(aid, 0.92);
+  if (route === "sponsorFaith" || route === "sponsorState") aid = Math.max(aid, 0.85);
+  if (route === "sponsorEmployer") aid = Math.max(aid, 0.7);
+  if (route === "abroad") aid = Math.min(aid, 0.1);   // going abroad is paid for, not subsidised
+  return Math.max(0, Math.min(1, aid));
+}
+function eduNetCostRatio(s, tier, route) {
+  return eduTuitionRatio(s, tier) * (1 - eduAidShare(s, tier, route));
+}
+
+/* ─── S03 · admission ───
+   The exception routes. Each is checked only when the ordinary gate has
+   already closed, each is independently rare, and each is conditioned on the
+   thing that made it real. */
+/* How common the exceptions themselves are. A system with almost no
+   university places also has almost no scholarships, almost no sponsorship
+   budget and almost no overseas pipeline — so the exceptions must scale WITH
+   capacity, not sit at a flat rate on top of it.
+
+   Measured before this existed: flat rates inflated a 0.2% cohort share to an
+   11% admission rate — 55×, mostly from `abroad` firing at 45% on a sample
+   that was a quarter wealthy. That is the exceptions becoming the backdoor
+   they were written to avoid being. The floor keeps a scarce era narrow rather
+   than sealed, which is the whole point of the phase. */
+function eduExceptionScale(share) {
+  return 0.22 + 0.78 * Math.min(1, (share || 0) * 4);
+}
+function eduAdmitRng(s, salt) {
+  const seed = (s.edu && typeof s.edu.seed === "number") ? s.edu.seed : hreHash(String(s.profile.first));
+  return hreRng(seed, "admit:" + (s.ageDays || 0), "edu:admit:" + salt);
+}
+function eduAdmit(s, tier) {
+  const v = eduTertiaryVerdict(s);
+  const sys = eduSystem(s);
+  const score = v.score;
+
+  if (v.open) {
+    return { admitted: true, route: "open", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "open"), sponsor: null,
+             reason: "You were admitted on your marks." };
+  }
+
+  /* 1 · EXCEPTIONAL MERIT. A scarce system still finds its very best — that is
+     what mission and colonial scholarships were for. Requires standing far
+     above the local cohort, not merely above average. */
+  /* Top 5% of the cohort distribution. Set at 0.97 initially, which left a
+     window barely three points wide before the ordinary gate opened anyway —
+     technically reachable, effectively never. "Extraordinary" has to mean
+     something a real student can be. */
+  const meritBar = eduScoreQuantile(0.95);
+  const xs = eduExceptionScale(v.share);
+  if (score >= meritBar && eduAdmitRng(s, "merit").chance(0.40 * xs)) {
+    return { admitted: true, route: "merit", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "merit"), sponsor: "scholarship",
+             reason: "Your results were extraordinary enough that someone went looking for you." };
+  }
+
+  /* 2 · FAITH SPONSORSHIP. A religious institution funds a promising student.
+     Conditioned on a religious schooling context, which is what actually
+     produced these placements. */
+  const religious = (s.edu && s.edu.inst && s.edu.inst.religiosity > 60)
+    || (s.school && SCHOOL_TYPES[s.school.type] && SCHOOL_TYPES[s.school.type].faith);
+  /* Sponsorship catches the near-miss, so the bar is set RELATIVE to the gate
+     rather than at an absolute quantile. An absolute bar can land ABOVE the
+     gate it is an exception to — which is what happened when this was
+     q78 against a gate at q70, leaving a window of zero width and a route
+     that could never fire. */
+  if (religious && score >= v.gate - 15 && eduAdmitRng(s, "faith").chance(0.30 * xs)) {
+    return { admitted: true, route: "sponsorFaith", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "sponsorFaith"), sponsor: "faith",
+             reason: "The mission put your name forward, and paid for it." };
+  }
+
+  /* 3 · STATE SPONSORSHIP. A state actively widening access funds cohorts
+     deliberately. Detected from the CE model itself: access rising sharply
+     across this character's own lifetime is what a post-independence or
+     post-war expansion looks like in the data. */
+  const growth = (sys.tertiaryAccess || 0) - (eduSystemFor(s.profile.country, yearOf(s) - 20).tertiaryAccess || 0);
+  if (growth > 0.03 && score >= v.gate - 15 && eduAdmitRng(s, "state").chance(0.30 * xs)) {
+    return { admitted: true, route: "sponsorState", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "sponsorState"), sponsor: "state",
+             reason: "The new government was building a graduate class, and you were in it." };
+  }
+
+  /* 4 · ABROAD. Wealth has always been able to buy its way past a narrow
+     local system. Expensive, and explicitly not subsidised. */
+  if (s.profile.cls === "Wealthy" && v.scarce && eduAdmitRng(s, "abroad").chance(0.30 * xs)) {
+    return { admitted: true, route: "abroad", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "abroad"), sponsor: "family",
+             reason: "There was no place for you here. There was one overseas, and your family could pay for it." };
+  }
+
+  return { admitted: false, route: "none", score, gate: v.gate, share: v.share,
+           aidShare: 0, sponsor: null,
+           reason: v.genderBarred ? "The gates were shut to women, whatever your marks said."
+                 : v.scarce ? "There were a few thousand places in a country of millions."
+                 : "The places went to others." };
+}
+
+/* Every route a character could have taken, for the graduation screen and for
+   the calibration suite. */
+const EDU_ADMIT_ROUTES = ["open", "merit", "sponsorFaith", "sponsorState", "abroad", "none"];
 
 function eduInstitutionOpts(inst) {
   if (!inst) return null;
