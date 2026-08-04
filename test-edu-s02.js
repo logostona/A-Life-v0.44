@@ -357,8 +357,12 @@ const stripComments = (x) => x.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:
    inside it — starting mid-comment leaves an unterminated block the stripper
    cannot match, which is how the header's own "No Math.random" sentence
    survived stripping and failed the lint it describes. */
+/* Bounded by the NEXT EDU section banner. Ending a slice at a function name
+   far below it works only while this is the last EDU block in the file — later
+   sections get inserted in between and the slice silently grows to lint code it
+   does not own. */
 const s02mark = SRC.indexOf("EDU · S02");
-const s02raw = SRC.slice(SRC.lastIndexOf("/*", s02mark), SRC.indexOf("function eduInstitutionOpts"));
+const s02raw = SRC.slice(SRC.lastIndexOf("/*", s02mark), SRC.indexOf("EDU · S09"));
 const s02 = stripComments(s02raw);
 ok("the S02 block was located", s02raw.length > 6000, s02raw.length);
 ok("stripping comments left real code behind", s02.includes("eduBlueprint") && s02.length > 2500, s02.length);

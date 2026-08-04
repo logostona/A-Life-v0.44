@@ -3424,6 +3424,174 @@ function eduAdmit(s, tier) {
    the calibration suite. */
 const EDU_ADMIT_ROUTES = ["open", "merit", "sponsorFaith", "sponsorState", "abroad", "none"];
 
+/* ═══════════════════ EDU · S12 · INTERFACE ADAPTER ═══════════════════
+   Phase 6, and the first phase with anything to look at.
+
+   THE ONLY PLACE EDU TOUCHES THE ENGINE'S UI. Everything in S01-S06 is a
+   plain deterministic library that has never heard of ACT_GROUPS or `pending`;
+   this section translates it into the shapes module 16 already renders. If an
+   education feature cannot be expressed as a popup or an Act-sheet item, that
+   is a request to module 16, not a licence to add a component.
+
+   SUBSYSTEM INVARIANT (Gotcha #2): every builder here is READ-ONLY and returns
+   a bare pending object. Nothing mutates state while building a menu — the
+   clone a builder is handed gets discarded, so a write there is silent data
+   loss. Mutations happen in an option's fx.run, on the draft the engine
+   actually keeps. Same rule HRE's S12 runs under: builders return, options
+   mutate, no exceptions.
+
+   READ-ONLY BY DESIGN. Phase 6 is deliberately look-but-don't-touch, exactly
+   as HRE's Phase 6 shipped a market you could read and not act on. There is no
+   way to apply, enrol or transfer from here; progression stays where S05 put
+   it, on the schedule.
+
+   PRESENTATION INVENTS NOTHING (invariant 8). Every line below composes from
+   values S01-S06 already computed. Where a register needs a word for a number
+   it comes from a band table, so the prose cannot drift from the fact.
+
+   Menu items ship at cost: 0, matching the other 35 menu-opening `special`
+   branches in this file. They all silently advance zero time; module 24 owns
+   that as one cross-cutting patch, and fixing it here would clobber popups
+   because advance() no-ops whenever s.pending is already set. */
+
+const EDU_QUALITY_WORDS = [[85, "exceptional"], [70, "strong"], [55, "good"],
+                           [40, "adequate"], [25, "poor"], [0, "dire"]];
+function eduWord(v) {
+  for (const [lim, w] of EDU_QUALITY_WORDS) if (v >= lim) return w;
+  return "dire";
+}
+/* Era register: the same institution is described differently by a 1930s
+   prospectus and a 2010s website. Composes only from the year. */
+function eduRegister(year) {
+  return year < 1945 ? "prospectus" : year < 1985 ? "brochure" : year < 2005 ? "handbook" : "website";
+}
+function eduRegisterLine(year) {
+  return { prospectus: "A printed prospectus, all serif type and no photographs.",
+           brochure: "A folded brochure with two colour plates and a lot of adjectives.",
+           handbook: "A thick handbook with a campus map stapled inside the cover.",
+           website: "A website with a video header and a cookie banner." }[eduRegister(year)];
+}
+
+/* What the character's own education looks like right now. Pure read. */
+function eduCurrentLines(s) {
+  const stage = eduStage(s);
+  const st = EDU_STAGES[stage];
+  const out = [];
+  out.push(st ? st.label : "Not in education");
+  if (s.school && s.school.name) out.push("· " + s.school.name);
+  if (s.education && s.education.college) {
+    out.push("· reading " + s.education.college.major + " at " + COLLEGE_TIERS[s.education.college.tier].name);
+  }
+  const p = (s.edu && s.edu.perf) || {};
+  if (p.gpa != null) {
+    out.push("· grades " + eduWord(p.gpa) + " (" + p.gpa + "%), attendance " + p.attendance + "%");
+  }
+  return out;
+}
+function eduRecordMenu(state) {
+  const s = state;                                   /* READ ONLY — never mutate */
+  const rec = (s.edu && s.edu.record) || [];
+  const cred = (s.edu && s.edu.cred) || [];
+  const lines = [];
+  if (!rec.length) lines.push("Nothing finished yet.");
+  for (const r of rec) {
+    const st = EDU_STAGES[r.stage];
+    lines.push((st ? st.label : r.stage) + " — " +
+      (r.outcome === "completed" ? "completed" : "left") +
+      " at " + Math.floor((r.to || 0) / 365.25) + ".");
+  }
+  const credLine = cred.length
+    ? "Held: " + cred.map((c) => c.field ? c.id + " (" + c.field + ")" : c.id).join(", ") + "."
+    : "No qualifications yet.";
+  return { emoji: "📜", title: "Your record",
+    text: lines.join("\n") + "\n\n" + credLine,
+    options: [{ label: "Close", fx: {} }] };
+}
+/* What this character could plausibly be looking at, given where and when they
+   live. Browsing only — nothing here enrols anyone. */
+function eduProspectsMenu(state) {
+  const s = state;                                   /* READ ONLY */
+  const year = yearOf(s);
+  const sys = eduSystem(s);
+  const seed = (s.edu && s.edu.seed) || 1;
+  const stage = eduStage(s);
+  /* The next few rungs, not just the immediate one. Looking only one step
+     ahead showed an upper-secondary student vocational centres and no
+     universities at all, which is not what "what you could study" means to
+     someone choosing. Three rungs is the realistic horizon. */
+  const ahead = Object.keys(EDU_STAGES)
+    .filter((k) => EDU_STAGES[k].visionKind === "rung" && EDU_STAGES[k].ord > (EDU_STAGES[stage] ? EDU_STAGES[stage].ord : 0)
+                   && EDU_STAGES[k].ord < 99)
+    .sort((a, b) => EDU_STAGES[a].ord - EDU_STAGES[b].ord)
+    .slice(0, 3);
+  const seen = {}, cands = [];
+  for (const rung of (ahead.length ? ahead : ["primary"])) {
+    for (const a of eduArchetypesFor(s.profile.country, year, rung)) {
+      if (seen[a.id]) continue;
+      seen[a.id] = 1;
+      cands.push(a);
+    }
+  }
+  cands.splice(5);
+  const options = cands.map((a, i) => {
+    const id = eduIdMake(s.profile.country, 0, 2, a.id, i);
+    const bp = eduBlueprint(seed, id, year);
+    if (!bp) return null;
+    return { label: "🏫 " + bp.label + " — " + eduWord(bp.quality) + " teaching",
+      fx: { run: (st) => {
+        /* the ONLY mutation, and it happens on the engine's draft */
+        if (st.edu) { if (!st.edu.mem) st.edu.mem = {}; st.edu.mem.tab = "inst:" + id; }
+        st.pending = eduInstitutionMenu(st, id);
+      } } };
+  }).filter(Boolean);
+  options.push({ label: "Close", fx: {} });
+
+  const access = Math.round((sys.tertiaryAccess || 0) * 100);
+  const examLine = sys.entryExam ? " Entry runs through the " + sys.entryExam.name + "." : "";
+  return { emoji: "🔭", title: "What you could study",
+    text: eduRegisterLine(year) + " In " + s.profile.country + ", " + year + ", about " + access +
+      "% of your cohort reaches post-secondary education." + examLine +
+      (options.length > 1 ? "" : " There is nothing here for someone your age."),
+    options };
+}
+function eduInstitutionMenu(state, id) {
+  const s = state;                                   /* READ ONLY */
+  const year = yearOf(s);
+  const bp = eduBlueprint((s.edu && s.edu.seed) || 1, id, year);
+  if (!bp) return { emoji: "🏫", title: "Nothing there", text: "No such institution.",
+                    options: [{ label: "Close", fx: {} }] };
+  const bits = [
+    "Founded " + bp.founded + ", " + bp.administration + "-run.",
+    bp.enrolment + " students, classes of about " + bp.classSize + ".",
+    "Teaching " + eduWord(bp.quality) + ". Facilities " + eduWord(bp.facilities) + ".",
+    bp.boarding ? "Residential." : "Day school.",
+    bp.singleSex ? "Single-sex." : "Co-educational.",
+    bp.religiosity > 60 ? "Faith runs through the timetable." : "",
+    bp.strictness > 70 ? "Discipline is strict." : "",
+  ].filter(Boolean);
+  return { emoji: "🏫", title: bp.label, text: bits.join(" "),
+    options: [{ label: "Back", fx: { run: (st) => { st.pending = eduProspectsMenu(st); } } },
+              { label: "Close", fx: {} }] };
+}
+function eduStudyMenu(state) {
+  const s = state;                                   /* READ ONLY */
+  return { emoji: "🎓", title: "Where you study",
+    text: eduCurrentLines(s).join("\n"),
+    options: [
+      { label: "📜 Your record", fx: { run: (st) => { st.pending = eduRecordMenu(st); } } },
+      { label: "🔭 What you could study", fx: { run: (st) => { st.pending = eduProspectsMenu(st); } } },
+      { label: "Close", fx: {} },
+    ] };
+}
+
+const EDU_GROUP = { id: "edu", emoji: "🎓", name: "Education", items: [
+  { id: "eduStudy", minAge: 4, emoji: "🎓", label: "Where you study", cost: 0, special: "eduStudy" },
+  { id: "eduProspects", minAge: 10, emoji: "🔭", label: "What you could study", cost: 0, special: "eduProspects" },
+] };
+/* Registered further down, next to the other ACT_GROUPS.push calls: this block
+   sits ~5,000 lines above `const ACT_GROUPS`, so pushing here would run inside
+   its temporal dead zone and take the whole module down at load. */
+
 function eduInstitutionOpts(inst) {
   if (!inst) return null;
   return {
@@ -8319,6 +8487,8 @@ function doActivity(state, act) {
   if (act.special === "salon") { return Object.assign(s, { pending: salonMenu(s).pending }); }
   if (act.special === "aiSettings") { return Object.assign(s, { pending: aiSettingsMenu(s) }); }
   if (act.special === "stxBoard") { s.pending = stxBoardMenu(s); return s; }
+  if (act.special === "eduStudy") { s.pending = eduStudyMenu(s); return s; }
+  if (act.special === "eduProspects") { s.pending = eduProspectsMenu(s); return s; }
   if (act.special === "hreHome") { s.pending = hreHomeMenu(s); return s; }
   if (act.special === "hreUpkeep") { s.pending = hreUpkeepMenu(s); return s; }
   if (act.special === "hreSell") { s.pending = hreSaleMenu(s); return s; }
@@ -11227,6 +11397,7 @@ const HOME_GROUP = { id: "home", emoji: "🏠", name: "At home", cond: (s) => !i
   { id: "parentsroom", minAge: 4, emoji: "🛏", label: "Your parents' room", cost: 1, special: "parentsroom", cond: (s) => hreAtParents(s) },
 ] };
 ACT_GROUPS.push(HOME_GROUP);
+ACT_GROUPS.push(EDU_GROUP);
 /* ═══════════════ HRE · S12 · INTERFACE ADAPTER (housing) ═══════════════ */
 /* Phase 6. Part 1 §3.5 S12, Part 3 §7.15.
 

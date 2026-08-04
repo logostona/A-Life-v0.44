@@ -343,8 +343,12 @@ sec("8 · invariants");
 
 const SRC = fs.readFileSync(H.SRC, "utf8");
 const stripComments = (x) => x.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+/* Bounded by the NEXT EDU section banner. Ending a slice at a function name
+   far below it works only while this is the last EDU block in the file — later
+   sections get inserted in between and the slice silently grows to lint code it
+   does not own. */
 const mark = SRC.indexOf("EDU · S09");
-const s09raw = SRC.slice(SRC.lastIndexOf("/*", mark), SRC.indexOf("function eduInstitutionOpts"));
+const s09raw = SRC.slice(SRC.lastIndexOf("/*", mark), SRC.indexOf("EDU · S04 + S05"));
 const s09 = stripComments(s09raw);
 ok("the S09 block was located", s09raw.length > 3000, s09raw.length);
 

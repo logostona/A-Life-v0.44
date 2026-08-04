@@ -315,8 +315,14 @@ sec("8 · invariants");
 
 const SRC = fs.readFileSync(H.SRC, "utf8");
 const stripComments = (x) => x.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+/* Bound the slice by the NEXT EDU section banner, not by a function name far
+   below it. Ending at eduInstitutionOpts was correct when S04/S05 was the last
+   EDU block in the file; S03/S06 and S12 have since been inserted between
+   them, so the slice silently grew to include both and this section started
+   linting code it does not own. */
 const mark = SRC.indexOf("EDU · S04 + S05");
-const rawBlock = SRC.slice(SRC.lastIndexOf("/*", mark), SRC.indexOf("function eduInstitutionOpts"));
+const nextSection = SRC.indexOf("EDU · S03 + S06");
+const rawBlock = SRC.slice(SRC.lastIndexOf("/*", mark), nextSection);
 const block = stripComments(rawBlock);
 ok("the S04/S05 block was located", rawBlock.length > 3000, rawBlock.length);
 
@@ -326,7 +332,8 @@ for (const bad of ["Math.random", "Date.now", "new Date"]) {
 ok("invariant 2: no country conditional in S04/S05", !/country\s*===\s*["']/.test(block));
 /* invariant 10: progression is schedule-driven. A POOL entry that advanced a
    stage would be exactly the failure the roadmap warns about. */
-ok("invariant 10: EDU adds no POOL entry", !/POOL\.push|id:\s*"edu/.test(block));
+ok("invariant 10: EDU adds no POOL entry", !/POOL\.push|POOL\.unshift/.test(block));
+ok("...and none anywhere in EDU", !/POOL\.push\(EDU|POOL\.push\(edu/.test(SRC));
 ok("invariant 4: no new applyFx key", !/applyFx/.test(block));
 ok("the gate is calibrated from a table, not a magic constant",
   block.includes("EDU_SCORE_QUANTILES"));

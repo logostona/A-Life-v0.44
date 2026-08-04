@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phases 1–5 shipped (S01, S02, S09, S04+S05, S03+S06).**
+### Status: **Phase 0 complete. Phases 1–6 shipped (S01, S02, S09, S04+S05, S03+S06, S12).**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -415,9 +415,48 @@ era is completely sealed to every student**.
 
 ---
 
-## 9 · Sequencing note for Phase 6
+## 8f · What Phase 6 shipped — the first browsable phase
 
-**P6 (S12, the read-only interface) is next — the first browsable phase.** Two things carried forward:
+`EDU_GROUP` on the Act sheet ("Where you study", "What you could study"), the current-education
+view, the record and credential ledger, an institution view, and era-appropriate presentation
+registers. Look-but-don't-touch, exactly as HRE's Phase 6 shipped a market you could read and
+not act on — there is no way to apply, enrol or transfer from here, and progression stays where
+S05 put it, on the schedule.
+
+Menu items ship at `cost: 0`, matching the other 35 menu-opening `special` branches. Module 24
+owns the zero-time question as one cross-cutting patch; fixing it here would clobber popups,
+because `advance()` no-ops whenever `s.pending` is already set.
+
+**`test-edu-s12.js` — 76 assertions, all green** (roadmap target ~55).
+
+Three findings:
+
+1. **`ACT_GROUPS.push(EDU_GROUP)` hit a temporal dead zone.** The EDU library sits ~5,000 lines
+   above `const ACT_GROUPS`, so registering the group where it is declared took the whole module
+   down at load. The push now lives beside the other `ACT_GROUPS.push` calls. Worth noting the
+   failure mode: `esbuild` compiled it happily — only actually loading the module revealed it.
+2. **"What you could study" showed only the immediate next rung.** An upper-secondary student
+   saw vocational centres and no universities at all, which is not what the phrase means to
+   someone choosing. It now looks three rungs ahead.
+3. **Three lint slices were silently mis-scoped.** Each ended at a function name far below its
+   section, which was correct only while that section was the last EDU block in the file. S03/S06
+   and S12 were inserted in between, so the slices grew to lint code they do not own —
+   `test-edu-s04-s05`'s invariant-10 check started matching S12's `id: "eduStudy"` and failed.
+   `test-edu-s02` and `test-edu-s09` had the same defect and were passing **by luck**. All three
+   are now bounded by the next section banner.
+
+The suite's three real targets: **Gotcha #2** (every builder is driven and its input asserted
+byte-identical afterwards — a builder mutates a clone that gets discarded, so a write there is
+silent data loss), **invariant 8** (every rendered figure is checked against the generated value
+it claims to describe), and **dead ends** (every menu, across 7 countries × 4 eras × 6 ages, must
+have an option that closes it — a popup with no exit strands the player in a game that will not
+advance).
+
+---
+
+## 9 · Sequencing note for Phase 7
+
+**P7 (S07, school life) is next**, and it is where `makeReactionEvent` finally gets production callers. Two things carried forward:
 
 1. **S02 must not generate people.** `s.school` already spends 7.5 KB on classmates and faculty
    (§2). Institution attributes go to module 06 as `opts`.
