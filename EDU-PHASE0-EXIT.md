@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phase 1 (S01) shipped.**
+### Status: **Phase 0 complete. Phases 1 (S01) and 2 (S02) shipped.**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -216,12 +216,52 @@ can see. Deleting every `edu*` symbol would leave the game behaving identically.
 
 ---
 
-## 9 · Sequencing note for Phase 2
+## 8b · What Phase 2 shipped
 
-P1 → P2 → P3 is strict and unchanged. Two things carried forward:
+`EDU_ARCHETYPES` (17 archetypes with era / development / region availability windows),
+`EDU_ENROL_ENVELOPE`, `EDU_DEV_FOUNDING_FLOOR`, parseable ids (`eduIdMake` / `eduIdParse`),
+the 12-stage blueprint pipeline, `eduValidateBlueprint`, `eduBlueprint` / `eduInstitution`,
+`eduCrystallise`, and `eduInstitutionOpts` — the handover of institutional character to
+modules 06 and 11.
+
+**`test-edu-s02.js` — 93 assertions, all green** (roadmap target ~90). Largest crystallised
+institution: **421 bytes**, against a 900-byte assertion and the 2.5 KB `s.edu` budget.
+Generator retry rate **0%** across a ~950-institution sweep; nothing ships still-invalid.
+
+**`edu-sample-review.js` earned its place immediately.** It is not a test, asserts nothing,
+and cannot fail — it renders generated institutions as prose for a human to read. It caught
+three absurdities that were green on every assertion in `test-edu-s02.js` at the time:
+
+1. **A university founded in its own reference year, with 19,983 students.** `eduStage2Founded`
+   took `max(a, b)` of two draws, skewing *young*. Institutions standing in any given year are
+   mostly not new. Now skews older, and a genuinely new institution fills up over ~15 years via
+   an enrolment ramp rather than opening at capacity.
+2. **A 17,050-student single-sex university.** Scaling single-sex probability down by enrolment
+   left a tail that still fired; above 5,000 students it is now a hard constraint, not a low
+   chance.
+3. **A Kenyan regional university founded in 1853.** An archetype's `era` window is global —
+   "universities have existed since 1850" says nothing about whether one existed *here*.
+   `EDU_DEV_FOUNDING_FLOOR` adds a per-development-tier founding floor, so tertiary education
+   in Kenya or Nigeria simply does not exist before it plausibly could.
+
+All three are pinned as regressions in `test-edu-s02.js` §10. This is the second time the
+project has found a generator bug this way, after HRE's amenity-prerequisite bug, and the
+argument for the gate is now empirical rather than theoretical.
+
+One lint bug worth recording: the invariant-1 check initially failed on S02's **own header
+comment**, which contains the sentence "No `Math.random` … anywhere below." The lint now strips
+comments before scanning, and slices from the `/*` that opens the header rather than from the
+banner text inside it — starting mid-comment leaves an unterminated block the stripper cannot
+match.
+
+---
+
+## 9 · Sequencing note for Phase 3
+
+P2 → P3 is next and strict: state needs both the ladder and the generator. Two things carried forward:
 
 1. **S02 must not generate people.** `s.school` already spends 7.5 KB on classmates and faculty
    (§2). Institution attributes go to module 06 as `opts`.
-2. **OQ-5 should be raised with module 11 before P2 finishes**, since S02's `religiosity` /
+2. **OQ-5 is now live with module 11.** `eduInstitutionOpts()` already hands over exactly what `schoolLegal()` would need, so S02's `religiosity` /
    `strictness` / `administration` attributes are exactly what `schoolLegal()` would consume in
    place of inferring from `SCHOOL_TYPES` strings.
