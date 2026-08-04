@@ -14,8 +14,9 @@
  *
  * v2 — UI redesign (dark theme + Compass Advance), HRE Phase 9 upkeep, S11 sale.
  * v3 — five independent identity axes, romantic orientation, intersex variations.
+ * v4 — EDU phases 1-6: country/era education model, institutions, admissions.
  */
-const CACHE_NAME = "a-life-cache-v3";
+const CACHE_NAME = "a-life-cache-v4";
 const ASSETS = [
   "./",
   "./index.html",
