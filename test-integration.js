@@ -377,6 +377,34 @@ sec("7 · regressions this suite found (keep them dead)");
   M.applyFx(s, { run: (st) => { st.money -= 15; } });
   ok("...and a partial spend still leaves the remainder", s.money === 25, s.money);
 
+  /* --- returning home from the street must tell HRE, not just the flag ---
+     The soak found this only because an unrelated change shifted which lives
+     the seeded RNG produced, and the route started firing. Of the three ways
+     out of homelessness in "A way back in", two called hreSetTenure and the
+     third only cleared s.flags.homeless — so hreLegacyTenure said "withParents"
+     while s.hre.tenure stayed "homeless", and hreTenure prefers the HRE value.
+     The disagreement then persisted for the rest of the life. Pinned directly
+     here because reaching it in the soak depends on the dice. */
+  {
+    const st = H.mkChar({ country: "United Kingdom", cls: "Poor", birthYear: 1990 });
+    st.ageDays = 6570;
+    M.hreSetTenure(st, "homeless", null);
+    st.flags.homeless = st.ageDays;
+    ok("precondition: on the street by both authorities",
+      M.hreTenure(st) === "homeless" && M.hreLegacyTenure(st) === "homeless");
+
+    /* drive the REAL option out of the real event, not a hand-rolled copy */
+    st.family.mom.rel = 60;
+    const ev = (M.POOL.find((e) => e.id === "streetOut")).run(st).event;
+    const opt = ev.options.find((o) => /go home/i.test(o.label));
+    ok("the 'go home' option exists and is available", !!opt && (!opt.cond || opt.cond(st)));
+    M.applyFx(st, opt.fx);
+    ok("going home agrees across both authorities",
+      M.hreTenure(st) === M.hreLegacyTenure(st), [M.hreTenure(st), M.hreLegacyTenure(st)]);
+    ok("...and that agreed state is withParents", M.hreTenure(st) === "withParents", M.hreTenure(st));
+    ok("...and the legacy flag is cleared too", !st.flags.homeless, st.flags.homeless);
+  }
+
   /* --- every character has a currency symbol ---
      It was set in exactly one place (the Creation screen) while 72 sites render
      it directly, so any other path printed "undefined" in front of every
