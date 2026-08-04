@@ -13,8 +13,9 @@
  * instead of the one after.
  *
  * v2 — UI redesign (dark theme + Compass Advance), HRE Phase 9 upkeep, S11 sale.
+ * v3 — five independent identity axes, romantic orientation, intersex variations.
  */
-const CACHE_NAME = "a-life-cache-v2";
+const CACHE_NAME = "a-life-cache-v3";
 const ASSETS = [
   "./",
   "./index.html",
