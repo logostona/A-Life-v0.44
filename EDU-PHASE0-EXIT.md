@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phases 1–6 shipped (S01, S02, S09, S04+S05, S03+S06, S12).**
+### Status: **Phase 0 complete. Phases 1–7 shipped. Only P8 (post-secondary, adult, research overlay, inversion) remains.**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -454,7 +454,67 @@ advance).
 
 ---
 
-## 9 · Sequencing note for Phase 7
+## 8g · What Phase 7 shipped — school life
+
+`eduEnsureInstitution` (crystallisation), 7 POOL entries, and boarding.
+
+**S02's generator finally reaches a player.** It has been able to generate institutions since
+P2 and nothing had ever asked it for one, so no character had met a generated school. An
+institution is now crystallised when legacy enrols, which is arch §5's "only what you touch is
+saved" doing its job — and released when the character leaves, or they carry a school they no
+longer attend for the rest of their life.
+
+**`makeReactionEvent` has production callers for the first time**, a stated project goal since
+module 14 shipped. `eduReportCard` and `eduPeerRegard` supply one tier-banked fragment set each
+instead of one hand-written event per (relationship × outcome). Worth recording its real limit:
+`relKey` accepts only `rel`/`relF`/`relR`, so classmate and faculty effects have to go through
+`run:` — inventing a fourth `applyFx` key would break invariant 4.
+
+**Event budget held.** 7 entries against a ceiling of 25 for the whole subsystem; `POOL` is 220
+against a ceiling of 238. Every entry is reachable — an event nobody can ever reach is dead
+content, which is what the budget exists to stop being spent on.
+
+Events are parameterised by the crystallised institution rather than written per outcome: a
+strict school disciplines you, a well-resourced one runs competitions, an old or religious one
+has traditions, and the punishment described in 1945 is not the one described in 1995.
+
+### The finding: **OQ-7 answered — and the answer is "not yet"**
+
+Architecture §8.4 says a residential institution should call `hreSetTenure`. That is the right
+long-term design and it is **not safe to do today**. Measured:
+
+```
+before   tenure withParents    legacy withParents    agree ✔
+moveIn   tenure institutional  legacy withParents    agree ✘
+moveOut  tenure withParents    legacy withParents    agree ✔
+```
+
+`hreLegacyTenure()` has no representation for boarding — it returns `institutional` only for
+prison — so writing that state puts HRE's two authorities out of step for the whole of a
+character's schooling. **That is the same defect class as the "Swallow it and go home" bug this
+project already fixed once**, and the integration suite passed anyway because its lives never
+reached a boarding school. A latent version of a bug already paid for is not worth shipping to
+satisfy a design that is still formally unconfirmed.
+
+So EDU records that the character boards and does not touch tenure. This is not a parallel
+residence model: nothing prices, rents or houses anybody, and no HRE reader consults it.
+
+**OQ-7 goes back to module 13 with a specific ask rather than a general one:** `hreLegacyTenure`
+needs a boarding representation — or `HRE_TENURE_FROM_LEGACY` needs to stop treating
+`institutional` as prison-only — before EDU can call `hreSetTenure` without breaking
+`hreTenureAgreesWithLegacy`. When that lands, the two boarding functions become one-line calls
+into it.
+
+**`test-edu-s07.js` — 87 assertions, all green** (roadmap target ~60).
+
+A fourth mis-scoped lint slice appeared here, in both directions: S07 was appended *after* the
+S12 banner, so S07's slice ran backwards and yielded nothing, while S12's slice swallowed all of
+S07. The rule, now applied consistently: a slice ends at the next banner, whatever order the
+sections landed in.
+
+---
+
+## 9 · Sequencing note for Phase 8
 
 **P7 (S07, school life) is next**, and it is where `makeReactionEvent` finally gets production callers. Two things carried forward:
 

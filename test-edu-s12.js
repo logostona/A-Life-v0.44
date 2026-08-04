@@ -267,8 +267,12 @@ sec("7 · invariants");
 {
   const SRC = fs.readFileSync(H.SRC, "utf8");
   const stripComments = (x) => x.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+  /* Ends at the S07 banner, which was appended after S12 — ending at
+     EDU_GROUP would swallow all of S07 and lint code this section does not
+     own. Third time this class of mis-scoping has appeared; the rule is that a
+     slice ends at the next banner, whatever order the sections landed in. */
   const mark = SRC.indexOf("EDU · S12 · INTERFACE ADAPTER");
-  const raw = SRC.slice(SRC.lastIndexOf("/*", mark), SRC.indexOf("const EDU_GROUP"));
+  const raw = SRC.slice(SRC.lastIndexOf("/*", mark), SRC.indexOf("EDU · S07"));
   const block = stripComments(raw);
   ok("the S12 block was located", raw.length > 2000, raw.length);
   ok("invariant 1: no Math.random in S12", !block.includes("Math.random"));

@@ -3242,7 +3242,17 @@ function eduOnTick(s) {
   eduSyncStage(s);
   const inSchoolNow = !!s.school || (s.education && s.education.college);
   if (inSchoolNow) {
+    /* S07: crystallise the institution the moment there is one to attend. This
+       is the only thing that ever asks S02 for a school, so before it existed
+       the generator had never reached a player. */
+    if (typeof eduEnsureInstitution === "function") eduEnsureInstitution(s);
     s.edu.perf = eduPerf(s);
+  } else if (s.edu.inst) {
+    /* left school: release the boarding place before dropping the institution,
+       or the character stays lodged in a school they no longer attend */
+    if (typeof eduBoardingMoveOut === "function") eduBoardingMoveOut(s);
+    s.edu.inst = null;
+    s.edu.instFor = null;
   }
   if (s.education && typeof s.education.debt === "number") s.edu.fin.debt = s.education.debt;
 }
@@ -3583,6 +3593,243 @@ function eduStudyMenu(state) {
       { label: "Close", fx: {} },
     ] };
 }
+
+/* ═══════════════════════════ EDU · S07 ═══════════════════════════
+   School life — the texture, as opposed to the ladder.
+
+   CRYSTALLISATION FINALLY HAPPENS HERE. S02 has been able to generate
+   institutions since P2 and nothing had ever asked it for one, so no player
+   had met a generated school. `eduEnsureInstitution` crystallises exactly one
+   when legacy enrols the character, which is the "only what you touch is
+   saved" rule from arch §5 doing its job. It writes s.edu.inst and nothing
+   else — legacy's s.school stays authoritative.
+
+   EVENTS ARE TEXTURE, NEVER PROGRESSION (invariant 10). Nothing here advances
+   a stage, awards a credential or admits anyone. POOL loses ~70% of what it is
+   given, which is fine for a school play and fatal for a graduation.
+
+   EVENT BUDGET (invariant 6): ≤25 POOL entries for the WHOLE subsystem. This
+   is the only section that adds any, and it adds 7 — parameterised and
+   stage-dispatched rather than one entry per outcome.
+
+   `makeReactionEvent` GETS ITS FIRST PRODUCTION CALLERS HERE. It has had zero
+   since module 14 shipped, and a factory nobody calls is a hypothesis rather
+   than a tool. Note the contract's limit: relKey only accepts rel/relF/relR,
+   so classmate and faculty effects go through `run:` instead of a relDelta —
+   inventing a fourth applyFx key would break invariant 4. */
+
+/* Which archetype this character's actual school is. Deterministic: same
+   character, same school, every load. */
+function eduEnsureInstitution(s) {
+  if (!s || !s.edu || !s.school) return null;
+  const stage = eduStage(s);
+  const want = "inst:" + stage + ":" + (s.school.name || "");
+  if (s.edu.inst && s.edu.instFor === want) return s.edu.inst;
+  const year = yearOf(s);
+  const hoodIdx = { Poor: 0, Working: 1, Middle: 2, Wealthy: 4 }[s.profile.cls];
+  const hood = EDU_HOOD_CLASSES[hoodIdx == null ? 2 : hoodIdx];
+  const cands = eduArchetypeCandidates(s.profile.country, year, stage, hood);
+  if (!cands.length) return null;
+  const r = hreRng(s.edu.seed, want, "edu:inst:choose");
+  const arch = r.weighted(cands);
+  if (!arch) return null;
+  const id = eduIdMake(s.profile.country, 0, hoodIdx == null ? 2 : hoodIdx, arch.id, r.int(0, 6));
+  const bp = eduBlueprint(s.edu.seed, id, year);
+  if (!bp) return null;
+  s.edu.inst = eduCrystallise(bp);
+  s.edu.instFor = want;
+  return s.edu.inst;
+}
+function eduInst(s) { return (s && s.edu && s.edu.inst) || null; }
+function eduAtSchool(s) { return !!(s.school && eduInst(s)); }
+
+/* ── boarding residence: OQ-7, and why it is still open ──
+   Architecture §8.4 says a residential institution should call hreSetTenure,
+   because EDU must not invent a parallel residence model. That is the right
+   long-term design and it is NOT SAFE TO DO YET. Measured:
+
+     before  tenure withParents   legacy withParents   agree ✔
+     moveIn  tenure institutional legacy withParents   agree ✘
+     moveOut tenure withParents   legacy withParents   agree ✔
+
+   hreLegacyTenure() has no representation for boarding — it returns
+   "institutional" only for prison — so writing that state puts HRE's two
+   authorities permanently out of step for the whole of a character's
+   schooling. That is the same defect class as the "Swallow it and go home"
+   bug this project already fixed once, and the integration suite passed
+   anyway because its lives never reached a boarding school. A latent version
+   of a bug we have already paid for is not worth shipping to satisfy a design
+   that is still formally unconfirmed.
+
+   So EDU records that the character boards and does NOT touch tenure. This is
+   not a parallel residence model: nothing here prices, rents or houses
+   anybody, and no HRE reader consults it. It is a fact about schooling, which
+   is EDU's to hold.
+
+   OQ-7 goes back to module 13 with a specific ask rather than a general one:
+   hreLegacyTenure needs a boarding representation (or HRE_TENURE_FROM_LEGACY
+   needs to stop treating "institutional" as prison-only) before EDU can call
+   hreSetTenure without breaking hreTenureAgreesWithLegacy. When that lands,
+   the two functions below become one-line calls into it. */
+function eduBoardingMoveIn(s) {
+  const inst = eduInst(s);
+  if (!inst || !inst.boarding) return false;
+  if (s.flags.eduBoardingAt) return false;
+  s.flags.eduBoardingAt = s.ageDays || 0;
+  return true;
+}
+function eduBoardingMoveOut(s) {
+  if (!s.flags || !s.flags.eduBoardingAt) return false;
+  s.flags.eduBoardingAt = null;
+  return true;
+}
+function eduIsBoarding(s) { return !!(s && s.flags && s.flags.eduBoardingAt); }
+
+/* ── the events ── */
+const EDU_POOL = [
+  /* 1 · a parent reacts to the report card. First production caller of
+     makeReactionEvent: one tier-banked fragment set instead of one
+     hand-written event per (parent × outcome). */
+  makeReactionEvent({
+    id: "eduReportCard", w: 4, minAge: 7, maxAge: 18, cd: 300,
+    pickNpc: (s) => {
+      if (!s.school || !s.edu || s.edu.perf.gpa == null) return null;
+      const k = (s.family && s.family.mom) ? "mom" : "dad";
+      return s.family && s.family[k] ? { container: "family", key: k, npc: s.family[k] } : null;
+    },
+    dispositionOpts: { weight: { warmth: 1.4, kindness: 1.2 }, stakes: 20 },
+    relKey: "rel",
+    fragments: {
+      ally: [
+        { text: "📋 Report card night. They read it twice, then put it on the fridge without saying anything, which from them is a standing ovation.", relDelta: +4, fx: { stats: { happiness: +4 } } },
+        { text: "📋 They went through the report line by line, asking what each teacher meant. Nobody had ever taken it that seriously before.", relDelta: +3, fx: { emergent: { selfAwareness: +3 } } },
+      ],
+      warm: [
+        { text: "📋 Report card. \"Good. Keep going.\" Not effusive, but they meant it.", relDelta: +2, fx: { stats: { happiness: +2 } } },
+        { text: "📋 They signed it, asked one question about the subject you're worst at, and let it go.", relDelta: +1 },
+      ],
+      neutral: [
+        { text: "📋 Report card. They signed it at the kitchen table without really reading it.", fx: {} },
+        { text: "📋 \"Fine.\" The report went into a drawer with the others.", fx: {} },
+      ],
+      cold: [
+        { text: "📋 Report card. A long silence, then a list of everything that wasn't good enough.", relDelta: -3, fx: { stats: { happiness: -4 } } },
+        { text: "📋 They compared it, out loud, to what they had managed at your age.", relDelta: -2, fx: { stats: { happiness: -3 } } },
+      ],
+      hostile: [
+        { text: "📋 The report card became the excuse for something that had been coming all week anyway.", relDelta: -5, fx: { stats: { happiness: -7 } } },
+        { text: "📋 They didn't read it. They just wanted to know why they should bother.", relDelta: -4, fx: { stats: { happiness: -5 } } },
+      ],
+    },
+  }),
+
+  /* 2 · a friend reacts to how school is going for you */
+  makeReactionEvent({
+    id: "eduPeerRegard", w: 3, minAge: 8, maxAge: 19, cd: 340,
+    pickNpc: (s) => {
+      if (!s.school || !s.friends) return null;
+      const ks = Object.keys(s.friends);
+      if (!ks.length) return null;
+      return { container: "friends", key: ks[0], npc: s.friends[ks[0]] };
+    },
+    dispositionOpts: { weight: { kindness: 1.4, loyalty: 1.2 }, stakes: 15 },
+    relKey: "relF",
+    fragments: {
+      ally: [
+        { text: "🤝 They saved you a seat, every day, without ever making it a thing.", relDelta: +4, fx: { stats: { happiness: +3 } } },
+        { text: "🤝 They talked you through the subject you were drowning in, badly but patiently, until it stuck.", relDelta: +3, fx: { emergent: { discipline: +3 } } },
+      ],
+      warm: [
+        { text: "🤝 Lunch, most days, and a running joke nobody else understood.", relDelta: +2, fx: { stats: { happiness: +2 } } },
+      ],
+      neutral: [
+        { text: "🤝 You shared a desk and not much else that term.", fx: {} },
+      ],
+      cold: [
+        { text: "🤝 They started sitting somewhere else. Nothing was said about it.", relDelta: -3, fx: { stats: { happiness: -3 } } },
+      ],
+      hostile: [
+        { text: "🤝 Whatever you had told them in confidence was around the year group by Thursday.", relDelta: -6, fx: { stats: { happiness: -6 } } },
+      ],
+    },
+  }),
+
+  /* 3 · extracurriculars, gated on what the institution can actually offer */
+  { id: "eduExtracurricular", i: 1, w: 3, minAge: 8, maxAge: 19, cd: 420,
+    cond: (s) => eduAtSchool(s) && eduInst(s).extracurricular > 45,
+    run: (s) => {
+      const inst = eduInst(s);
+      const rich = inst.extracurricular > 70;
+      return { event: { emoji: "🎭", title: "Something after the bell",
+        text: `${inst.label} runs ${rich ? "more clubs than the noticeboard can hold" : "a handful of clubs, kept alive by two teachers who care"}. Something has your name on it.`,
+        options: [
+          { label: "🎵 Music", fx: { emergent: { music: +7 }, stats: { happiness: +3 }, feed: "🎵 You joined the music group. The first term was mostly tuning." } },
+          { label: "⚽ Sport", fx: { emergent: { athletics: +7 }, stats: { health: +3 }, feed: "⚽ You made the team. Mostly the bench, at first." } },
+          { label: "🔬 Science club", fx: { emergent: { discipline: +5 }, stats: { smarts: +3 }, feed: "🔬 Science club. Someone's project set off the smoke alarm and it was glorious." } },
+          { label: "Nothing — your afternoons are your own", fx: { stats: { happiness: +1 }, feed: "You kept your afternoons. Freedom has its own curriculum." } },
+        ] } };
+    } },
+
+  /* 4 · competition — only where the institution has the resources for it */
+  { id: "eduCompetition", i: 1, w: 2, minAge: 11, maxAge: 19, cd: 500,
+    cond: (s) => eduAtSchool(s) && eduInst(s).extracurricular > 62 && eduInst(s).quality > 50,
+    run: (s) => {
+      const inst = eduInst(s);
+      const gpa = (s.edu.perf && s.edu.perf.gpa) || 50;
+      const strong = gpa > 68;
+      return { auto: [`🏆 ${inst.label} entered you for a regional competition. ${strong ? "You placed. There is a certificate somewhere with your name spelled almost correctly." : "You did not place, but you saw what the good ones looked like up close, which was its own education."}`],
+        fx: strong ? { emergent: { discipline: +5 }, stats: { happiness: +5, smarts: +2 } }
+                   : { emergent: { discipline: +3 }, stats: { happiness: +1 } } };
+    } },
+
+  /* 5 · discipline, scaled by how strict the institution actually is */
+  { id: "eduDiscipline", i: 1, w: 3, minAge: 9, maxAge: 18, cd: 380,
+    cond: (s) => eduAtSchool(s) && eduInst(s).strictness > 55,
+    run: (s) => {
+      const inst = eduInst(s);
+      const severe = inst.strictness > 78;
+      const era = yearOf(s);
+      const punishment = severe
+        ? (era < 1980 ? "the cane, still, in this decade and this building" : "a suspension letter home and a meeting nobody enjoyed")
+        : "detention, and a lecture longer than the detention";
+      return { event: { emoji: "⚖️", title: "In front of the desk",
+        text: `${inst.label} does not bend on this. You are on the wrong side of a rule — the uniform, the hair, the answering back, it hardly matters which — and the standard response here is ${punishment}.`,
+        options: [
+          { label: "Take it without argument", fx: { run: (st) => { if (st.school) st.school.trouble = (st.school.trouble || 0) + 1; }, stats: { happiness: -3 }, emergent: { prudence: +4 }, feed: "⚖️ You took it. It ended faster that way." } },
+          { label: "Argue the point", fx: { run: (st) => { if (st.school) st.school.trouble = (st.school.trouble || 0) + 2; }, stats: { happiness: -5 }, emergent: { courage: +5 }, feed: "⚖️ You argued. You were right and it cost you anyway, which is a lesson about institutions." } },
+        ] } };
+    } },
+
+  /* 6 · institutional tradition — the thing a school does because it has
+     always done it. Composed from generated attributes, per invariant 8. */
+  { id: "eduTradition", i: 1, w: 2, minAge: 8, maxAge: 19, cd: 600,
+    cond: (s) => eduAtSchool(s) && (eduInst(s).founded < yearOf(s) - 40 || eduInst(s).religiosity > 60),
+    run: (s) => {
+      const inst = eduInst(s);
+      const age = yearOf(s) - inst.founded;
+      const line = inst.religiosity > 60
+        ? `Chapel, twice a week, and a hymn everyone knows without ever having learned it.`
+        : inst.boarding
+        ? `The house shout, the leavers' dinner, a hundred small rituals invented by people long dead.`
+        : `Founders' Day. A photograph on the steps, in the same arrangement as ${age > 80 ? "the one from the 1900s in the corridor" : "last year's"}.`;
+      return { auto: [`🎗 ${inst.label} has been doing this for ${age} years. ${line} You are, briefly, part of something older than you.`],
+        fx: { stats: { happiness: +2 }, emergent: { loyalty: +2 } } };
+    } },
+
+  /* 7 · residential life, and the one place S07 touches housing — through
+     HRE's sole writer, never around it */
+  { id: "eduBoardingLife", i: 1, w: 3, minAge: 10, maxAge: 19, cd: 450,
+    cond: (s) => eduAtSchool(s) && eduInst(s).boarding,
+    run: (s) => {
+      const inst = eduInst(s);
+      const moved = eduBoardingMoveIn(s);
+      const homesick = (s.stats.happiness || 50) < 45;
+      return { auto: [`🛏 ${moved ? `You board at ${inst.label} now — your things in a trunk, your name on a peg.` : `Another term boarding at ${inst.label}.`} ${homesick ? "The first weeks are the worst. Lights-out is when it gets you." : "Dormitory, dining hall, the same forty faces at breakfast. It becomes ordinary faster than you expect."}`],
+        fx: homesick ? { stats: { happiness: -3 }, emergent: { courage: +3 } }
+                     : { emergent: { loyalty: +3, discipline: +2 }, stats: { happiness: +1 } } };
+    } },
+];
+for (const e of EDU_POOL) POOL.push(e);
 
 const EDU_GROUP = { id: "edu", emoji: "🎓", name: "Education", items: [
   { id: "eduStudy", minAge: 4, emoji: "🎓", label: "Where you study", cost: 0, special: "eduStudy" },
