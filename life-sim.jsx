@@ -703,6 +703,10 @@ function newCharacter(form) {
     ai: { enabled: false, level: "flavor" },
     hre: hreInit(hreSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random()),
                  form.country, form.city, form.cls, +form.birthYear),
+    /* EDU S09. Its migrate() backfill lands in the same patch as this
+       initializer — invariant 9, and Gotcha #4, which is the most frequently
+       repeated bug in this project's history. */
+    edu: eduInit(eduSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random())),
     stx: { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] },
     alive: true, death: null,
   };
@@ -711,6 +715,10 @@ function newCharacter(form) {
 function migrate(s) {
   if (!s.ai) s.ai = { enabled: false, level: "flavor" };
   hreMigrate(s);
+  /* EDU S09 — runs after hreMigrate because its seed derivation falls back to
+     s.hre.seed, and backfills the canonical stage from the still-authoritative
+     legacy state. Additive: nothing reads s.edu to make a decision yet. */
+  eduMigrate(s);
   if (!s.stx) s.stx = { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] };
   if (!s.stx.req) s.stx.req = {};
   if (!s.stx.staff) s.stx.staff = {};
@@ -861,6 +869,8 @@ function doBreakup(s, key, hard) {
 
 function gainDegree(s) {
   const c = s.education.college;
+  /* mirror the award into the EDU ledger; legacy still owns the fact */
+  eduAwardCredential(s, "bachelor", { field: c.major, instId: null });
   s.education.degree = c.major;
   s.education.college = null;
   s.education.stage = "done";
@@ -1102,13 +1112,44 @@ const MILESTONES = [
     const gpa = Object.values(s.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length;
     const bonus = (s.education.extra ? 8 : 0) + ({ Poor: 0, Working: 2, Middle: 5, Wealthy: 12 }[s.profile.cls]);
     const score = gpa + bonus;
+    /* EDU S05. Before this, EVERY character was offered at least a state
+       college place regardless of country or era — which is why a 1935
+       Nigerian reached university 88% of the time, more often than a 1995
+       Swede. The verdict turns the era's actual cohort share into a threshold
+       on this character's own standing: where places are plentiful almost
+       anyone clears it, where they are vanishingly rare only an exceptional
+       student does. The player's CHOICE is untouched; what changes is whether
+       the world had a place to offer. */
+    /* EDU S03/S05. The era's cohort share decides whether the ordinary door is
+       open; when it is shut, eduAdmit checks the exceptions that really
+       existed — merit scholarships, mission and state sponsorship, study
+       abroad — so a scarce era is narrow rather than sealed. The player's
+       choice is never removed; what changes is what the world had to offer,
+       and every price is shown as what it costs THIS family. */
+    const adm = eduAdmit(s, "state");
+    const open = adm.admitted;
+    const cost = (tier) => {
+      const ratio = eduNetCostRatio(s, tier, adm.route);
+      return `${s.profile.curSym}${collegeFee(s, tier)}/yr · ${eduAffordability(ratio)}${adm.aidShare > 0.5 ? " — funded" : adm.aidShare > 0.08 ? " after aid" : ""}`;
+    };
     const opts = [];
-    if (score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${s.profile.curSym}${collegeFee(s, "prestige")}/yr)`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
-    if (score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${s.profile.curSym}${collegeFee(s, "uni")}/yr)`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
-    opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${s.profile.curSym}${collegeFee(s, "state")}/yr)`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
-    opts.push({ label: "💼 Skip college — straight to work", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 High school done, diploma in hand. You chose the world over the lecture hall. The job board awaits (🎯 Act → Look for work)." } });
+    if (open && score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${cost("prestige")})`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
+    if (open && score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${cost("uni")})`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
+    if (open) opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${cost("state")})`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
+    opts.push({ label: open ? "💼 Skip college — straight to work" : "💼 Into work, then", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 School done. The job board awaits (🎯 Act → Look for work)." } });
+
+    const routeLine = {
+      open: score > 82 ? "The letters that came back include a thick envelope from a prestigious university."
+          : score > 62 ? "Solid options on the table." : "Your options are modest but real.",
+      merit: `There was no place for someone like you in ${s.profile.country} in ${yearOf(s)} — and then there was, because your results were extraordinary enough that someone went looking for you. The scholarship covers nearly all of it.`,
+      sponsorFaith: `The ordinary doors were shut. The mission put your name forward and agreed to pay, which is how most people like you ever got through them.`,
+      sponsorState: `The ordinary doors were shut — but the state is building a graduate class it does not yet have, and it is paying for people to become it. You are one of them.`,
+      abroad: `There is no place for you in ${s.profile.country}. There is one overseas, and your family can pay for it. Not everyone gets to solve it this way.`,
+      none: adm.reason,
+    }[adm.route];
+
     return { event: { emoji: "🎓", title: "Graduation day",
-      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${score > 82 ? "The letters that came back include a thick envelope from a prestigious university." : score > 62 ? "Solid options on the table." : "Your options are modest but real."} What's next?`,
+      text: `Caps in the air. Final grade average: ${Math.round(gpa)}%${s.education.extra ? `, plus your ${s.education.extra} record` : ""}. ${routeLine} What's next?`,
       options: opts } };
   } },
 ];
@@ -1366,7 +1407,6 @@ const POOL = [
     { label: "Dig in — ask for help, restructure everything", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 12); }, stats: { happiness: +4 }, emergent: { discipline: +8 }, feed: `You asked for help — advisors, friends, extensions. Turns out that's not weakness; it's the actual skill.` } },
     { label: "Drop out", fx: { run: (st) => { st.education.college = null; st.education.stage = "done"; }, stats: { happiness: +3 }, feed: `🕳 You walked away from college. Relief first, questions later. The debt, sadly, graduated with honors.` } },
   ] } }) },
-  { id: "collegeGrad", w: 1, minAge: 19, maxAge: 40, cd: 60, cond: (s) => !!s.education.college && s.ageDays - s.education.college.startDay >= (s.education.college.major === "Medicine" ? 2190 : 1460), run: (s) => { gainDegree(s); return { auto: [] }; } },
 
   /* ——— CAREER ——— */
   { id: "salary", w: 6, minAge: 16, maxAge: 80, cd: 30, cond: (s) => !!s.career.job, run: (s) => {
@@ -2111,6 +2151,1456 @@ const HRE_DEV = {
 
 function hreRegionOf(country) { return HRE_REGION[country] || "universal"; }
 function hreDevOf(country) { return HRE_DEV[country] || "middle"; }
+
+/* ═══════════════════════════ EDU · S01 ═══════════════════════════
+   Ladder & country/era system model. Pure data + pure resolver: no state, no
+   wiring, no player-visible change. EDU is additive until its inversion phase
+   — delete every edu* symbol and the game behaves identically.
+
+   WHY THIS EXISTS. Measured before writing it (see EDU-PHASE0-EXIT.md): the
+   current game applies NO country or era gating to tertiary access at all.
+   A character born in Nigeria in 1935 reaches university 88% of the time,
+   more often than one born in Sweden in 1995 (63%) or the UK in 1935 (50%).
+   College entry runs off class and smarts alone. `tertiaryAccess` and
+   `femaleAccess` below are the numbers that exist to fix that.
+
+   ─── the 23-stage vision list is not 23 rungs of one ladder ───
+   The vision document lists 23 items (the architecture doc says 21; the list
+   itself has 23). They are not all the same KIND of thing, and flattening
+   them into one enum would break the single-canonical-stage design that
+   eduSetStage depends on — a character at a religious boarding secondary
+   school would need three simultaneous values.
+
+   They separate cleanly into four kinds:
+     RUNG      sequential, age-banded, one at a time      → EDU_STAGES below
+     VARIANT   same rung, different institution kind      → S02 archetypes
+               (technical / military / religious secondary)
+     MODIFIER  orthogonal attribute of the institution    → boarding, which
+               the vision doc itself calls "not a separate academic level",
+               and which architecture §8.4 already routes to hreSetTenure
+     OVERLAY   not education state at all                 → medical residency,
+               postdoc and academic research are module 09 jobs carrying an
+               EDU overlay, per architecture §8.2
+   Adult education and preparatory courses are re-entry/parallel MODES rather
+   than rungs — an adult finishing secondary school at 40 is at the upperSec
+   rung, reached by a different route, not on a 24th rung of the ladder.
+   Every vision item is accounted for by `visionKind` below, so nothing is
+   silently dropped and the mapping can be argued with. */
+
+const EDU_STAGE_KINDS = ["rung", "variant", "modifier", "overlay", "mode"];
+
+/* The canonical ladder. `visionKind` traces each vision-document item to the
+   kind of thing it actually is; only kind "rung" is a value eduSetStage may
+   ever hold. tier groups rungs for the CE tables and for S05's progression. */
+const EDU_STAGES = {
+  none:          { ord: 0,  tier: "pre",     label: "Not in education",        visionKind: "rung" },
+  nursery:       { ord: 1,  tier: "early",   label: "Nursery / daycare",       visionKind: "rung", exitCredential: null },
+  preschool:     { ord: 2,  tier: "early",   label: "Preschool / kindergarten", visionKind: "rung", exitCredential: null },
+  primary:       { ord: 3,  tier: "school",  label: "Primary education",       visionKind: "rung", exitCredential: "primaryCert" },
+  lowerSec:      { ord: 4,  tier: "school",  label: "Lower secondary",         visionKind: "rung", exitCredential: "lowerSecCert" },
+  upperSec:      { ord: 5,  tier: "school",  label: "Secondary education",     visionKind: "rung", exitCredential: "secondaryDiploma" },
+  prep:          { ord: 6,  tier: "bridge",  label: "Preparatory course",      visionKind: "mode", exitCredential: null },
+  vocational:    { ord: 7,  tier: "tertiary", label: "Vocational education",   visionKind: "rung", exitCredential: "vocationalCert" },
+  community:     { ord: 8,  tier: "tertiary", label: "Community college",      visionKind: "rung", exitCredential: "associate" },
+  university:    { ord: 9,  tier: "tertiary", label: "University",             visionKind: "rung", exitCredential: "bachelor" },
+  gradCert:      { ord: 10, tier: "postgrad", label: "Graduate certificate",   visionKind: "rung", exitCredential: "gradCert" },
+  mba:           { ord: 11, tier: "postgrad", label: "MBA",                    visionKind: "rung", exitCredential: "mba" },
+  masters:       { ord: 12, tier: "postgrad", label: "Master's degree",        visionKind: "rung", exitCredential: "masters" },
+  profMasters:   { ord: 13, tier: "postgrad", label: "Professional master's",  visionKind: "rung", exitCredential: "profMasters" },
+  doctorate:     { ord: 14, tier: "postgrad", label: "Doctorate (PhD)",        visionKind: "rung", exitCredential: "phd" },
+  profDoctorate: { ord: 15, tier: "postgrad", label: "Professional doctorate", visionKind: "rung", exitCredential: "profDoctorate" },
+  done:          { ord: 99, tier: "post",    label: "Education complete",      visionKind: "rung" },
+};
+
+/* Vision items that are deliberately NOT rungs, kept here so the mapping is
+   explicit and testable rather than an omission somebody has to notice. */
+const EDU_NON_RUNG = {
+  technicalSecondary: { kind: "variant",  rung: "upperSec", owner: "S02 archetype" },
+  militarySecondary:  { kind: "variant",  rung: "upperSec", owner: "S02 archetype" },
+  religiousSecondary: { kind: "variant",  rung: "upperSec", owner: "S02 archetype" },
+  boarding:           { kind: "modifier", rung: null,       owner: "S02 attribute + HRE tenure (arch §8.4)" },
+  adultEducation:     { kind: "mode",     rung: null,       owner: "S10 re-entry" },
+  medicalResidency:   { kind: "overlay",  rung: null,       owner: "module 09 job + EDU overlay (arch §8.2)" },
+  postdoc:            { kind: "overlay",  rung: null,       owner: "module 09 job + EDU overlay (arch §8.2)" },
+  academicResearch:   { kind: "overlay",  rung: null,       owner: "module 09 job + EDU overlay (arch §8.2)" },
+};
+
+/* ─── the country/era system model ───
+   Same resolver shape as hreLaw: UNIVERSAL → DEV[tier] → REGION → COUNTRY,
+   merged in that order, each layer overriding only the keys it names, each
+   entry era-banded.
+
+   EVERY NUMBER BELOW IS `provisional: true` AND MUST BE TREATED AS SUCH.
+   None of it is sourced. It is shaped to be the right KIND of curve — mass
+   secondary before mass tertiary, female access trailing then converging,
+   compulsory schooling ratcheting up — so the resolver can be built and
+   tested against something plausible. Module 22 tranche 2 supplies the real
+   dates and rates. The resolver being correct is not the same as the history
+   being correct, and eduSystemCoverage() reports the gap rather than hiding
+   it. This is the same discipline HRE's law tables ship under at 20% country
+   coverage; EDU's surface is larger, so the discipline matters more. */
+
+const EDU_ERA_BANDS = [1900, 1930, 1950, 1970, 1990, 2010, 2030];
+
+/* A band list is [{ from, ...keys }] sorted ascending; the band in force is
+   the last one whose `from` is <= the year. */
+const EDU_SYSTEM_UNIVERSAL = [
+  { from: -Infinity, compulsoryTo: 0, tracking: "none", tertiaryAccess: 0.01, femaleAccess: 0.10,
+    entryExam: null, provisional: true },
+];
+
+const EDU_SYSTEM_DEV = {
+  high: [
+    { from: 1900, compulsoryTo: 12, tertiaryAccess: 0.02, femaleAccess: 0.35, tracking: "hard" },
+    { from: 1930, compulsoryTo: 14, tertiaryAccess: 0.05, femaleAccess: 0.50, tracking: "hard" },
+    { from: 1950, compulsoryTo: 15, tertiaryAccess: 0.10, femaleAccess: 0.62, tracking: "soft" },
+    { from: 1970, compulsoryTo: 16, tertiaryAccess: 0.25, femaleAccess: 0.82, tracking: "soft" },
+    { from: 1990, compulsoryTo: 16, tertiaryAccess: 0.45, femaleAccess: 1.00, tracking: "soft" },
+    { from: 2010, compulsoryTo: 18, tertiaryAccess: 0.70, femaleAccess: 1.00, tracking: "soft" },
+    { from: 2030, compulsoryTo: 18, tertiaryAccess: 0.78, femaleAccess: 1.00, tracking: "soft" },
+  ],
+  upper: [
+    { from: 1900, compulsoryTo: 10, tertiaryAccess: 0.01, femaleAccess: 0.22, tracking: "hard" },
+    { from: 1930, compulsoryTo: 11, tertiaryAccess: 0.02, femaleAccess: 0.32, tracking: "hard" },
+    { from: 1950, compulsoryTo: 12, tertiaryAccess: 0.04, femaleAccess: 0.45, tracking: "hard" },
+    { from: 1970, compulsoryTo: 14, tertiaryAccess: 0.12, femaleAccess: 0.65, tracking: "soft" },
+    { from: 1990, compulsoryTo: 15, tertiaryAccess: 0.25, femaleAccess: 0.90, tracking: "soft" },
+    { from: 2010, compulsoryTo: 17, tertiaryAccess: 0.50, femaleAccess: 1.00, tracking: "soft" },
+    { from: 2030, compulsoryTo: 17, tertiaryAccess: 0.60, femaleAccess: 1.00, tracking: "soft" },
+  ],
+  middle: [
+    { from: 1900, compulsoryTo: 0,  tertiaryAccess: 0.005, femaleAccess: 0.12, tracking: "hard" },
+    { from: 1930, compulsoryTo: 8,  tertiaryAccess: 0.010, femaleAccess: 0.18, tracking: "hard" },
+    { from: 1950, compulsoryTo: 10, tertiaryAccess: 0.02,  femaleAccess: 0.28, tracking: "hard" },
+    { from: 1970, compulsoryTo: 11, tertiaryAccess: 0.06,  femaleAccess: 0.45, tracking: "hard" },
+    { from: 1990, compulsoryTo: 13, tertiaryAccess: 0.14,  femaleAccess: 0.68, tracking: "soft" },
+    { from: 2010, compulsoryTo: 15, tertiaryAccess: 0.28,  femaleAccess: 0.92, tracking: "soft" },
+    { from: 2030, compulsoryTo: 16, tertiaryAccess: 0.38,  femaleAccess: 0.98, tracking: "soft" },
+  ],
+  low: [
+    { from: 1900, compulsoryTo: 0,  tertiaryAccess: 0.002, femaleAccess: 0.06, tracking: "none" },
+    { from: 1930, compulsoryTo: 0,  tertiaryAccess: 0.004, femaleAccess: 0.10, tracking: "none" },
+    { from: 1950, compulsoryTo: 8,  tertiaryAccess: 0.010, femaleAccess: 0.18, tracking: "hard" },
+    { from: 1970, compulsoryTo: 10, tertiaryAccess: 0.030, femaleAccess: 0.32, tracking: "hard" },
+    { from: 1990, compulsoryTo: 11, tertiaryAccess: 0.060, femaleAccess: 0.50, tracking: "hard" },
+    { from: 2010, compulsoryTo: 13, tertiaryAccess: 0.120, femaleAccess: 0.75, tracking: "soft" },
+    { from: 2030, compulsoryTo: 14, tertiaryAccess: 0.180, femaleAccess: 0.88, tracking: "soft" },
+  ],
+};
+
+const EDU_SYSTEM_REGION = {
+  nordic:     [{ from: 1950, tertiaryAccess: 0.14, femaleAccess: 0.75 },
+               { from: 1970, tertiaryAccess: 0.30, femaleAccess: 0.95 },
+               { from: 1990, tertiaryAccess: 0.52, femaleAccess: 1.00, tracking: "none" }],
+  eastAsia:   [{ from: 1970, tertiaryAccess: 0.20 },
+               { from: 1990, tertiaryAccess: 0.42 },
+               { from: 2010, tertiaryAccess: 0.72 }],
+  mena:       [{ from: 1900, femaleAccess: 0.03 },
+               { from: 1950, femaleAccess: 0.12 },
+               { from: 1970, femaleAccess: 0.24 },
+               { from: 1990, femaleAccess: 0.45 },
+               { from: 2010, femaleAccess: 0.78 }],
+  subSaharan: [{ from: 1950, compulsoryTo: 6 },
+               { from: 1970, compulsoryTo: 9 },
+               { from: 1990, compulsoryTo: 11 }],
+  eastEu:     [{ from: 1950, tertiaryAccess: 0.09, femaleAccess: 0.70, tracking: "hard" },
+               { from: 1970, tertiaryAccess: 0.18, femaleAccess: 0.88 },
+               { from: 1990, tertiaryAccess: 0.32, femaleAccess: 1.00 }],
+  southAsia:  [{ from: 1950, femaleAccess: 0.14 },
+               { from: 1990, femaleAccess: 0.52 },
+               { from: 2010, femaleAccess: 0.85 }],
+};
+
+/* Country layer. Deliberately PARTIAL — a handful of systems whose structure
+   is distinctive enough that the region layer misrepresents them. Coverage is
+   reported honestly by eduSystemCoverage() rather than padded out with rows
+   invented to make the number look better. */
+const EDU_SYSTEM_COUNTRY = {
+  Brazil:          [{ from: 1970, entryExam: { at: "upperSec", weight: 0.85, name: "vestibular" } },
+                    { from: 2010, entryExam: { at: "upperSec", weight: 0.80, name: "ENEM" } }],
+  China:           [{ from: 1952, entryExam: { at: "upperSec", weight: 0.95, name: "gaokao" }, tracking: "hard" },
+                    { from: 1977, entryExam: { at: "upperSec", weight: 0.95, name: "gaokao" }, tertiaryAccess: 0.05 },
+                    { from: 2010, tertiaryAccess: 0.40 }],
+  Japan:           [{ from: 1950, entryExam: { at: "upperSec", weight: 0.90, name: "entrance exam" }, tracking: "hard" },
+                    { from: 1990, tertiaryAccess: 0.48 }],
+  "South Korea":   [{ from: 1970, entryExam: { at: "upperSec", weight: 0.92, name: "suneung" } },
+                    { from: 2010, tertiaryAccess: 0.85 }],
+  Germany:         [{ from: 1900, tracking: "hard" },
+                    { from: 1970, tracking: "hard", tertiaryAccess: 0.18 },
+                    { from: 2010, tracking: "hard", tertiaryAccess: 0.62 }],
+  "United Kingdom":[{ from: 1951, entryExam: { at: "upperSec", weight: 0.70, name: "A-levels" } },
+                    { from: 1988, entryExam: { at: "upperSec", weight: 0.70, name: "GCSE/A-levels" } }],
+  "United States": [{ from: 1926, entryExam: { at: "upperSec", weight: 0.45, name: "SAT" } },
+                    { from: 1970, tertiaryAccess: 0.35 },
+                    { from: 2010, tertiaryAccess: 0.68 }],
+  India:           [{ from: 1950, entryExam: { at: "upperSec", weight: 0.80, name: "board exams" } }],
+  France:          [{ from: 1900, entryExam: { at: "upperSec", weight: 0.75, name: "baccalauréat" } }],
+  Russia:          [{ from: 2009, entryExam: { at: "upperSec", weight: 0.85, name: "EGE" } }],
+};
+
+/* ─── resolver ───
+   Pure: no RNG, no Date, no country conditionals. Table rows only. */
+function eduSystemBandAt(bands, year) {
+  if (!Array.isArray(bands) || !bands.length) return null;
+  let out = null;
+  for (const b of bands) if (year >= b.from) out = b;
+  return out;
+}
+function eduSystemStack(country, year) {
+  return [
+    eduSystemBandAt(EDU_SYSTEM_UNIVERSAL, year),
+    eduSystemBandAt(EDU_SYSTEM_DEV[hreDevOf(country)], year),
+    eduSystemBandAt(EDU_SYSTEM_REGION[hreRegionOf(country)], year),
+    eduSystemBandAt(EDU_SYSTEM_COUNTRY[country], year),
+  ];
+}
+function eduSystemMerge(layers) {
+  const out = { provisional: true };
+  for (const layer of layers) {
+    if (!layer) continue;
+    for (const k in layer) {
+      if (k === "from") continue;            // band bookkeeping, never a resolved key
+      out[k] = layer[k];                     // later layer wins, key by key
+    }
+  }
+  return out;
+}
+/* The resolved ladder for a country/year: which rungs exist, at what ages,
+   and which are compulsory. Ages are the universal defaults shifted by the
+   resolved compulsoryTo — the CE layer decides how long you must stay, not
+   how the rungs are named. */
+const EDU_RUNG_AGES = {
+  nursery:    [0, 3],   preschool: [3, 6],    primary:  [6, 11],
+  lowerSec:   [11, 15], upperSec:  [15, 18],  prep:     [17, 20],
+  vocational: [16, 20], community: [18, 21],  university: [18, 23],
+  gradCert:   [21, 24], mba:       [24, 28],  masters:  [22, 25],
+  profMasters:[23, 27], doctorate: [24, 30],  profDoctorate: [24, 31],
+};
+function eduLadderFor(sys) {
+  const out = [];
+  for (const id in EDU_RUNG_AGES) {
+    const [minAge, maxAge] = EDU_RUNG_AGES[id];
+    out.push({ id, minAge, maxAge,
+      compulsory: minAge < (sys.compulsoryTo || 0),
+      exitCredential: EDU_STAGES[id] ? EDU_STAGES[id].exitCredential || null : null });
+  }
+  return out;
+}
+function eduSystemFor(country, year) {
+  const sys = eduSystemMerge(eduSystemStack(country, year));
+  sys.stages = eduLadderFor(sys);
+  return sys;
+}
+function eduSystem(s) {
+  return eduSystemFor(s.profile.country, yearOf(s));
+}
+
+/* How much of the world this model actually covers at country level — the
+   direct analogue of hreLawCoverage(). Reports the gap; never closes it by
+   inventing rows. */
+function eduSystemCoverage() {
+  const all = Object.keys(COUNTRIES);
+  const named = all.filter((c) => !!EDU_SYSTEM_COUNTRY[c]);
+  const byRegion = {};
+  for (const c of all) {
+    const r = hreRegionOf(c);
+    byRegion[r] = byRegion[r] || { total: 0, named: 0 };
+    byRegion[r].total++;
+    if (EDU_SYSTEM_COUNTRY[c]) byRegion[r].named++;
+  }
+  return {
+    countries: all.length,
+    countryLevel: named.length,
+    pct: Math.round((named.length / all.length) * 100),
+    regionsWithOverride: Object.keys(EDU_SYSTEM_REGION).length,
+    byRegion,
+    provisional: true,
+    note: "every band is provisional; module 22 tranche 2 owns the real dates",
+  };
+}
+
+/* Share of the cohort reaching post-secondary, for THIS character. The number
+   the 88%-Nigeria-1935 measurement exists to correct. Sex is read through the
+   identity model's birth assignment, because femaleAccess describes a
+   historical barrier applied on how a person was read, not on chromosomes. */
+function eduTertiaryOdds(s) {
+  const sys = eduSystem(s);
+  let p = sys.tertiaryAccess != null ? sys.tertiaryAccess : 0.01;
+  if (assignedSex(s) === "Female") p *= (sys.femaleAccess != null ? sys.femaleAccess : 1);
+  return Math.max(0, Math.min(1, p));
+}
+
+/* ═══════════════════════════ EDU · S02 ═══════════════════════════
+   Institution generator. Generator only — nothing attends anything yet, no
+   state is written, and deleting every edu* symbol still leaves the game
+   identical.
+
+   Directly modelled on HRE's property generator, which is the piece of this
+   codebase that already solves "every instance possesses procedurally
+   generated characteristics": a table of archetypes with era/region/development
+   availability windows, a stage-numbered pipeline, a validate-and-retry loop
+   that records how often it had to correct itself, and crystallisation only at
+   the moment the thing becomes materially significant.
+
+   DETERMINISM (invariant 1, arch §3). No Math.random / rnd / pick anywhere
+   below. Every attribute draws from its OWN namespaced sub-stream via
+   hreRng(seed, id, "edu:inst:<attr>"), reusing HRE's primitives rather than
+   writing a second FNV-1a — OQ-1, answered in EDU-PHASE0-EXIT.md §6. The
+   namespacing is what makes the generator extensible: adding a fourteenth
+   attribute draws from a stream nothing else touches, so every institution
+   that already existed keeps every value it had.
+
+   ATTRIBUTES ARE INPUTS TO OTHER MODULES, NOT PRIVATE STATE (arch §5, §8.3,
+   §8.5). Module 06 generates classmates and faculty and should receive
+   `size`, `facultyQuality` and `selectivity` as opts — S02 must never build a
+   population of its own, because s.school already spends 7.5 KB on exactly
+   that (Phase 0 §2). Module 11's schoolLegal() should read `religiosity`,
+   `strictness` and `administration` off the institution instead of inferring
+   them from SCHOOL_TYPES strings — that is OQ-5, still open with 11. */
+
+const EDU_ID_V = 1;
+const EDU_GEN_V = 1;
+const EDU_MAX_RETRIES = 3;
+const EDU_HOOD_CLASSES = ["informal", "working", "suburban", "affluent", "elite"];
+
+/* Institution ids are deterministic and parseable, HRE-style:
+   `v : country : cityIdx : hoodIdx : archetypeId : index`
+   The archetype travels as its STRING id rather than a table index, so
+   reordering EDU_ARCHETYPES can never silently repoint a saved institution at
+   a different kind of school. */
+function eduIdMake(country, cityIdx, hoodIdx, archId, index) {
+  return [EDU_ID_V, country, cityIdx, hoodIdx, archId, index].join(":");
+}
+function eduIdParse(id) {
+  if (typeof id !== "string") return null;
+  const p = id.split(":");
+  if (p.length !== 6) return null;
+  if (Number(p[0]) !== EDU_ID_V) return null;
+  if (!p[1].length) return null;
+  if (!/^\d+$/.test(p[2]) || !/^\d+$/.test(p[3]) || !/^\d+$/.test(p[5])) return null;
+  const hood = Number(p[3]);
+  if (hood < 0 || hood >= EDU_HOOD_CLASSES.length) return null;
+  if (!EDU_ARCHETYPE_BY_ID[p[4]]) return null;
+  return { v: EDU_ID_V, country: p[1], city: Number(p[2]), hood: hood,
+           hoodClass: EDU_HOOD_CLASSES[hood], archetype: p[4], index: Number(p[5]) };
+}
+function eduIdValid(id) { return eduIdParse(id) !== null; }
+
+/* ─── archetypes ───
+   `stages` are the S01 rungs an archetype can serve. `era` is its availability
+   window, `dev`/`regions` restrict it to development tiers and world regions
+   (null = unrestricted). Bias fields are 0-100 centres the pipeline draws
+   around, not fixed values.
+
+   Every window here is PROVISIONAL in the same sense as S01's tables: shaped to
+   be the right kind of constraint (no comprehensive schools before mass
+   secondary, no research university in a 1900 low-income region) rather than
+   sourced. Module 22 tranche 2 owns the real dates. */
+const EDU_ARCHETYPES = [
+  { id: "villagePrimary", label: "village school", stages: ["primary"],
+    era: [1800, 2100], regions: null, dev: null, urban: 15,
+    hoodClass: { informal: 40, working: 30, suburban: 18, affluent: 8, elite: 4 },
+    bias: { quality: 34, selectivity: 5, religiosity: 45, strictness: 50, funding: 25,
+            size: 18, facilities: 20, extracurricular: 15, tuition: 8 },
+    boarding: 0.01, singleSex: 0.05, admin: { public: 65, faith: 30, private: 5 } },
+
+  { id: "urbanPrimary", label: "primary school", stages: ["primary"],
+    era: [1850, 2100], regions: null, dev: null, urban: 85,
+    hoodClass: { informal: 25, working: 35, suburban: 25, affluent: 10, elite: 5 },
+    bias: { quality: 50, selectivity: 8, religiosity: 25, strictness: 48, funding: 45,
+            size: 45, facilities: 45, extracurricular: 35, tuition: 12 },
+    boarding: 0.01, singleSex: 0.08, admin: { public: 75, faith: 15, private: 10 } },
+
+  { id: "nurserySetting", label: "nursery", stages: ["nursery", "preschool"],
+    era: [1900, 2100], regions: null, dev: ["high", "upper", "middle"], urban: 80,
+    hoodClass: { informal: 10, working: 25, suburban: 35, affluent: 20, elite: 10 },
+    bias: { quality: 52, selectivity: 6, religiosity: 22, strictness: 30, funding: 42,
+            size: 15, facilities: 45, extracurricular: 30, tuition: 30 },
+    boarding: 0, singleSex: 0.02, admin: { public: 45, private: 40, faith: 15 } },
+
+  { id: "comprehensiveSecondary", label: "comprehensive school", stages: ["lowerSec", "upperSec"],
+    era: [1945, 2100], regions: null, dev: ["high", "upper", "middle"], urban: 75,
+    hoodClass: { informal: 15, working: 40, suburban: 30, affluent: 12, elite: 3 },
+    bias: { quality: 52, selectivity: 12, religiosity: 15, strictness: 50, funding: 50,
+            size: 70, facilities: 55, extracurricular: 55, tuition: 8 },
+    boarding: 0.02, singleSex: 0.10, admin: { public: 85, private: 10, faith: 5 } },
+
+  { id: "grammarSelective", label: "selective grammar school", stages: ["lowerSec", "upperSec"],
+    era: [1800, 2100], regions: null, dev: null, urban: 70,
+    hoodClass: { informal: 2, working: 18, suburban: 35, affluent: 30, elite: 15 },
+    bias: { quality: 74, selectivity: 78, religiosity: 30, strictness: 68, funding: 62,
+            size: 48, facilities: 62, extracurricular: 65, tuition: 40 },
+    boarding: 0.15, singleSex: 0.45, admin: { public: 45, private: 35, faith: 20 } },
+
+  { id: "faithSecondary", label: "faith school", stages: ["lowerSec", "upperSec"],
+    era: [1700, 2100], regions: null, dev: null, urban: 60,
+    hoodClass: { informal: 15, working: 30, suburban: 30, affluent: 18, elite: 7 },
+    bias: { quality: 55, selectivity: 35, religiosity: 88, strictness: 74, funding: 48,
+            size: 42, facilities: 48, extracurricular: 45, tuition: 45 },
+    boarding: 0.18, singleSex: 0.50, admin: { faith: 90, private: 8, public: 2 } },
+
+  { id: "militaryAcademy", label: "military academy", stages: ["lowerSec", "upperSec"],
+    era: [1800, 2100], regions: null, dev: null, urban: 45,
+    hoodClass: { informal: 5, working: 30, suburban: 32, affluent: 25, elite: 8 },
+    bias: { quality: 62, selectivity: 68, religiosity: 35, strictness: 95, funding: 65,
+            size: 40, facilities: 60, extracurricular: 55, tuition: 35 },
+    boarding: 0.70, singleSex: 0.72, admin: { military: 88, public: 10, private: 2 } },
+
+  { id: "boardingSchool", label: "boarding school", stages: ["primary", "lowerSec", "upperSec"],
+    era: [1700, 2100], regions: null, dev: null, urban: 30,
+    hoodClass: { informal: 0, working: 8, suburban: 22, affluent: 40, elite: 30 },
+    bias: { quality: 76, selectivity: 70, religiosity: 40, strictness: 72, funding: 78,
+            size: 35, facilities: 78, extracurricular: 82, tuition: 88 },
+    boarding: 0.95, singleSex: 0.48, admin: { private: 78, faith: 20, public: 2 } },
+
+  { id: "technicalInstitute", label: "technical institute", stages: ["upperSec", "vocational"],
+    era: [1870, 2100], regions: null, dev: null, urban: 78,
+    hoodClass: { informal: 12, working: 42, suburban: 30, affluent: 13, elite: 3 },
+    bias: { quality: 58, selectivity: 48, religiosity: 10, strictness: 55, funding: 55,
+            size: 55, facilities: 68, extracurricular: 40, tuition: 25 },
+    boarding: 0.08, singleSex: 0.15, admin: { public: 72, private: 25, faith: 3 } },
+
+  { id: "vocationalCentre", label: "vocational centre", stages: ["vocational"],
+    era: [1900, 2100], regions: null, dev: null, urban: 70,
+    hoodClass: { informal: 25, working: 45, suburban: 22, affluent: 6, elite: 2 },
+    bias: { quality: 45, selectivity: 15, religiosity: 8, strictness: 45, funding: 38,
+            size: 40, facilities: 55, extracurricular: 20, tuition: 20 },
+    boarding: 0.03, singleSex: 0.08, admin: { public: 62, private: 35, faith: 3 } },
+
+  { id: "nightSchool", label: "night school", stages: ["lowerSec", "upperSec", "vocational"],
+    era: [1880, 2100], regions: null, dev: null, urban: 88,
+    hoodClass: { informal: 30, working: 45, suburban: 18, affluent: 5, elite: 2 },
+    bias: { quality: 40, selectivity: 5, religiosity: 12, strictness: 30, funding: 28,
+            size: 30, facilities: 28, extracurricular: 8, tuition: 18 },
+    boarding: 0, singleSex: 0.03, admin: { public: 70, private: 25, faith: 5 } },
+
+  { id: "communityCollege", label: "community college", stages: ["community"],
+    era: [1900, 2100], regions: ["anglo", "eastAsia", "nordic", "westEu"], dev: ["high", "upper"], urban: 80,
+    hoodClass: { informal: 12, working: 40, suburban: 32, affluent: 13, elite: 3 },
+    bias: { quality: 50, selectivity: 12, religiosity: 8, strictness: 32, funding: 45,
+            size: 68, facilities: 55, extracurricular: 42, tuition: 32 },
+    boarding: 0.05, singleSex: 0.02, admin: { public: 82, private: 16, faith: 2 } },
+
+  { id: "regionalUniversity", label: "regional university", stages: ["university", "masters", "gradCert"],
+    era: [1850, 2100], regions: null, dev: null, urban: 82,
+    hoodClass: { informal: 8, working: 30, suburban: 35, affluent: 22, elite: 5 },
+    bias: { quality: 58, selectivity: 45, religiosity: 12, strictness: 30, funding: 55,
+            size: 78, facilities: 62, extracurricular: 65, tuition: 45 },
+    boarding: 0.30, singleSex: 0.06, admin: { public: 72, private: 22, faith: 6 } },
+
+  { id: "eliteResearchUniversity", label: "research university", stages: ["university", "masters", "profMasters", "mba", "doctorate", "profDoctorate", "gradCert"],
+    era: [1500, 2100], regions: null, dev: ["high", "upper"], urban: 88,
+    hoodClass: { informal: 2, working: 12, suburban: 28, affluent: 38, elite: 20 },
+    bias: { quality: 88, selectivity: 90, religiosity: 12, strictness: 35, funding: 88,
+            size: 82, facilities: 88, extracurricular: 82, tuition: 78 },
+    boarding: 0.45, singleSex: 0.10, admin: { public: 52, private: 42, faith: 6 } },
+
+  { id: "seminary", label: "seminary", stages: ["upperSec", "university", "masters"],
+    era: [1500, 2100], regions: null, dev: null, urban: 50,
+    hoodClass: { informal: 10, working: 28, suburban: 32, affluent: 22, elite: 8 },
+    bias: { quality: 54, selectivity: 40, religiosity: 96, strictness: 82, funding: 45,
+            size: 25, facilities: 42, extracurricular: 30, tuition: 35 },
+    boarding: 0.55, singleSex: 0.65, admin: { faith: 95, private: 4, public: 1 } },
+
+  { id: "businessSchool", label: "business school", stages: ["mba", "profMasters", "gradCert"],
+    era: [1900, 2100], regions: null, dev: ["high", "upper"], urban: 92,
+    hoodClass: { informal: 1, working: 10, suburban: 26, affluent: 42, elite: 21 },
+    bias: { quality: 74, selectivity: 76, religiosity: 5, strictness: 32, funding: 82,
+            size: 48, facilities: 78, extracurricular: 58, tuition: 95 },
+    boarding: 0.12, singleSex: 0.02, admin: { private: 72, public: 26, faith: 2 } },
+
+  { id: "prepAcademy", label: "preparatory course", stages: ["prep"],
+    era: [1900, 2100], regions: null, dev: null, urban: 90,
+    hoodClass: { informal: 10, working: 32, suburban: 34, affluent: 20, elite: 4 },
+    bias: { quality: 58, selectivity: 25, religiosity: 6, strictness: 62, funding: 40,
+            size: 45, facilities: 35, extracurricular: 5, tuition: 55 },
+    boarding: 0.04, singleSex: 0.05, admin: { private: 84, public: 14, faith: 2 } },
+];
+const EDU_ARCHETYPE_BY_ID = {};
+for (const a of EDU_ARCHETYPES) EDU_ARCHETYPE_BY_ID[a.id] = a;
+
+/* Which archetypes can exist at all in this country/era. The hard constraint:
+   an archetype outside its era window, development tier or region is not
+   "unlikely", it does not exist. */
+/* Earliest plausible FOUNDING by development tier. An archetype's `era` window
+   is global — "universities have existed since 1850" — but that says nothing
+   about whether one existed *here*. Without this floor the generator produced
+   a Kenyan regional university founded in 1853, which the sample review caught
+   and no assertion would have. Provisional like every other date in EDU;
+   module 22 tranche 2 owns the real ones. */
+const EDU_DEV_FOUNDING_FLOOR = {
+  high:   { school: 1500, tertiary: 1500 },
+  upper:  { school: 1700, tertiary: 1850 },
+  middle: { school: 1800, tertiary: 1900 },
+  low:    { school: 1850, tertiary: 1930 },
+};
+const EDU_TERTIARY_TIERS = ["tertiary", "postgrad"];
+function eduArchIsTertiary(arch) {
+  return arch.stages.some((st) => EDU_STAGES[st] && EDU_TERTIARY_TIERS.indexOf(EDU_STAGES[st].tier) !== -1);
+}
+function eduFoundingFloor(arch, country) {
+  const tier = EDU_DEV_FOUNDING_FLOOR[hreDevOf(country)] || EDU_DEV_FOUNDING_FLOOR.middle;
+  return Math.max(arch.era[0], eduArchIsTertiary(arch) ? tier.tertiary : tier.school);
+}
+function eduArchetypeAvailable(arch, country, year) {
+  if (year < arch.era[0] || year > arch.era[1]) return false;
+  if (arch.dev && arch.dev.indexOf(hreDevOf(country)) === -1) return false;
+  if (arch.regions && arch.regions.indexOf(hreRegionOf(country)) === -1) return false;
+  /* nothing can exist before it could have been founded here */
+  if (year < eduFoundingFloor(arch, country)) return false;
+  return true;
+}
+function eduArchetypesFor(country, year, stage) {
+  return EDU_ARCHETYPES.filter((a) =>
+    eduArchetypeAvailable(a, country, year) && (!stage || a.stages.indexOf(stage) !== -1));
+}
+/* Weighted candidates for a hood class — the shape hreArchetypeCandidates has. */
+function eduArchetypeCandidates(country, year, stage, hoodClass) {
+  const out = [];
+  for (const a of eduArchetypesFor(country, year, stage)) {
+    const w = a.hoodClass[hoodClass] || 0;
+    if (w > 0) out.push([a, w]);
+  }
+  return out;
+}
+
+/* ─── the pipeline: Stages 1-12 ───
+   Pure. Each stage draws from its own namespaced sub-stream so that adding a
+   stage never shifts the output of the ones already there. */
+
+/* A development multiplier applied to quality/funding/facilities: the same
+   archetype is a materially different institution in a high-income country in
+   2010 and a low-income one in 1930. This is what stops the generator
+   producing a 1890 village primary with a robotics lab. */
+function eduDevScale(country, year) {
+  const tier = { high: 1.0, upper: 0.86, middle: 0.7, low: 0.55 }[hreDevOf(country)] || 0.7;
+  const eraT = Math.max(0, Math.min(1, (year - 1880) / 140));   // 1880 → 2020
+  return tier * (0.55 + 0.45 * eraT);
+}
+function eduDraw(r, centre, spread, scale) {
+  const v = centre * (scale == null ? 1 : scale) + r.range(-spread, spread);
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+function eduStage1Admin(seed, id, arch, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:admin", attempt || 0);
+  return r.weighted(arch.admin) || "public";
+}
+function eduStage2Founded(seed, id, arch, country, refYear, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:founded", attempt || 0);
+  const lo = eduFoundingFloor(arch, country);
+  const hi = Math.min(arch.era[1], refYear);
+  if (hi <= lo) return lo;
+  /* Skews OLDER. The first version took max(a,b) on the reasoning that most
+     institutions in a given year are recent — which produced universities
+     founded in the reference year itself, and the sample review duly showed a
+     0-year-old regional university with 19,983 students. Institutions standing
+     in any given year are mostly NOT new; the ones that are get the enrolment
+     ramp in stage 3 rather than opening at full size. */
+  const a = r.int(lo, hi), b = r.int(lo, hi);
+  return Math.min(a, b);
+}
+/* Head-count envelopes per archetype. A single global curve cannot serve both
+   a village primary and a research university — the first attempt used one and
+   produced a 2,800-student "research university" alongside plausible schools,
+   which is exactly the class of error that is green on every assertion and
+   obvious to a human reading it. Envelopes are [floor, ceiling]; the size
+   score interpolates within, so size and enrolment can never disagree. */
+const EDU_ENROL_ENVELOPE = {
+  villagePrimary: [25, 220],          urbanPrimary: [120, 900],
+  nurserySetting: [15, 140],          comprehensiveSecondary: [300, 2200],
+  grammarSelective: [180, 1400],      faithSecondary: [150, 1200],
+  militaryAcademy: [120, 900],        boardingSchool: [80, 800],
+  technicalInstitute: [200, 2500],    vocationalCentre: [80, 1200],
+  nightSchool: [40, 600],             communityCollege: [500, 12000],
+  regionalUniversity: [1500, 25000],  eliteResearchUniversity: [3000, 45000],
+  seminary: [30, 400],                businessSchool: [80, 1500],
+  prepAcademy: [60, 2000],
+};
+function eduStage3Size(seed, id, arch, hoodClass, scale, founded, refYear, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:size", attempt || 0);
+  const size = eduDraw(r, arch.bias.size, 14, 0.6 + 0.4 * scale);
+  const env = EDU_ENROL_ENVELOPE[arch.id] || [40, 800];
+  /* A new institution fills up over about fifteen years rather than opening at
+     capacity — the other half of the 0-year-old-university fix. */
+  const ramp = Math.max(0.12, Math.min(1, (refYear - founded + 1) / 15));
+  /* mass education is a 20th-century phenomenon: the same archetype is a much
+     smaller institution in 1900 than in 2000 */
+  const enrolment = Math.max(8, Math.round((env[0] + (env[1] - env[0]) * (size / 100)) * (0.45 + 0.55 * scale) * ramp));
+  const classSize = Math.max(6, Math.round(38 - scale * 16 + r.range(-5, 5)));
+  return { size, enrolment, classSize };
+}
+function eduStage4Funding(seed, id, arch, admin, hoodClass, scale, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:funding", attempt || 0);
+  const hoodBonus = { informal: -14, working: -6, suburban: 2, affluent: 10, elite: 18 }[hoodClass] || 0;
+  const adminBonus = { private: 8, faith: 0, military: 6, public: 0 }[admin] || 0;
+  return eduDraw(r, arch.bias.funding + hoodBonus + adminBonus, 12, scale);
+}
+function eduStage5Faculty(seed, id, arch, funding, scale, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:faculty", attempt || 0);
+  return eduDraw(r, arch.bias.quality * 0.7 + funding * 0.3, 11, scale);
+}
+function eduStage6Facilities(seed, id, arch, funding, scale, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:facilities", attempt || 0);
+  return eduDraw(r, arch.bias.facilities * 0.6 + funding * 0.4, 12, scale);
+}
+function eduStage7Selectivity(seed, id, arch, quality, sys, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:selectivity", attempt || 0);
+  /* a hard-tracking system selects harder at every level */
+  const trackBonus = { hard: 10, soft: 0, none: -8 }[sys.tracking] || 0;
+  return eduDraw(r, arch.bias.selectivity * 0.75 + quality * 0.25 + trackBonus, 12, null);
+}
+function eduStage8Religiosity(seed, id, arch, admin, year, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:religiosity", attempt || 0);
+  /* secularisation over the century, applied to non-faith administrations only
+     — a seminary in 2010 is still a seminary */
+  const secular = admin === "faith" ? 0 : Math.max(0, Math.min(24, (year - 1900) / 5));
+  return eduDraw(r, arch.bias.religiosity + (admin === "faith" ? 25 : 0) - secular, 10, null);
+}
+function eduStage9Strictness(seed, id, arch, admin, year, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:strictness", attempt || 0);
+  /* discipline norms soften across the century almost everywhere */
+  const soften = Math.max(0, Math.min(22, (year - 1900) / 5.5));
+  return eduDraw(r, arch.bias.strictness + (admin === "military" ? 12 : 0) - soften, 9, null);
+}
+function eduStage10Extracurricular(seed, id, arch, funding, size, scale, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:extra", attempt || 0);
+  return eduDraw(r, arch.bias.extracurricular * 0.55 + funding * 0.25 + size * 0.20, 12, scale);
+}
+function eduStage11Reputation(seed, id, arch, quality, selectivity, facilities, founded, refYear, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:reputation", attempt || 0);
+  /* reputation accrues with age: a 300-year-old college outranks its metrics */
+  const age = Math.max(0, refYear - founded);
+  const patina = Math.min(14, age / 14);
+  return eduDraw(r, quality * 0.42 + selectivity * 0.30 + facilities * 0.18 + patina, 10, null);
+}
+function eduStage12Tuition(seed, id, arch, admin, reputation, scale, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:tuition", attempt || 0);
+  /* Expressed as a 0-100 BAND, never as currency. Arch §8.2 / R8: module 09's
+     TIER_SALARY is flat across era and country, so any absolute figure would
+     inherit that distortion silently. S06 converts a band to a ratio of
+     realised income at the point it is actually needed. */
+  if (admin === "public") return eduDraw(r, arch.bias.tuition * 0.25, 6, null);
+  return eduDraw(r, arch.bias.tuition * 0.7 + reputation * 0.3, 11, scale);
+}
+function eduStageBoarding(seed, id, arch, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:boarding", attempt || 0);
+  return r.chance(arch.boarding);
+}
+function eduStageSingleSex(seed, id, arch, year, enrolment, attempt) {
+  const r = hreRngRetry(seed, id, "edu:inst:singleSex", attempt || 0);
+  /* co-education spreads across the century */
+  const decay = Math.max(0.25, 1 - Math.max(0, year - 1920) / 130);
+  /* Segregating an institution gets rapidly less likely the bigger it is, and
+     past a point stops being a thing at all — the sample review produced a
+     17,050-student single-sex university. Scaling this as a probability alone
+     left a long tail that still fired, so above 5,000 students it is a HARD
+     constraint rather than a small chance. Small institutions are unaffected. */
+  if (enrolment > 5000) return false;
+  const scaleDown = enrolment > 1200 ? Math.max(0.05, 1200 / enrolment) : 1;
+  return r.chance(arch.singleSex * decay * scaleDown);
+}
+
+/* Hard constraints. A blueprint failing any of these is regenerated rather
+   than shipped — the retry counter is how a CONTENT problem gets noticed
+   rather than silently absorbed (HRE §4.8). */
+function eduValidateBlueprint(bp, refYear) {
+  const errs = [];
+  if (!bp.archetype) errs.push("noArchetype");
+  if (!EDU_ARCHETYPE_BY_ID[bp.archetype]) errs.push("unknownArchetype");
+  if (bp.founded > refYear) errs.push("foundedAfterReference");
+  if (bp.founded < eduFoundingFloor(bp.arch, bp.country)) errs.push("foundedBeforePossibleHere");
+  if (!eduArchetypeAvailable(bp.arch, bp.country, refYear)) errs.push("archetypeUnavailableInEra");
+  for (const k of ["quality", "facilities", "selectivity", "religiosity", "strictness",
+                   "extracurricular", "reputation", "tuitionBand", "funding"]) {
+    const v = bp[k];
+    if (!(typeof v === "number" && v >= 0 && v <= 100)) errs.push("outOfBounds:" + k);
+  }
+  if (!(bp.enrolment > 0)) errs.push("emptyInstitution");
+  if (!(bp.classSize > 0)) errs.push("emptyClass");
+  if (bp.stages.some((s) => !EDU_STAGES[s])) errs.push("unknownStage");
+  /* the absurdity guard the sample review exists to catch in prose: a poor
+     institution in a poor era cannot have world-class facilities */
+  if (bp.facilities > 55 && eduDevScale(bp.country, refYear) < 0.45) errs.push("facilitiesImplausibleForEra");
+  return errs;
+}
+
+/* The blueprint. Regenerated on demand from (seed, id, refYear) — only what a
+   character actually touches is ever saved. */
+function eduBlueprint(seed, id, refYear) {
+  const parsed = eduIdParse(id);
+  if (!parsed) return null;
+  const arch = EDU_ARCHETYPE_BY_ID[parsed.archetype];
+  if (!arch) return null;
+  /* Hard boundary: an institution outside its availability window does not
+     exist to be browsed, applied to or attended. */
+  if (!eduArchetypeAvailable(arch, parsed.country, refYear)) return null;
+
+  const sys = eduSystemFor(parsed.country, refYear);
+  const scale = eduDevScale(parsed.country, refYear);
+  const diag = { retries: 0, errors: [], fellBack: false };
+  let bp = null;
+
+  for (let attempt = 0; attempt <= EDU_MAX_RETRIES; attempt++) {
+    const admin = eduStage1Admin(seed, id, arch, attempt);
+    const founded = eduStage2Founded(seed, id, arch, parsed.country, refYear, attempt);
+    const sz = eduStage3Size(seed, id, arch, parsed.hoodClass, scale, founded, refYear, attempt);
+    const funding = eduStage4Funding(seed, id, arch, admin, parsed.hoodClass, scale, attempt);
+    const quality = eduStage5Faculty(seed, id, arch, funding, scale, attempt);
+    const facilities = eduStage6Facilities(seed, id, arch, funding, scale, attempt);
+    const selectivity = eduStage7Selectivity(seed, id, arch, quality, sys, attempt);
+    const religiosity = eduStage8Religiosity(seed, id, arch, admin, refYear, attempt);
+    const strictness = eduStage9Strictness(seed, id, arch, admin, refYear, attempt);
+    const extracurricular = eduStage10Extracurricular(seed, id, arch, funding, sz.size, scale, attempt);
+    const reputation = eduStage11Reputation(seed, id, arch, quality, selectivity, facilities, founded, refYear, attempt);
+    const tuitionBand = eduStage12Tuition(seed, id, arch, admin, reputation, scale, attempt);
+    const boarding = eduStageBoarding(seed, id, arch, attempt);
+    const singleSex = eduStageSingleSex(seed, id, arch, refYear, sz.enrolment, attempt);
+
+    const candidate = {
+      id: id, genV: EDU_GEN_V, country: parsed.country, city: parsed.city,
+      hood: parsed.hood, hoodClass: parsed.hoodClass,
+      archetype: arch.id, arch: arch, label: arch.label, stages: arch.stages.slice(),
+      administration: admin, founded: founded,
+      size: sz.size, enrolment: sz.enrolment, classSize: sz.classSize,
+      funding: funding, quality: quality, facilities: facilities,
+      selectivity: selectivity, religiosity: religiosity, strictness: strictness,
+      extracurricular: extracurricular, reputation: reputation, tuitionBand: tuitionBand,
+      boarding: boarding, singleSex: singleSex, refYear: refYear,
+    };
+
+    const errs = eduValidateBlueprint(candidate, refYear);
+    if (!errs.length) { bp = candidate; diag.retries = attempt; break; }
+    diag.errors = errs;
+    diag.retries = attempt + 1;
+    bp = candidate;                        /* keep the last as the fallback */
+  }
+
+  if (!bp) return null;
+  if (eduValidateBlueprint(bp, refYear).length) diag.fellBack = true;
+  bp._diag = diag;
+  return bp;
+}
+function eduInstitution(seed, id, refYear) { return eduBlueprint(seed, id, refYear); }
+
+/* Crystallisation payload. Written to state only when a character actually
+   attends, after which it is never regenerated — which is what lets this
+   generator be rewritten in a later version without altering the school an
+   existing character went to. `arch` and `_diag` are deliberately dropped:
+   the first is a pointer into a table that may change, the second is a
+   runtime diagnostic. Budget: this is what the ≤2.5 KB s.edu allowance is
+   mostly spent on, so it stays a flat scalar record — never a population. */
+function eduCrystallise(bp) {
+  if (!bp) return null;
+  return {
+    id: bp.id, genV: bp.genV, archetype: bp.archetype, label: bp.label,
+    country: bp.country, city: bp.city, hoodClass: bp.hoodClass,
+    administration: bp.administration, founded: bp.founded,
+    enrolment: bp.enrolment, classSize: bp.classSize,
+    quality: bp.quality, facilities: bp.facilities, selectivity: bp.selectivity,
+    religiosity: bp.religiosity, strictness: bp.strictness,
+    extracurricular: bp.extracurricular, reputation: bp.reputation,
+    tuitionBand: bp.tuitionBand, boarding: bp.boarding, singleSex: bp.singleSex,
+  };
+}
+
+/* What module 06 needs to generate classmates and faculty, and what module 11
+   needs for schoolLegal() — handed over rather than re-derived, so neither has
+   to infer institutional character from a SCHOOL_TYPES string (arch §5, §8.3,
+   §8.5; OQ-5 still open with 11). */
+/* ═══════════════════════════ EDU · S09 ═══════════════════════════
+   State, the legacy shim, and migration.
+
+   STILL ADDITIVE. `s.education.stage` and `s.school` remain AUTHORITATIVE
+   through every phase up to the inversion (arch §7). `s.edu` is written but
+   nothing reads it to make a decision, so deleting every edu* symbol would
+   still leave the game behaving identically. What P3 buys is the thing every
+   later phase depends on: proof that the canonical vocabulary can be derived
+   from the legacy state without disagreeing with it.
+
+   The shim derives ONLY what legacy actually says. Legacy has six stage
+   values — pre / primary / middle / high / college / done — and no concept of
+   nursery, preschool, vocational or postgraduate study at all. So
+   eduLegacyStage maps "pre" to `none` rather than guessing at nursery from
+   the character's age: inventing a fact the legacy state never held would
+   make the equivalence test pass by fabrication. Those rungs become reachable
+   when S04/S05 drive progression, not before. */
+
+const EDU_STATE_V = 1;
+
+/* Legacy → canonical. Total by construction: every legacy value maps, and an
+   unrecognised one falls through to `none` rather than undefined, because a
+   shim that can return undefined turns one bad save into a crash everywhere. */
+const EDU_LEGACY_STAGE_MAP = {
+  pre: "none", primary: "primary", middle: "lowerSec",
+  high: "upperSec", college: "university", done: "done",
+};
+function eduLegacyStage(s) {
+  if (!s || !s.education) return "none";
+  /* An enrolled character is in the stage their SCHOOL says, if the two ever
+     disagree — s.school is the more specific record and enrollSchool writes
+     both. Falls back to education.stage, which is what exists post-school. */
+  const fromSchool = s.school && s.school.stage ? EDU_LEGACY_STAGE_MAP[s.school.stage] : null;
+  const fromEdu = EDU_LEGACY_STAGE_MAP[s.education.stage];
+  return fromSchool || fromEdu || "none";
+}
+
+/* Sole writer for s.edu.stage (arch §6), mirroring hreSetTenure. Funnelling
+   every change through one function is what makes the stage history auditable
+   and what lets P4's progression attach without touching a caller. Closing a
+   stage appends one row to `record` — one row per completed stage, never a
+   per-term transcript, because s.school already shows what an unbounded
+   per-entity array costs (Phase 0 §2). */
+function eduSetStage(s, stage, inst) {
+  if (!EDU_STAGES[stage]) return false;
+  if (EDU_STAGES[stage].visionKind !== "rung") return false;   // variants/modifiers are not stages
+  eduMigrate(s);
+  const prev = s.edu.stage;
+  if (prev && prev !== stage && prev !== "none") {
+    s.edu.record.push({
+      stage: prev,
+      instId: s.edu.inst ? s.edu.inst.id : null,
+      from: s.edu.since || 0,
+      to: s.ageDays || 0,
+      outcome: EDU_STAGES[stage].ord > EDU_STAGES[prev].ord ? "completed" : "left",
+      /* no `credential` field: it is EDU_STAGES[stage].exitCredential, and the
+         cred ledger below already records what was actually awarded. `record`
+         is the structure the 2.5 KB budget is mostly spent on, so a derivable
+         field is not worth its bytes. */
+    });
+    if (EDU_STAGES[prev].exitCredential) {
+      /* Deliberately just {id, year}. `stage` is derivable — each exitCredential
+         belongs to exactly one rung — and `instId` is already on the matching
+         `record` row. Institution ids are ~39 characters, so repeating one into
+         every credential cost ~440 bytes on a full ladder and pushed s.edu over
+         its 2.5 KB budget on its own. The ledger says what you hold; the record
+         says where you earned it. */
+      s.edu.cred.push({ id: EDU_STAGES[prev].exitCredential, year: yearOf(s) });
+    }
+  }
+  s.edu.stage = stage;
+  s.edu.since = s.ageDays || 0;
+  if (inst !== undefined) s.edu.inst = inst || null;
+  return true;
+}
+
+/* Do the canonical and legacy views agree? The direct analogue of
+   hreTenureAgreesWithLegacy, and the gate every phase after this one rests on.
+   Compares the DERIVED value against the stored mirror, so a drift between
+   them is visible rather than silently absorbed. */
+function eduStageAgreesWithLegacy(s) {
+  if (!s || !s.edu) return true;                 // nothing to disagree with yet
+  return s.edu.stage === eduLegacyStage(s);
+}
+/* While legacy is authoritative, this is how the mirror is kept in step.
+   P8's inversion deletes it — at that point s.edu.stage IS the truth and
+   there is nothing to sync from. */
+function eduSyncStage(s) {
+  if (!s || !s.edu) return false;
+  const want = eduLegacyStage(s);
+  if (s.edu.stage === want) return false;
+  s.edu.stage = want;
+  s.edu.since = s.ageDays || 0;
+  return true;
+}
+/* The reader every other module should use. Returns the legacy-derived value
+   while legacy is authoritative, so no caller has to know which phase we are
+   in — and at inversion this becomes `return s.edu.stage` and nothing else
+   changes. */
+function eduStage(s) { return eduLegacyStage(s); }
+
+function eduSeedFrom(entropy) {
+  return hreMix(hreHash("edu:seed:v" + EDU_STATE_V + ":" + String(entropy)), 0x85ebca6b);
+}
+function eduInit(seed) {
+  return {
+    v: EDU_STATE_V,
+    seed: (seed >>> 0),
+    stage: "none",
+    since: 0,
+    inst: null,
+    track: null,
+    perf: { gpa: null, attendance: null, conduct: null },
+    record: [],
+    cred: [],
+    fin: { debt: 0, aid: 0, sponsor: null },
+    mem: { tab: "current", filt: null },
+  };
+}
+
+/* Guarded version ladder followed by a version-independent repair pass — the
+   shape hreMigrate uses, and the reason its migration survived a genuine
+   pre-S06 fixture. The repair pass is what catches a hand-edited or truncated
+   save that carries a CURRENT `v` but is missing a field: a ladder alone
+   would skip it entirely because the version already looks right. */
+const EDU_STATE_LADDER = {
+  /* 1: initial schema. Future versions add a function keyed by the version
+     they upgrade FROM, run in ascending order. */
+};
+function eduMigrate(s) {
+  if (!s) return s;
+  /* Tracks whether the canonical stage needs seeding FROM legacy. This must
+     not happen on every call: eduSetStage migrates before it writes, so an
+     unconditional backfill silently reverted the sole writer's own write and
+     no stage transition was ever recorded. Backfilling belongs to creation and
+     to repair — keeping the mirror in step during play is eduSyncStage's job,
+     and it is called deliberately rather than as a side effect. */
+  let needsStageBackfill = false;
+  if (!s.edu || typeof s.edu !== "object" || Array.isArray(s.edu)) {
+    needsStageBackfill = true;
+    s.edu = eduInit(eduSeedFrom(
+      (s.profile ? (s.profile.first + ":" + s.profile.last + ":" + s.profile.country + ":" + s.profile.birthYear) : "unknown")
+      + ":" + (s.hre && s.hre.seed != null ? s.hre.seed : 0)));
+  }
+  /* guarded ladder */
+  let guard = 0;
+  while (s.edu.v < EDU_STATE_V && guard++ < 32) {
+    const step = EDU_STATE_LADDER[s.edu.v];
+    if (!step) { s.edu.v = EDU_STATE_V; break; }
+    step(s);
+    s.edu.v = s.edu.v + 1;
+  }
+  if (s.edu.v > EDU_STATE_V) s.edu.v = EDU_STATE_V;   // a save from the future is clamped, not trusted
+
+  /* version-independent repair pass */
+  const d = eduInit(s.edu.seed != null ? s.edu.seed : eduSeedFrom("repair"));
+  if (typeof s.edu.seed !== "number") s.edu.seed = d.seed;
+  if (!EDU_STAGES[s.edu.stage]) { s.edu.stage = "none"; needsStageBackfill = true; }
+  if (typeof s.edu.since !== "number") s.edu.since = 0;
+  if (s.edu.inst === undefined) s.edu.inst = null;
+  if (s.edu.track === undefined) s.edu.track = null;
+  if (!s.edu.perf || typeof s.edu.perf !== "object") s.edu.perf = d.perf;
+  for (const k of ["gpa", "attendance", "conduct"]) if (s.edu.perf[k] === undefined) s.edu.perf[k] = null;
+  if (!Array.isArray(s.edu.record)) s.edu.record = [];
+  if (!Array.isArray(s.edu.cred)) s.edu.cred = [];
+  if (!s.edu.fin || typeof s.edu.fin !== "object") s.edu.fin = d.fin;
+  if (typeof s.edu.fin.debt !== "number") s.edu.fin.debt = 0;
+  if (typeof s.edu.fin.aid !== "number") s.edu.fin.aid = 0;
+  if (s.edu.fin.sponsor === undefined) s.edu.fin.sponsor = null;
+  if (!s.edu.mem || typeof s.edu.mem !== "object") s.edu.mem = d.mem;
+
+  /* Backfill from legacy. A save that predates EDU still describes a real
+     education, and the canonical view must reflect it rather than claiming the
+     character never went to school. Idempotent: the credential is keyed, so a
+     second run does not duplicate it. */
+  if (needsStageBackfill) s.edu.stage = eduLegacyStage(s);
+  if (s.education) {
+    if (typeof s.education.debt === "number" && !s.edu.fin.debt) s.edu.fin.debt = s.education.debt;
+    if (s.education.degree && !s.edu.cred.some((c) => c.id === "bachelor")) {
+      s.edu.cred.push({ id: "bachelor", year: yearOf(s),
+                        field: s.education.degree, backfilled: true });
+    }
+  }
+  return s;
+}
+
+/* ═══════════════════════ EDU · S04 + S05 ═══════════════════════
+   Academic performance, and progression.
+
+   THIS IS THE PHASE THAT STOPS BEING INVISIBLE. Everything before it was
+   additive; the tertiary gate below deliberately changes who reaches
+   university, because that is the bug the whole subsystem exists to fix.
+   Measured before EDU (EDU-PHASE0-EXIT.md §4): a character born in Nigeria in
+   1935 reached university 88% of the time, more often than one born in Sweden
+   in 1995. Entry consulted class and grades and nothing else.
+
+   Legacy stays AUTHORITATIVE (arch §7). EDU decides, then expresses the
+   decision through the existing legacy state, so `s.education.stage` and
+   `s.school` remain the source of truth and the P3 equivalence gate keeps
+   holding. Inversion is still P8.
+
+   Progression is SCHEDULE-DRIVEN (invariant 10). Nothing here goes through
+   POOL: POOL loses ~70% of what it is given, and a graduation that fires 30%
+   of the time is not a simulation. */
+
+/* S04 · academic performance.
+   Grades come from a WEIGHTED BLEND of the things that actually produce them,
+   never a single roll — that is the roadmap's requirement and also the only
+   way the number responds to the rest of the simulation. Pure and RNG-free:
+   the same character on the same day always has the same standing. */
+function eduAttendance(s) {
+  const skips = (s.school && s.school.skips) || 0;
+  const health = (s.stats && s.stats.health != null) ? s.stats.health : 60;
+  /* poor health costs attendance before it costs grades */
+  return clamp(Math.round(98 - skips * 6 - Math.max(0, 55 - health) * 0.35));
+}
+function eduConduct(s) {
+  const trouble = (s.school && s.school.trouble) || 0;
+  return clamp(Math.round(95 - trouble * 11));
+}
+function eduFamilySupport(s) {
+  const f = s.family || {};
+  const vals = ["mom", "dad"].map((k) => (f[k] && typeof f[k].rel === "number") ? f[k].rel : null)
+                             .filter((v) => v !== null);
+  if (!vals.length) return 45;
+  return clamp(Math.round(vals.reduce((a, b) => a + b, 0) / vals.length));
+}
+/* Institution quality, if the character is actually at one. Before S12 wires
+   attendance there is no crystallised institution, so this falls back to what
+   the country and era would typically provide rather than assuming average. */
+function eduInstQuality(s) {
+  if (s.edu && s.edu.inst && typeof s.edu.inst.quality === "number") return s.edu.inst.quality;
+  return clamp(Math.round(38 + eduDevScale(s.profile.country, yearOf(s)) * 45));
+}
+function eduPerf(s) {
+  const attendance = eduAttendance(s);
+  const conduct = eduConduct(s);
+  const smarts = (s.stats && s.stats.smarts != null) ? s.stats.smarts : 50;
+  const health = (s.stats && s.stats.health != null) ? s.stats.health : 60;
+  const support = eduFamilySupport(s);
+  const quality = eduInstQuality(s);
+  const gpa = clamp(Math.round(
+    smarts * 0.34 +
+    attendance * 0.20 +
+    quality * 0.18 +
+    support * 0.12 +
+    health * 0.08 +
+    conduct * 0.08
+  ));
+  return { gpa, attendance, conduct };
+}
+
+/* S05 · progression.
+   How far up the ladder this character's country and era will actually carry
+   them. `eduTertiaryOdds` gives the share of the cohort reaching post-secondary;
+   turning that share into a THRESHOLD on the character's own standing is what
+   makes it bite without removing the player's choice: where places are
+   plentiful almost anyone clears it, and where they are vanishingly rare only
+   an exceptional student does. */
+/* MEASURED, not assumed. The first version mapped the cohort share linearly
+   onto a 0-108 scale, which silently assumed admission scores were uniformly
+   distributed. They are not — they cluster hard around 58-91 — so a 5% share
+   demanded a score of 102.6 that almost nobody has, and "everyone goes to
+   university" was replaced by "nobody does", which is wrong in the opposite
+   direction and just as unrealistic.
+
+   These are the empirical quantiles of eduAdmissionScore across 70 characters
+   spanning 6 countries and 4 classes. Re-derive with:
+     node -e '<sample eduAdmissionScore over runLife, sort, print quantiles>'
+   Provisional in the same sense as everything else in EDU: if the underlying
+   stat distributions move, this table has to be re-measured, not guessed. */
+const EDU_SCORE_QUANTILES = [
+  [0.00, 34], [0.05, 41.4], [0.10, 47.4], [0.25, 58.0], [0.50, 72.3],
+  [0.75, 90.6], [0.90, 97.7], [0.95, 101.5], [1.00, 108],
+];
+function eduScoreQuantile(f) {
+  const x = Math.max(0, Math.min(1, f));
+  const q = EDU_SCORE_QUANTILES;
+  for (let i = 0; i < q.length - 1; i++) {
+    if (x >= q[i][0] && x <= q[i + 1][0]) {
+      const span = q[i + 1][0] - q[i][0];
+      const t = span === 0 ? 0 : (x - q[i][0]) / span;
+      return q[i][1] + t * (q[i + 1][1] - q[i][1]);
+    }
+  }
+  return q[q.length - 1][1];
+}
+function eduTertiaryGate(s) {
+  const p = eduTertiaryOdds(s);
+  if (p >= 0.999) return 0;
+  /* admit the top `p` of the cohort: the score the (1 - p) quantile clears */
+  return Math.round(eduScoreQuantile(1 - p));
+}
+/* The character's standing for admission purposes, on the same scale the
+   graduation screen already used — grades plus what the world counts alongside
+   them. Kept compatible with the legacy `score` so the existing tier
+   thresholds keep their meaning. */
+function eduAdmissionScore(s) {
+  const subj = (s.education && s.education.subjects) || {};
+  const keys = Object.keys(subj);
+  const gpa = keys.length ? keys.reduce((a, k) => a + subj[k], 0) / keys.length : eduPerf(s).gpa;
+  const bonus = ((s.education && s.education.extra) ? 8 : 0)
+    + ({ Poor: 0, Working: 2, Middle: 5, Wealthy: 12 }[s.profile.cls] || 0);
+  return gpa + bonus;
+}
+/* Does the world have a place for this person at all? Returns a structured
+   verdict rather than a boolean, because the REASON is what the graduation
+   screen needs to say out loud — "you are not good enough" and "there are 40
+   university places in the entire country this year" are different sentences
+   and the player deserves the true one. */
+function eduTertiaryVerdict(s) {
+  const score = eduAdmissionScore(s);
+  const gate = eduTertiaryGate(s);
+  const p = eduTertiaryOdds(s);
+  const sys = eduSystem(s);
+  const barred = assignedSex(s) === "Female" && (sys.femaleAccess != null && sys.femaleAccess < 0.35);
+  return {
+    open: score >= gate,
+    score: Math.round(score),
+    gate,
+    share: p,
+    scarce: p < 0.12,
+    genderBarred: barred,
+  };
+}
+
+/* Called from the scheduled block in advance(). Keeps the canonical mirror in
+   step with the still-authoritative legacy state and refreshes the performance
+   snapshot. Never sets s.pending — it is not allowed to interrupt the tick. */
+function eduOnTick(s) {
+  if (!s.edu) return;
+  eduSyncStage(s);
+  const inSchoolNow = !!s.school || (s.education && s.education.college);
+  if (inSchoolNow) {
+    s.edu.perf = eduPerf(s);
+  }
+  if (s.education && typeof s.education.debt === "number") s.edu.fin.debt = s.education.debt;
+}
+/* Award a credential through the ledger when legacy hands one out. Keyed, so
+   calling it twice for the same award cannot duplicate it. */
+function eduAwardCredential(s, id, extra) {
+  if (!s || !s.edu || !id) return false;
+  if (s.edu.cred.some((c) => c.id === id && !c.backfilled)) return false;
+  s.edu.cred.push(Object.assign({ id, year: yearOf(s) }, extra || {}));
+  return true;
+}
+
+/* ═══════════════════════ EDU · S03 + S06 ═══════════════════════
+   Admission and selection, and finance.
+
+   WHY THIS PHASE EXISTS IN THIS FORM. P4's tertiary gate fixed the 88% bug —
+   a 1935 Nigerian no longer reaches university more often than a 1995 Swede —
+   but it fixed it ABSOLUTELY: the cohort share became a hard threshold, so a
+   determined player in a scarce era had no path at all. That is its own kind
+   of false. Real scarce systems were not sealed; they were narrow, and they
+   had doors. Mission and colonial scholarships found the very best students.
+   States expanding education after independence or war funded cohorts
+   deliberately. Wealthy families sent children abroad. Employers sponsored
+   technical training.
+
+   So the fix is not to soften the era model — the shares stay exactly as S01
+   resolves them — but to model the exceptions that actually existed. Each
+   route below is deliberately rare and has its own historical logic, so it
+   opens a real door without re-inflating the share it is an exception to.
+
+   DETERMINISM. Admission is a decision, not generation, but it still must not
+   use Math.random: two loads of the same save would otherwise disagree about
+   whether the character got in. Every draw goes through hreRng seeded from
+   s.edu.seed, so a given character's outcome is fixed and reproducible.
+
+   MONEY. Every figure here is a RATIO to realised income, never an absolute
+   amount (arch §8.2, R8). Module 09's TIER_SALARY is flat across era and
+   country and only ~29.8% of scheduled wages actually reach s.money, so an
+   absolute tuition figure would silently inherit both distortions.
+   HRE_INCOME_REALISATION is the single constant both subsystems derive from;
+   when module 09 fixes payroll it goes to 1.0 and EDU rebalances with it. */
+
+/* Family means, as a multiple of the reference earner's REALISED annual
+   income. Ratios, so a payroll fix rebalances this automatically. */
+const EDU_CLASS_INCOME_MULT = { Poor: 0.38, Working: 0.70, Middle: 1.0, Wealthy: 2.8 };
+function eduFamilyRealisedAnnual(s) {
+  const cls = EDU_CLASS_INCOME_MULT[s.profile.cls] || 1;
+  /* poorer countries and earlier eras are poorer in the same units */
+  const scale = 0.35 + 0.65 * eduDevScale(s.profile.country, yearOf(s));
+  return hreRealisedAnnual(HRE_REF_SALARY_MONTHLY) * cls * scale;
+}
+/* Annual tuition as a FRACTION of what the family actually receives in a year.
+   0 = free, 1 = a whole year's realised income, >1 = more than they earn. */
+function eduTuitionRatio(s, tier) {
+  const fee = collegeFee(s, tier);
+  const income = eduFamilyRealisedAnnual(s);
+  return income <= 0 ? 99 : fee / income;
+}
+const EDU_AFFORD_BANDS = [
+  [0.02, "free"], [0.10, "affordable"], [0.28, "a stretch"],
+  [0.65, "a serious burden"], [Infinity, "out of reach"],
+];
+function eduAffordability(ratio) {
+  for (const [lim, label] of EDU_AFFORD_BANDS) if (ratio < lim) return label;
+  return "out of reach";
+}
+
+/* ─── S06 · aid ───
+   Aid is a share of tuition removed, 0-1. Public systems and expanding states
+   carry most of it; a sponsored route carries nearly all of it, which is the
+   point of the sponsorship existing. */
+function eduAidShare(s, tier, route) {
+  const sys = eduSystem(s);
+  let aid = 0;
+  /* a broad public system subsidises everyone in it */
+  if (sys.tertiaryAccess != null) aid += Math.min(0.45, sys.tertiaryAccess * 0.6);
+  /* poorer families get more of what is available */
+  aid += { Poor: 0.22, Working: 0.14, Middle: 0.05, Wealthy: 0 }[s.profile.cls] || 0;
+  if (route === "merit") aid = Math.max(aid, 0.92);
+  if (route === "sponsorFaith" || route === "sponsorState") aid = Math.max(aid, 0.85);
+  if (route === "sponsorEmployer") aid = Math.max(aid, 0.7);
+  if (route === "abroad") aid = Math.min(aid, 0.1);   // going abroad is paid for, not subsidised
+  return Math.max(0, Math.min(1, aid));
+}
+function eduNetCostRatio(s, tier, route) {
+  return eduTuitionRatio(s, tier) * (1 - eduAidShare(s, tier, route));
+}
+
+/* ─── S03 · admission ───
+   The exception routes. Each is checked only when the ordinary gate has
+   already closed, each is independently rare, and each is conditioned on the
+   thing that made it real. */
+/* How common the exceptions themselves are. A system with almost no
+   university places also has almost no scholarships, almost no sponsorship
+   budget and almost no overseas pipeline — so the exceptions must scale WITH
+   capacity, not sit at a flat rate on top of it.
+
+   Measured before this existed: flat rates inflated a 0.2% cohort share to an
+   11% admission rate — 55×, mostly from `abroad` firing at 45% on a sample
+   that was a quarter wealthy. That is the exceptions becoming the backdoor
+   they were written to avoid being. The floor keeps a scarce era narrow rather
+   than sealed, which is the whole point of the phase. */
+function eduExceptionScale(share) {
+  return 0.22 + 0.78 * Math.min(1, (share || 0) * 4);
+}
+function eduAdmitRng(s, salt) {
+  const seed = (s.edu && typeof s.edu.seed === "number") ? s.edu.seed : hreHash(String(s.profile.first));
+  return hreRng(seed, "admit:" + (s.ageDays || 0), "edu:admit:" + salt);
+}
+function eduAdmit(s, tier) {
+  const v = eduTertiaryVerdict(s);
+  const sys = eduSystem(s);
+  const score = v.score;
+
+  if (v.open) {
+    return { admitted: true, route: "open", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "open"), sponsor: null,
+             reason: "You were admitted on your marks." };
+  }
+
+  /* 1 · EXCEPTIONAL MERIT. A scarce system still finds its very best — that is
+     what mission and colonial scholarships were for. Requires standing far
+     above the local cohort, not merely above average. */
+  /* Top 5% of the cohort distribution. Set at 0.97 initially, which left a
+     window barely three points wide before the ordinary gate opened anyway —
+     technically reachable, effectively never. "Extraordinary" has to mean
+     something a real student can be. */
+  const meritBar = eduScoreQuantile(0.95);
+  const xs = eduExceptionScale(v.share);
+  if (score >= meritBar && eduAdmitRng(s, "merit").chance(0.40 * xs)) {
+    return { admitted: true, route: "merit", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "merit"), sponsor: "scholarship",
+             reason: "Your results were extraordinary enough that someone went looking for you." };
+  }
+
+  /* 2 · FAITH SPONSORSHIP. A religious institution funds a promising student.
+     Conditioned on a religious schooling context, which is what actually
+     produced these placements. */
+  const religious = (s.edu && s.edu.inst && s.edu.inst.religiosity > 60)
+    || (s.school && SCHOOL_TYPES[s.school.type] && SCHOOL_TYPES[s.school.type].faith);
+  /* Sponsorship catches the near-miss, so the bar is set RELATIVE to the gate
+     rather than at an absolute quantile. An absolute bar can land ABOVE the
+     gate it is an exception to — which is what happened when this was
+     q78 against a gate at q70, leaving a window of zero width and a route
+     that could never fire. */
+  if (religious && score >= v.gate - 15 && eduAdmitRng(s, "faith").chance(0.30 * xs)) {
+    return { admitted: true, route: "sponsorFaith", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "sponsorFaith"), sponsor: "faith",
+             reason: "The mission put your name forward, and paid for it." };
+  }
+
+  /* 3 · STATE SPONSORSHIP. A state actively widening access funds cohorts
+     deliberately. Detected from the CE model itself: access rising sharply
+     across this character's own lifetime is what a post-independence or
+     post-war expansion looks like in the data. */
+  const growth = (sys.tertiaryAccess || 0) - (eduSystemFor(s.profile.country, yearOf(s) - 20).tertiaryAccess || 0);
+  if (growth > 0.03 && score >= v.gate - 15 && eduAdmitRng(s, "state").chance(0.30 * xs)) {
+    return { admitted: true, route: "sponsorState", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "sponsorState"), sponsor: "state",
+             reason: "The new government was building a graduate class, and you were in it." };
+  }
+
+  /* 4 · ABROAD. Wealth has always been able to buy its way past a narrow
+     local system. Expensive, and explicitly not subsidised. */
+  if (s.profile.cls === "Wealthy" && v.scarce && eduAdmitRng(s, "abroad").chance(0.30 * xs)) {
+    return { admitted: true, route: "abroad", score, gate: v.gate, share: v.share,
+             aidShare: eduAidShare(s, tier, "abroad"), sponsor: "family",
+             reason: "There was no place for you here. There was one overseas, and your family could pay for it." };
+  }
+
+  return { admitted: false, route: "none", score, gate: v.gate, share: v.share,
+           aidShare: 0, sponsor: null,
+           reason: v.genderBarred ? "The gates were shut to women, whatever your marks said."
+                 : v.scarce ? "There were a few thousand places in a country of millions."
+                 : "The places went to others." };
+}
+
+/* Every route a character could have taken, for the graduation screen and for
+   the calibration suite. */
+const EDU_ADMIT_ROUTES = ["open", "merit", "sponsorFaith", "sponsorState", "abroad", "none"];
+
+/* ═══════════════════ EDU · S12 · INTERFACE ADAPTER ═══════════════════
+   Phase 6, and the first phase with anything to look at.
+
+   THE ONLY PLACE EDU TOUCHES THE ENGINE'S UI. Everything in S01-S06 is a
+   plain deterministic library that has never heard of ACT_GROUPS or `pending`;
+   this section translates it into the shapes module 16 already renders. If an
+   education feature cannot be expressed as a popup or an Act-sheet item, that
+   is a request to module 16, not a licence to add a component.
+
+   SUBSYSTEM INVARIANT (Gotcha #2): every builder here is READ-ONLY and returns
+   a bare pending object. Nothing mutates state while building a menu — the
+   clone a builder is handed gets discarded, so a write there is silent data
+   loss. Mutations happen in an option's fx.run, on the draft the engine
+   actually keeps. Same rule HRE's S12 runs under: builders return, options
+   mutate, no exceptions.
+
+   READ-ONLY BY DESIGN. Phase 6 is deliberately look-but-don't-touch, exactly
+   as HRE's Phase 6 shipped a market you could read and not act on. There is no
+   way to apply, enrol or transfer from here; progression stays where S05 put
+   it, on the schedule.
+
+   PRESENTATION INVENTS NOTHING (invariant 8). Every line below composes from
+   values S01-S06 already computed. Where a register needs a word for a number
+   it comes from a band table, so the prose cannot drift from the fact.
+
+   Menu items ship at cost: 0, matching the other 35 menu-opening `special`
+   branches in this file. They all silently advance zero time; module 24 owns
+   that as one cross-cutting patch, and fixing it here would clobber popups
+   because advance() no-ops whenever s.pending is already set. */
+
+const EDU_QUALITY_WORDS = [[85, "exceptional"], [70, "strong"], [55, "good"],
+                           [40, "adequate"], [25, "poor"], [0, "dire"]];
+function eduWord(v) {
+  for (const [lim, w] of EDU_QUALITY_WORDS) if (v >= lim) return w;
+  return "dire";
+}
+/* Era register: the same institution is described differently by a 1930s
+   prospectus and a 2010s website. Composes only from the year. */
+function eduRegister(year) {
+  return year < 1945 ? "prospectus" : year < 1985 ? "brochure" : year < 2005 ? "handbook" : "website";
+}
+function eduRegisterLine(year) {
+  return { prospectus: "A printed prospectus, all serif type and no photographs.",
+           brochure: "A folded brochure with two colour plates and a lot of adjectives.",
+           handbook: "A thick handbook with a campus map stapled inside the cover.",
+           website: "A website with a video header and a cookie banner." }[eduRegister(year)];
+}
+
+/* What the character's own education looks like right now. Pure read. */
+function eduCurrentLines(s) {
+  const stage = eduStage(s);
+  const st = EDU_STAGES[stage];
+  const out = [];
+  out.push(st ? st.label : "Not in education");
+  if (s.school && s.school.name) out.push("· " + s.school.name);
+  if (s.education && s.education.college) {
+    out.push("· reading " + s.education.college.major + " at " + COLLEGE_TIERS[s.education.college.tier].name);
+  }
+  const p = (s.edu && s.edu.perf) || {};
+  if (p.gpa != null) {
+    out.push("· grades " + eduWord(p.gpa) + " (" + p.gpa + "%), attendance " + p.attendance + "%");
+  }
+  return out;
+}
+function eduRecordMenu(state) {
+  const s = state;                                   /* READ ONLY — never mutate */
+  const rec = (s.edu && s.edu.record) || [];
+  const cred = (s.edu && s.edu.cred) || [];
+  const lines = [];
+  if (!rec.length) lines.push("Nothing finished yet.");
+  for (const r of rec) {
+    const st = EDU_STAGES[r.stage];
+    lines.push((st ? st.label : r.stage) + " — " +
+      (r.outcome === "completed" ? "completed" : "left") +
+      " at " + Math.floor((r.to || 0) / 365.25) + ".");
+  }
+  const credLine = cred.length
+    ? "Held: " + cred.map((c) => c.field ? c.id + " (" + c.field + ")" : c.id).join(", ") + "."
+    : "No qualifications yet.";
+  return { emoji: "📜", title: "Your record",
+    text: lines.join("\n") + "\n\n" + credLine,
+    options: [{ label: "Close", fx: {} }] };
+}
+/* What this character could plausibly be looking at, given where and when they
+   live. Browsing only — nothing here enrols anyone. */
+function eduProspectsMenu(state) {
+  const s = state;                                   /* READ ONLY */
+  const year = yearOf(s);
+  const sys = eduSystem(s);
+  const seed = (s.edu && s.edu.seed) || 1;
+  const stage = eduStage(s);
+  /* The next few rungs, not just the immediate one. Looking only one step
+     ahead showed an upper-secondary student vocational centres and no
+     universities at all, which is not what "what you could study" means to
+     someone choosing. Three rungs is the realistic horizon. */
+  const ahead = Object.keys(EDU_STAGES)
+    .filter((k) => EDU_STAGES[k].visionKind === "rung" && EDU_STAGES[k].ord > (EDU_STAGES[stage] ? EDU_STAGES[stage].ord : 0)
+                   && EDU_STAGES[k].ord < 99)
+    .sort((a, b) => EDU_STAGES[a].ord - EDU_STAGES[b].ord)
+    .slice(0, 3);
+  const seen = {}, cands = [];
+  for (const rung of (ahead.length ? ahead : ["primary"])) {
+    for (const a of eduArchetypesFor(s.profile.country, year, rung)) {
+      if (seen[a.id]) continue;
+      seen[a.id] = 1;
+      cands.push(a);
+    }
+  }
+  cands.splice(5);
+  const options = cands.map((a, i) => {
+    const id = eduIdMake(s.profile.country, 0, 2, a.id, i);
+    const bp = eduBlueprint(seed, id, year);
+    if (!bp) return null;
+    return { label: "🏫 " + bp.label + " — " + eduWord(bp.quality) + " teaching",
+      fx: { run: (st) => {
+        /* the ONLY mutation, and it happens on the engine's draft */
+        if (st.edu) { if (!st.edu.mem) st.edu.mem = {}; st.edu.mem.tab = "inst:" + id; }
+        st.pending = eduInstitutionMenu(st, id);
+      } } };
+  }).filter(Boolean);
+  options.push({ label: "Close", fx: {} });
+
+  const access = Math.round((sys.tertiaryAccess || 0) * 100);
+  const examLine = sys.entryExam ? " Entry runs through the " + sys.entryExam.name + "." : "";
+  return { emoji: "🔭", title: "What you could study",
+    text: eduRegisterLine(year) + " In " + s.profile.country + ", " + year + ", about " + access +
+      "% of your cohort reaches post-secondary education." + examLine +
+      (options.length > 1 ? "" : " There is nothing here for someone your age."),
+    options };
+}
+function eduInstitutionMenu(state, id) {
+  const s = state;                                   /* READ ONLY */
+  const year = yearOf(s);
+  const bp = eduBlueprint((s.edu && s.edu.seed) || 1, id, year);
+  if (!bp) return { emoji: "🏫", title: "Nothing there", text: "No such institution.",
+                    options: [{ label: "Close", fx: {} }] };
+  const bits = [
+    "Founded " + bp.founded + ", " + bp.administration + "-run.",
+    bp.enrolment + " students, classes of about " + bp.classSize + ".",
+    "Teaching " + eduWord(bp.quality) + ". Facilities " + eduWord(bp.facilities) + ".",
+    bp.boarding ? "Residential." : "Day school.",
+    bp.singleSex ? "Single-sex." : "Co-educational.",
+    bp.religiosity > 60 ? "Faith runs through the timetable." : "",
+    bp.strictness > 70 ? "Discipline is strict." : "",
+  ].filter(Boolean);
+  return { emoji: "🏫", title: bp.label, text: bits.join(" "),
+    options: [{ label: "Back", fx: { run: (st) => { st.pending = eduProspectsMenu(st); } } },
+              { label: "Close", fx: {} }] };
+}
+function eduStudyMenu(state) {
+  const s = state;                                   /* READ ONLY */
+  return { emoji: "🎓", title: "Where you study",
+    text: eduCurrentLines(s).join("\n"),
+    options: [
+      { label: "📜 Your record", fx: { run: (st) => { st.pending = eduRecordMenu(st); } } },
+      { label: "🔭 What you could study", fx: { run: (st) => { st.pending = eduProspectsMenu(st); } } },
+      { label: "Close", fx: {} },
+    ] };
+}
+
+const EDU_GROUP = { id: "edu", emoji: "🎓", name: "Education", items: [
+  { id: "eduStudy", minAge: 4, emoji: "🎓", label: "Where you study", cost: 0, special: "eduStudy" },
+  { id: "eduProspects", minAge: 10, emoji: "🔭", label: "What you could study", cost: 0, special: "eduProspects" },
+] };
+/* Registered further down, next to the other ACT_GROUPS.push calls: this block
+   sits ~5,000 lines above `const ACT_GROUPS`, so pushing here would run inside
+   its temporal dead zone and take the whole module down at load. */
+
+function eduInstitutionOpts(inst) {
+  if (!inst) return null;
+  return {
+    facultyQuality: inst.quality, selectivity: inst.selectivity, size: inst.enrolment,
+    classSize: inst.classSize, religiosity: inst.religiosity, strictness: inst.strictness,
+    administration: inst.administration, boarding: inst.boarding, singleSex: inst.singleSex,
+    era: inst.founded, country: inst.country,
+  };
+}
 
 /* ═══════════════════════════ S03 · GEOGRAPHY ═══════════════════════════ */
 /* There is no map. There is a hierarchy:
@@ -6801,6 +8291,7 @@ function advance(state, totalDays) {
       if (s.ageDays - s.education.college.startDay >= need) gainDegree(s);
     }
 
+
     for (let y = prevYear; y <= nowYear; y++) {
       if (WORLD_EVENTS[y] && !s.flags["w_" + y]) {
         s.flags["w_" + y] = true;
@@ -6837,6 +8328,19 @@ function advance(state, totalDays) {
         break;
       }
     }
+    /* EDU S05 — the scheduled-education step (OQ-4). Shares advance()'s
+       existing schedule-driven region rather than adding a second adjacent
+       line, and never sets s.pending, so progression can never depend on a
+       popup being dismissed.
+
+       Position is load-bearing and was moved here after measurement. Run
+       BEFORE the MILESTONES scan, the canonical mirror lagged a full step
+       every time a character advanced — milestones are what write
+       education.stage, so the mirror was always one step behind the truth it
+       mirrors. It cannot go at the end of the loop body either, because
+       `milestoneFired` continues past it precisely when a stage has just
+       changed. Here it runs after milestones on every step, fired or not. */
+    eduOnTick(s);
     if (milestoneFired) continue;
 
     if (Math.random() < Math.min(0.72, step * 0.09)) {
@@ -6983,6 +8487,8 @@ function doActivity(state, act) {
   if (act.special === "salon") { return Object.assign(s, { pending: salonMenu(s).pending }); }
   if (act.special === "aiSettings") { return Object.assign(s, { pending: aiSettingsMenu(s) }); }
   if (act.special === "stxBoard") { s.pending = stxBoardMenu(s); return s; }
+  if (act.special === "eduStudy") { s.pending = eduStudyMenu(s); return s; }
+  if (act.special === "eduProspects") { s.pending = eduProspectsMenu(s); return s; }
   if (act.special === "hreHome") { s.pending = hreHomeMenu(s); return s; }
   if (act.special === "hreUpkeep") { s.pending = hreUpkeepMenu(s); return s; }
   if (act.special === "hreSell") { s.pending = hreSaleMenu(s); return s; }
@@ -9891,6 +11397,7 @@ const HOME_GROUP = { id: "home", emoji: "🏠", name: "At home", cond: (s) => !i
   { id: "parentsroom", minAge: 4, emoji: "🛏", label: "Your parents' room", cost: 1, special: "parentsroom", cond: (s) => hreAtParents(s) },
 ] };
 ACT_GROUPS.push(HOME_GROUP);
+ACT_GROUPS.push(EDU_GROUP);
 /* ═══════════════ HRE · S12 · INTERFACE ADAPTER (housing) ═══════════════ */
 /* Phase 6. Part 1 §3.5 S12, Part 3 §7.15.
 
