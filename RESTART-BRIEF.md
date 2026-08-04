@@ -16,8 +16,8 @@
 
 ## 1. Current state — verified, not asserted
 
-**File: `life-sim.jsx`, 13,638 lines, ~1,005 KB** (was 12,531 / ~945 KB before Phase 9).
-**Of the suites present in the git repo: 299 of 307 assertions green** — the 8 failures are one stale uploaded fixture, not a regression, and are diagnosed in §2. The full 18-suite / 998-assertion figure below describes the sandbox, which has files this repo does not; read §2's availability note before quoting it.
+**File: `life-sim.jsx`, 14,321 lines, ~1,060 KB** (12,531 / ~945 KB before Phase 9; 13,638 after it).
+**Of the suites present in the git repo: 549 of 557 assertions green.** The 8 failures are one stale uploaded fixture, not a regression, and are diagnosed in §2. The larger sandbox-only figures elsewhere in this doc describe files this repo does not have — read §2's availability note before quoting them.
 
 **HRE phase status against the spec's own roadmap** (`HRE-ARCHITECTURE-part3.md` §10.3–10.4):
 
@@ -30,11 +30,13 @@
 | **9** | **S10 upkeep & failures — this is what "HRE v1 complete" actually means** | **done, formal exit gate passed** (`test-hre-s10.js`, 170 assertions) |
 | 10–15 | event fabric, NPC housing, renovation, advanced tenure, content, polish | not started, and not required for v1 |
 
-**HRE v1 is complete.** Phase 9 shipped this session: `HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE` (§5225–6060), the B3-hooked `hreUpkeepTick` (§5982), and the `hreUpkeep` Act item. The spec's v1 sentence — *"a character can live with their parents, leave, rent, be discriminated against or protected according to where and when they live, buy, borrow, maintain, neglect, lose, and move"* — is now true except for **"move" in the sense of a voluntary sale**, which still has no mechanism (see §4, unchanged and still the top adjacent gap).
+**HRE v1 is complete, including the voluntary sale.** Phase 9 shipped this session: `HRE · S10 · UPKEEP, FAILURES, DISASTERS & INSURANCE` (§5225–6060), the B3-hooked `hreUpkeepTick` (§5982), and the `hreUpkeep` Act item. The spec's v1 sentence — *"a character can live with their parents, leave, rent, be discriminated against or protected according to where and when they live, buy, borrow, maintain, neglect, lose, and move"* — is now true in full. The last clause, **"move"**, shipped as `HRE · S11 · SALE & MOVING ON` — see §9.
 
 **The spec is explicit that Phase 9, not Phase 7 or 8, is the finish line:** *"HRE v1 is complete at Phase 9: a character can live with their parents, leave, rent, be discriminated against or protected according to where and when they live, buy, borrow, maintain, neglect, lose, and move — coherently, in any of 41 countries, in any era."* (The spec's own prose says "39 countries" here — that's stale; the real, verified count is 41, corrected everywhere else. Don't let this one line reintroduce the old number.)
 
-**The game is deployed and the deployed build is current.** `https://github.com/logostona/A-Life-v0.44` (repo) / `https://logostona.github.io/A-Life-v0.44` (live PWA). This is new since the last integration brief and isn't in `PROJECT_CONTEXT.md` or `MODULE_MAP.md` yet — flag it if you're updating those. Verified this session by pulling the actual served bytes over the sandbox's own network access (`raw.githubusercontent.com` is an allowed domain) and mounting them in jsdom: boots with zero uncaught errors, real UI renders, the `storage-polyfill.js` round-trips correctly through real `localStorage`. The deployed bundle contains Phase 8 (confirmed via minification-surviving string literals — see §4 for why that check exists). **If you ship a new build, the deployment is a separate manual step** (rebuild with the PWA esbuild command in §7, push to the repo) — nothing here does that automatically, and nothing here re-checked whether it's been redeployed since.
+**The game is deployed, and it was REDEPLOYED this session** — `life-sim.bundle.js` was rebuilt from source so the live PWA carries Phase 9, S11 and the UI redesign. Before that rebuild the served bundle still predated all of it (verified by diffing string literals against the previously-live file). See §7 for the corrected build, which is now reproducible for the first time.
+
+**Historic note from the previous session, kept for context:** `https://github.com/logostona/A-Life-v0.44` (repo) / `https://logostona.github.io/A-Life-v0.44` (live PWA). This is new since the last integration brief and isn't in `PROJECT_CONTEXT.md` or `MODULE_MAP.md` yet — flag it if you're updating those. Verified this session by pulling the actual served bytes over the sandbox's own network access (`raw.githubusercontent.com` is an allowed domain) and mounting them in jsdom: boots with zero uncaught errors, real UI renders, the `storage-polyfill.js` round-trips correctly through real `localStorage`. The deployed bundle contains Phase 8 (confirmed via minification-surviving string literals — see §4 for why that check exists). **If you ship a new build, the deployment is a separate manual step** (rebuild with the PWA esbuild command in §7, push to the repo) — nothing here does that automatically, and nothing here re-checked whether it's been redeployed since.
 
 ## 2. Test suite — exact, current
 
@@ -59,11 +61,15 @@
 | `test-hre-s08c.js` | mortgages, purchase, amortisation, repossession | 58 |
 | `test-hre-phase7-gate.js` | **formal Phase 7 exit gate** — leave/rent/live/lose, multi-country soak | 30 |
 | `test-hre-s10.js` | **formal Phase 9 exit gate** — R5 continuity, decay, compounding, failures, disasters, insurance | 170 |
-| | **total** | **1,168** |
+| `test-hre-s11.js` | voluntary sale — offers, fees, negative equity, survey, destinations | 83 |
+| `test-integration.js` | **cross-system** — soak, tenure authority, S10 seams, persistence, regressions | 49 |
+| `test-render.js` | mount + WCAG contrast + the redesign's own contract | 99 |
+| `test-deploy.js` | **the built artifact** — bundle boots in jsdom via index.html's real load order | 37 |
+| | **total** | **1,436** |
 
 ### ⚠️ Test-file availability in the GitHub repo — read before trusting the table above
 
-The table is the *project's* full suite as it exists in the Claude.ai sandbox. **The `logostona/A-Life-v0.44` git repo contains only 5 of the 19 files**: `test-hre-s06.js`, `test-hre-s08b.js`, `test-hre-s09.js`, `test-hre-phase7-gate.js` and (new) `test-hre-s10.js`. `harness.js`, `build-slice.py` and the other 14 suites were never uploaded there.
+The table is the *project's* full suite as it exists in the Claude.ai sandbox. **The `logostona/A-Life-v0.44` git repo contains 8 suites**: the four originally uploaded (`test-hre-s06.js`, `test-hre-s08b.js`, `test-hre-s09.js`, `test-hre-phase7-gate.js`) plus five written here (`test-hre-s10.js`, `test-hre-s11.js`, `test-integration.js`, `test-render.js`, `test-deploy.js`). `build-slice.py` and the remaining sandbox suites were never uploaded; `harness.js` is a reimplementation.
 
 Consequences, all verified this session rather than assumed:
 
@@ -71,7 +77,9 @@ Consequences, all verified this session rather than assumed:
 - **Hardcoded `/home/claude/...` paths were repointed to the repo root** in `hre-extract.py` (`SRC`/`OUT_DIR`) and in the `require(...)` line of all four pre-existing suites. These were artifacts of the sandbox's home directory, not design.
 - **`test-hre-s09.js` in the repo is the STALE pre-Phase-7 version** (87 assertions, not the 107 this doc's table claims). Its section 5, "nothing inverted", asserts the legacy call sites have *not* been inverted — but Phase 7 inverted them deliberately. **It reports 79 passed / 8 failed, and it does so identically against the pristine pre-Phase-9 file.** Confirmed by checking out the untouched original and re-running: the 8 failures are the stale fixture, not a regression. Do not "fix" them by re-inverting anything.
 
-**Actual current state of what the repo can run:** S06 60/60 · S08b 39/39 · phase7-gate 30/30 · S10 170/170 · S09 79/87 (8 pre-existing stale-fixture failures). Run them one at a time — running all five in one `for` loop OOM-killed the S09 process (exit 137); `node --max-old-space-size=4096` fixes it.
+**Actual current state of what the repo can run:** S06 60/60 · S08b 39/39 · phase7-gate 30/30 · S10 170/170 · S11 83/83 · integration 49/49 · render 99/99 · deploy 37/37 · S09 79/87 (8 pre-existing stale-fixture failures). Run them ONE AT A TIME — several in one `for` loop OOM-killed the S09 process (exit 137); `node --max-old-space-size=4096` fixes it.
+
+**The suites are deterministic now.** `harness.js` installs a seeded PRNG over `Math.random` for test processes only, because `newCharacter` seeds the HRE world with `Math.random()` — correct for the game, poison for a suite. Before that, S09 alternated between 78 and 79 passing on an unchanged file. Use `A_LIFE_TEST_SEED=<n>` (or `H.seed`/`H.eachSeed`) to confirm a green suite is green on purpose: S10 and S11 were both verified across four separate seeds. Determinism that is never varied is just a different way to hide a seed-specific bug.
 
 ```bash
 for f in test-integration-1.js test-stx-verify.js test-stx-wiring.js test-ai-guarantee.js \
@@ -93,9 +101,11 @@ grep -n "^const COUNTRIES\|^function newCharacter\|^function migrate\|^function 
 As of this file: `COUNTRIES` §5, `newCharacter` §403, `migrate` §447, `advance` §5204, `ACT_GROUPS` §5338, `doActivity` §5399, `Game` §12193, `App` §12495.
 
 **HRE section positions** (12 sections in `hre-extract.py`) — note these are **not in phase order in the file**, because later phases got spliced at earlier line numbers than some Phase 7 work:
-`S01` §1465 · `S03/S04` · `S02` · `calib` · `S05` · `S09` (state/tenure) · `S06` (marketplace) §3633 · `S08c` (mortgages) §4505 · `S08b` (eviction) §4796 · `S07b` (applications) §4923 · `S08a` (tenancy/tick) · **`S10` (upkeep) §5225** · `ENGINE`/`ACT_GROUPS`/`doActivity` · `S12` (adapter).
+`S01` §1465 · `S03/S04` · `S02` · `calib` · `S05` · `S09` (state/tenure) · `S06` (marketplace) §3633 · `S08c` (mortgages) §4505 · `S08b` (eviction) §4796 · `S07b` (applications) §4923 · `S08a` (tenancy/tick) · **`S10` (upkeep) §5225** · **`S11` (sale) — immediately before `ENGINE`** · `ENGINE`/`ACT_GROUPS`/`doActivity` · `S12` (adapter, now also holds `hreSaleMenu`/`hreSaleDestinationMenu`).
 
-**`hre-extract.py` now extracts 8 sections, not 7** — `hre-s10.js` was added to its `SECTIONS` list. Its list is order-checked against the file, and S10 sits between S08a and the `ENGINE` banner. Post-Phase-9 the file is **13,638 lines**; every § above Phase 8's has shifted, so grep the banner name as always.
+⚠️ **A section-slicing trap, hit for real:** `test-hre-s10.js` sliced "S10 banner → ENGINE banner" to lint S10 for `Math.random`. S11 was later spliced *between* those two, so the slice swallowed S11 — whose header documents that same invariant in prose — and S10 read as breaching it. Anchor a section slice to the NEXT SECTION BANNER, never to `ENGINE`, and strip comments before any substring lint: a rule and a breach of the rule look identical to `indexOf`.
+
+**`hre-extract.py` now extracts 9 sections** (S11 added; the note below said 8 when S10 landed) — `hre-s10.js` was added to its `SECTIONS` list. Its list is order-checked against the file, and S10 sits between S08a and the `ENGINE` banner. Post-Phase-9 the file is **13,638 lines**; every § above Phase 8's has shifted, so grep the banner name as always.
 
 **Always grep the banner name, never trust a cached line number** — this file has grown by ~7,000 lines since Phase 0 and every prior anchor table in every doc has gone stale within one or two sessions.
 
@@ -127,13 +137,45 @@ As of this file: `COUNTRIES` §5, `newCharacter` §403, `migrate` §447, `advanc
 
 Full identity/transition/coming-out/relationship/crime/health/school systems — see `PROJECT_CONTEXT.md`. **HRE specifically**, Phases 0–8: deterministic core; geography+law across 41 countries; 16-archetype property generator; market index with shocks; tenure/migration with ownership-authority model (`s.hre.owned`); marketplace with 6 era-gated channels; engagement pinning; viewings/applications with deterministic, R13-bounded landlord decisions; tenancy formation with 100%-reliable recurring rent; eviction that actually executes; mortgages with correctly-terminating amortisation; purchase; repossession that actually executes. **Phase 9 adds:** per-component decay driven by archetype/build quality/age/climate exposure with compounding deferred maintenance; four maintenance tiers; failures emitted by the condition model crossing `HRE_FAIL_THRESHOLD` (not an authored list); a three-stage failure ladder (`open`→`worsening`→`unfit`) whose terminal stage genuinely condemns the building or forces a paid emergency repair; hazard-based disasters; three insurance tiers with claim loading and a neglect-based refusal rule. **Not present: any renovation system (Phase 12), any voluntary sale.**
 
-## 7. Deployment (only if asked to update the live build)
+## 7. Deployment — CORRECTED, and now reproducible
+
+**The command previously recorded here was wrong and would have broken the live
+site.** It is replaced by `./build.sh`, which was reconstructed from the shipped
+bundle rather than guessed. What the old command got wrong:
+
+- `--external:react --external:react-dom` — `index.html` loads React from
+  nowhere, and the app must work fully offline (that is the whole point of the
+  PWA, and `sw.js` caches the shell on that promise). Externals would resolve to
+  nothing at runtime and the page would die on the first import. **React must be
+  inlined**, which is why the bundle is ~780 KB.
+- `--global-name=LifeSimBundle` — only exposes a global. It never mounts
+  anything, so the page would render an empty `<div id="root">`.
+- It also omitted `--jsx=automatic`. `life-sim.jsx` imports ONLY hooks and never
+  React itself, so the classic transform emits `React.createElement` against an
+  undefined `React`.
+
+There was also **no entry file in the repo at all** — `life-sim.jsx` exports
+`App` and nothing mounts it — so the bundle simply could not be rebuilt from
+source. `src-entry.jsx` now exists, reconstructed from the minified tail of the
+shipped build (`getElementById("root")` → `createRoot` → `.render(App)`),
+with React pinned to the 18.3.1 that the live bundle already contained.
 
 ```bash
-npx esbuild life-sim.jsx --bundle --format=iife --global-name=LifeSimBundle \
-  --external:react --external:react-dom --minify --outfile=life-sim.bundle.js
+./build.sh          # -> life-sim.bundle.js
+node test-deploy.js # MANDATORY: esbuild exiting 0 is not "it mounts"
 ```
-Wait — check the actual deployed `index.html`/`storage-polyfill.js` load order before assuming this command is exactly right; it wasn't re-derived this session, only the *output* of a prior run was verified. Push to `logostona/A-Life-v0.44` main branch; GitHub Pages serves it from there directly (confirmed: no separate build step in the repo, the committed bundle *is* what's served).
+
+`test-deploy.js` (37 assertions) is the only suite that tests the ARTIFACT
+rather than the source: it loads `storage-polyfill.js` and the bundle in
+`index.html`'s real order inside jsdom against a real `localStorage`, waits out
+React 18's concurrent first paint, and asserts a first-time visitor actually
+reaches the creation screen. It also string-probes the minified build for this
+round's content, because **symbol greps on a minified bundle always come back
+empty** — string literals are the only reliable probe (§4).
+
+**Pages serves the repo root from `main` with no CI step, so the committed
+bundle IS the live site.** Deploying = merging to `main`. Nothing rebuilds it
+for you, and nothing downstream will catch a bad bundle.
 
 ## 8. What "next" means right now
 
@@ -152,7 +194,23 @@ Wait — check the actual deployed `index.html`/`storage-polyfill.js` load order
 - **The `hreUpkeep` Act item is `cost: 0`**, matching the other 35 menu-openers rather than deviating; the brake on repeat use is `hreMaintenanceReady`'s cooldown and the money, not the clock. Consistent with the file, but it does mean maintenance is time-free like everything else — revisit if module 24 ever lands the cross-cutting fix.
 - **`hreUpkeepTick` is its own line in `advance()`, not folded into `hreOnTick`**, because `hreOnTick` returns early for a tenant in prison and a building does not stop rotting while its occupant is inside.
 
-**Next after this:** Phases 10–15 (event fabric, NPC housing, renovation, advanced tenure, content, polish) are not required for v1. The highest-value adjacent item remains **the missing voluntary-sale mechanism** — an owner can still only leave ownership via repossession or condemnation, so "move" in the spec's v1 sentence is the one clause still unmet.
+**Next after this:** Phases 10–15 (event fabric, NPC housing, renovation, advanced tenure, content, polish) are not required for v1.
+
+## 9. S11 — voluntary sale (shipped after Phase 9, not a numbered phase)
+
+The spec's v1 sentence ends "...lose, and **move**", and until this landed an owner could only stop owning involuntarily — repossession (S08c) or condemnation (S10). Ownership was a one-way door.
+
+**Why it is its own section rather than part of S08c:** a sale is where three subsystems meet and none of them owns it — S05 says what the market thinks it is worth, S10 says what condition has done to that number, S08c says how much the bank takes back first. Housing it inside any one of those would have made that one an authority over the other two.
+
+**What it makes real, retroactively:** Phase 9's decay was measurable but not yet *consequential* — a neglected house lost value on a screen. The sale is where that loss is finally charged, because the offers derive from `hreHomeValueNow()`, which already carries S10's condition ratio. `test-hre-s11.js` §4 pins it: two identical properties, one maintained and one let go, and the neglected one is worth materially less at the till.
+
+**Shape:** `hreSaleOffers` (three deterministic offer bands, gated on the S05 market's own momentum and the property's condition, redrawn each period so *waiting* is a real strategy but *reloading* is not) → `hreSaleSurveyAdjust` (the information asymmetry finally runs the other way: for all of S06/S07 the player could not see `technical`/`latent` defects, and now the buyer's surveyor finds them and knocks money off at the last moment) → `hreSellHome` (the single exit, mirroring `hreCloseTenancy`, so tenure/mortgage/dwelling cannot disagree).
+
+**Negative equity is modelled rather than avoided:** when the loan outruns the sale the shortfall becomes `education.debt` — the game's one existing "money you owe with nothing to show for it" mechanism — instead of being silently forgiven.
+
+**A sale always asks where you are going.** `hreSaleDestinationMenu` is a second screen on purpose: a sale that silently dumped the character somewhere would be the same decorative-state mistake the failure ladder was built to avoid.
+
+**Still open after this:** renovation (Phase 12) remains the one substantial housing system unbuilt, and `sellerFeePct` is the only `transaction` field in the S04 law table with a real reader — the rest of that table is still `provisional: true` at 20% country coverage (module 22's research debt, unchanged).
 
 <details>
 <summary>Original Phase 9 brief (superseded — kept for reference)</summary>
