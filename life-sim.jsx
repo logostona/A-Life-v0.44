@@ -259,19 +259,42 @@ function ageLabel(s) { const y = ageYears(s); const m = Math.floor((s.ageDays % 
 function yearOf(s) { return currentDate(s).getFullYear(); }
 function push(s, text, extra) { s.feed.push({ date: fmtDate(currentDate(s)), text, ...(extra || {}) }); }
 
-const sexTag = (s) => s.profile.sex === "Male" ? "M" : s.profile.sex === "Female" ? "F" : "I";
+/* How this person reads to other people: their own gender once they know it,
+   otherwise the sex they were assigned. Was keyed to profile.sex and returned
+   "I" for Intersex — a value nothing downstream tested for, so intersex
+   characters silently dropped out of same-sex detection and partner matching. */
+const sexTag = (s) => {
+  const lg = livedGender(s.profile.sex, s.discovered && s.discovered.gender ? s.hidden.gender : null, s.profile.assigned);
+  return lg === "Female" ? "F" : lg === "Male" ? "M" : "NB";
+};
 function isQueerO(s) { return s.hidden.orientation !== "Straight"; }
+/* LEGACY RECONCILIATION ONLY.
+   Saves written before the identity axes were separated rolled orientation
+   against BIRTH SEX, so a trans woman attracted to women was stored as
+   "Straight" and had to be flipped to "Lesbian" once her gender was known.
+   rollHiddenIdentity now labels orientation against the character's own
+   gender from the start, so a new life is already correct and flipping it
+   here would turn that same lesbian back into "Straight". newCharacter
+   therefore sets flags.orientSynced = true, and only old saves reach the
+   flip below — which is exactly who still needs it. */
 function syncOrientationToGender(s) {
   if (s.flags.orientSynced) return null;
   if (!s.discovered.gender || !s.discovered.orientation) return null;
   const g = s.hidden.gender;
-  if (g !== "Trans woman" && g !== "Trans man") { s.flags.orientSynced = true; return null; } // non-binary/genderfluid: no binary flip
+  // only a binary-crossing gender re-resolves a binary orientation label
+  if (!["Trans woman", "Trans man", "Demigirl", "Demiboy"].includes(g)) { s.flags.orientSynced = true; return null; }
+  const toFemale = g === "Trans woman" || g === "Demigirl";
   const o = s.hidden.orientation;
   let next = null;
-  if (g === "Trans woman") { if (o === "Straight") next = "Lesbian"; else if (o === "Gay") next = "Straight"; }
+  if (toFemale) { if (o === "Straight") next = "Lesbian"; else if (o === "Gay") next = "Straight"; }
   else { if (o === "Straight") next = "Gay"; else if (o === "Lesbian") next = "Straight"; }
   s.flags.orientSynced = true;
-  if (next && next !== o) { s.hidden.orientation = next; return next; }
+  if (next && next !== o) {
+    s.hidden.orientation = next;
+    // a mirrored romantic label has to travel with it or the two disagree
+    if (s.hidden.romantic && s.hidden.romantic === ROMANTIC_MIRROR[o]) s.hidden.romantic = ROMANTIC_MIRROR[next];
+    return next;
+  }
   return null;
 }
 function isQueerG(s) { return s.hidden.gender !== "Cisgender"; }
@@ -396,36 +419,167 @@ function makeReactionEvent(cfg) {
 
 /* ═══════════════ CHARACTER ═══════════════ */
 
-function genderOptionsFor(sex) {
-  const base = ["Cisgender", "Non-binary", "Genderfluid"];
-  if (sex === "Male") return ["Cisgender", "Trans woman", "Non-binary", "Genderfluid"];
-  if (sex === "Female") return ["Cisgender", "Trans man", "Non-binary", "Genderfluid"];
-  return ["Cisgender", "Trans woman", "Trans man", "Non-binary", "Genderfluid"];
+/* ── identity: five independent axes ──────────────────────────────────────
+   profile.sex        the body            Male / Female / Intersex (+ variation)
+   profile.assigned   what the delivery room wrote down
+   hidden.gender      who you are
+   hidden.expr        how you present     0 = masculine … 100 = feminine
+   hidden.orientation who you're sexually attracted to
+   hidden.romantic    who you're romantically attracted to
+
+   None is COMPUTED from another at runtime. Where one seeds another it is a
+   starting probability only, and the divergence is the point: a masculine-
+   presenting cis woman and a heteroromantic bisexual both have to be
+   playable, and before this they were not — expr was derived from gender,
+   and romantic attraction had no field at all.
+
+   `assigned` exists because sex assignment at birth is made on visible
+   anatomy, so it is the thing society reacts to and the thing "trans woman"
+   is defined relative to — while `sex` stays the biological fact. Splitting
+   them is also what stops Intersex from falling through every
+   `sex === "Female" ? … : …` ternary into the masculine branch by accident.
+
+   Deliberately NOT offered: Two-Spirit. The reference is explicit that it
+   belongs only to Indigenous people and that its meaning is inseparable from
+   specific tribal contexts. Putting it in a menu any character can pick from
+   is precisely the misuse it warns against, and a label that would have to be
+   used wrongly to be here is better left out. */
+
+const GENDER_ALL = ["Cisgender", "Trans woman", "Trans man", "Non-binary", "Genderfluid",
+                    "Agender", "Bigender", "Demigirl", "Demiboy", "Genderqueer", "Questioning"];
+const ORIENT_ALL = ["Straight", "Gay", "Lesbian", "Bisexual", "Pansexual",
+                    "Asexual", "Demisexual", "Gray-asexual", "Fluid", "Questioning"];
+const ROMANTIC_ALL = ["Heteroromantic", "Homoromantic", "Biromantic", "Panromantic",
+                      "Aromantic", "Demiromantic", "Grayromantic", "Questioning"];
+
+/* Intersex variations. `foundAt` is when the character themself learns, in
+   age-days — which is the whole reason these are interesting to play: the
+   reference notes some traits are visible at birth, some surface at puberty,
+   and some are only found incidentally decades later while investigating
+   something else entirely. */
+const DSD_VARIATIONS = {
+  cah:    { label: "Congenital adrenal hyperplasia", chrom: "XX", w: 26, assign: "Female", foundAt: 0,
+            repro: "Female", note: "Excess prenatal androgens; internal female reproductive organs present." },
+  cais:   { label: "Complete androgen insensitivity", chrom: "XY", w: 14, assign: "Female", foundAt: 5100,
+            repro: null,     note: "Female external anatomy, internal testes, no uterus. Often found when periods never start." },
+  ard5:   { label: "5-alpha reductase deficiency", chrom: "XY", w: 10, assign: "Female", foundAt: 4750,
+            repro: "Male",   note: "Underdeveloped male external genitalia at birth; more masculine features arrive at puberty." },
+  swyer:  { label: "Swyer syndrome", chrom: "XY", w: 8, assign: "Female", foundAt: 5300,
+            repro: "Female", note: "Gonads never became functioning testes. Puberty needs hormone treatment; pregnancy is possible with a donor egg." },
+  klf:    { label: "Klinefelter syndrome", chrom: "XXY", w: 22, assign: "Male", foundAt: 10200,
+            repro: null,     note: "An extra X. Often taller, lower testosterone, and commonly not identified until fertility is investigated." },
+  turner: { label: "Turner syndrome", chrom: "X0", w: 16, assign: "Female", foundAt: 2200,
+            repro: null,     note: "A single X. Short stature and ovarian insufficiency. Some clinicians class this as a DSD and some do not." },
+  ovo:    { label: "Ovotesticular DSD", chrom: "varies", w: 4, assign: "Female", foundAt: 900,
+            repro: "Female", note: "Both ovarian and testicular tissue. Rare, and chromosome patterns vary." },
+};
+function rollDsd() {
+  const bag = [];
+  for (const k in DSD_VARIATIONS) for (let i = 0; i < DSD_VARIATIONS[k].w; i++) bag.push(k);
+  return pick(bag);
 }
-function orientOptionsFor(sex) {
-  return ["Straight", sex === "Female" ? "Lesbian" : "Gay", "Bisexual", "Pansexual", "Asexual", "Fluid"];
+function dsdOf(s) { return s.profile && s.profile.dsd ? DSD_VARIATIONS[s.profile.dsd] : null; }
+/* What the world reacted to. Biology questions must keep using profile.sex. */
+function assignedSex(s) {
+  return (s.profile && s.profile.assigned) || (s.profile && s.profile.sex === "Female" ? "Female" : "Male");
 }
-function rollHiddenIdentity(sex, chosenO, chosenG) {
-  // a person assigned female at birth can't be a trans woman — silently re-roll incoherent picks
-  if (chosenG && !genderOptionsFor(sex).includes(chosenG)) chosenG = "random";
-  if (chosenO && !orientOptionsFor(sex).includes(chosenO) && chosenO !== "random") chosenO = "random";
-  if (chosenO && chosenO !== "random" && chosenG && chosenG !== "random") return { orientation: chosenO, gender: chosenG };
+
+function genderOptionsFor(sex, assigned) {
+  const a = assigned || (sex === "Intersex" ? "Female" : sex);
+  const rest = ["Non-binary", "Genderfluid", "Agender", "Bigender", "Genderqueer", "Questioning"];
+  if (a === "Male") return ["Cisgender", "Trans woman", "Demiboy", ...rest];
+  return ["Cisgender", "Trans man", "Demigirl", ...rest];
+}
+/* Orientation is relative to YOUR OWN gender, not to the sex on your birth
+   certificate — so a trans woman attracted to women is offered "Lesbian",
+   which is what she is, rather than "Gay", which is what the old
+   birth-sex-keyed version offered her. */
+function livedGender(sex, gender, assigned) {
+  const a = assigned || (sex === "Intersex" ? "Female" : sex);
+  if (gender === "Trans woman" || gender === "Demigirl") return "Female";
+  if (gender === "Trans man" || gender === "Demiboy") return "Male";
+  if (["Non-binary", "Genderfluid", "Agender", "Bigender", "Genderqueer", "Questioning"].includes(gender)) return "Nonbinary";
+  return a;
+}
+function orientOptionsFor(sex, gender, assigned) {
+  const lg = livedGender(sex, gender, assigned);
+  const same = lg === "Female" ? "Lesbian" : "Gay";
+  const base = lg === "Nonbinary"
+    ? ["Bisexual", "Pansexual", "Gay", "Lesbian", "Straight"]           // no coherent "same/opposite" to key off
+    : ["Straight", same, "Bisexual", "Pansexual"];
+  return [...base, "Asexual", "Demisexual", "Gray-asexual", "Fluid", "Questioning"];
+}
+function romanticOptionsFor() { return ROMANTIC_ALL.slice(); }
+
+/* Romantic attraction usually points the same way as sexual attraction; the
+   split attraction model exists for when it doesn't. Mirrored ~72% of the
+   time, and much less often for ace-spectrum characters — which is the
+   population the model came from in the first place. */
+const ROMANTIC_MIRROR = { Straight: "Heteroromantic", Gay: "Homoromantic", Lesbian: "Homoromantic",
+                          Bisexual: "Biromantic", Pansexual: "Panromantic", Fluid: "Biromantic",
+                          Demisexual: "Demiromantic", "Gray-asexual": "Grayromantic",
+                          Asexual: "Aromantic", Questioning: "Questioning" };
+function rollRomantic(orientation) {
+  const mirrored = ROMANTIC_MIRROR[orientation] || "Biromantic";
+  const ace = orientation === "Asexual" || orientation === "Demisexual" || orientation === "Gray-asexual";
+  if (Math.random() * 100 < (ace ? 42 : 72)) return mirrored;
+  const bag = ROMANTIC_ALL.filter((r) => r !== mirrored && r !== "Questioning");
+  return pick(bag);
+}
+
+/* Where presentation SETTLES if nothing pushes it. Seeded from gender, then
+   allowed to drift — the drift is what makes expression a real axis rather
+   than a second name for gender identity. */
+function exprSeedFor(sex, gender, assigned) {
+  const lg = livedGender(sex, gender, assigned);
+  if (gender === "Agender") return 50;
+  if (lg === "Nonbinary") return 50;
+  return lg === "Female" ? 82 : 18;
+}
+function rollExpr(sex, gender, assigned) {
+  const base = exprSeedFor(sex, gender, assigned);
   const r = Math.random() * 100;
-  let orientation;
-  if (r < 35) orientation = "Straight";
-  else if (r < 60) orientation = sex === "Female" ? "Lesbian" : "Gay";
-  else if (r < 80) orientation = "Bisexual";
-  else if (r < 88) orientation = "Pansexual";
-  else if (r < 95) orientation = "Asexual";
-  else orientation = "Fluid";
+  const drift = r < 60 ? rnd(-8, 8) : r < 88 ? rnd(-20, 20) : rnd(-42, 42);
+  return clamp(base + drift);
+}
+
+function rollHiddenIdentity(sex, chosenO, chosenG, chosenR, chosenE, assigned) {
+  const real = (v) => v && v !== "random";
+  // a person assigned female at birth can't be a trans woman — silently re-roll incoherent picks
+  if (real(chosenG) && !genderOptionsFor(sex, assigned).includes(chosenG)) chosenG = "random";
   const g = Math.random() * 100;
   let gender;
-  if (g < 60) gender = "Cisgender";
-  else if (g < 80) gender = sex === "Male" ? "Trans woman" : "Trans man";
-  else if (g < 95) gender = "Non-binary";
-  else gender = "Genderfluid";
-  return { orientation: chosenO && chosenO !== "random" ? chosenO : orientation, gender: chosenG && chosenG !== "random" ? chosenG : gender };
+  if (g < 58) gender = "Cisgender";
+  else if (g < 71) gender = assignedSexOf(sex, assigned) === "Male" ? "Trans woman" : "Trans man";
+  else if (g < 83) gender = "Non-binary";
+  else if (g < 88) gender = "Genderfluid";
+  else if (g < 92) gender = "Agender";
+  else if (g < 95) gender = "Genderqueer";
+  else if (g < 98) gender = assignedSexOf(sex, assigned) === "Male" ? "Demiboy" : "Demigirl";
+  else gender = "Bigender";
+  gender = real(chosenG) ? chosenG : gender;
+
+  // orientation labels depend on the gender we just settled, so validate after
+  if (real(chosenO) && !orientOptionsFor(sex, gender, assigned).includes(chosenO)) chosenO = "random";
+  const lg = livedGender(sex, gender, assigned);
+  const r = Math.random() * 100;
+  let orientation;
+  if (r < 33) orientation = "Straight";
+  else if (r < 55) orientation = lg === "Female" ? "Lesbian" : "Gay";
+  else if (r < 72) orientation = "Bisexual";
+  else if (r < 80) orientation = "Pansexual";
+  else if (r < 87) orientation = "Asexual";
+  else if (r < 92) orientation = "Demisexual";
+  else if (r < 96) orientation = "Gray-asexual";
+  else orientation = "Fluid";
+  orientation = real(chosenO) ? chosenO : orientation;
+
+  if (real(chosenR) && !ROMANTIC_ALL.includes(chosenR)) chosenR = "random";
+  const romantic = real(chosenR) ? chosenR : rollRomantic(orientation);
+  const expr = real(chosenE) ? clamp(+chosenE) : rollExpr(sex, gender, assigned);
+  return { orientation, gender, romantic, expr };
 }
+function assignedSexOf(sex, assigned) { return assigned || (sex === "Intersex" ? "Female" : sex); }
 
 function makePerson(name, role, opts = {}) {
   return {
@@ -452,13 +606,30 @@ function makeParents(birthYear, country) {
 }
 function parentAge(s, key) { const p = s.family[key]; return (p?.ageAtBirth ?? 28) + ageYears(s); }
 
+/* Who turns up as a dating candidate follows ROMANTIC attraction, falling back
+   to the sexual axis only when the romantic one gives no direction (aromantic,
+   questioning, or an old save that predates the field). This is the split
+   attraction model actually doing something: a heteroromantic asexual still
+   meets people, and meets a different set than a homoromantic one would. */
 function candidateGender(s) {
-  const me = sexTag(s), o = s.hidden.orientation;
-  if (o === "Straight") return me === "M" ? "F" : "M";
-  if (o === "Gay") return "M";
-  if (o === "Lesbian") return "F";
-  if (o === "Pansexual" || o === "Fluid") return pick(["M", "F", "NB"]);
-  return pick(["M", "F"]); // Bi, Ace
+  const me = sexTag(s);
+  const dirFrom = (label) => {
+    switch (label) {
+      case "Heteroromantic": case "Straight":
+        return me === "M" ? "F" : me === "F" ? "M" : pick(["M", "F"]);
+      case "Homoromantic":
+        return me === "NB" ? "NB" : me;
+      case "Gay": return "M";
+      case "Lesbian": return "F";
+      case "Panromantic": case "Pansexual": case "Fluid":
+        return pick(["M", "F", "NB"]);
+      case "Biromantic": case "Bisexual": case "Demiromantic": case "Grayromantic":
+      case "Demisexual": case "Gray-asexual":
+        return pick(["M", "F"]);
+      default: return null;   // Aromantic / Asexual / Questioning: no direction
+    }
+  };
+  return dirFrom(s.hidden.romantic) ?? dirFrom(s.hidden.orientation) ?? pick(["M", "F"]);
 }
 function candidateName(s, g) {
   const pool = nameList(s.profile.country, g === "M" ? "m" : g === "F" ? "f" : "n");
@@ -470,7 +641,15 @@ function candidateName(s, g) {
 }
 
 function newCharacter(form) {
-  const hidden = rollHiddenIdentity(form.sex, form.orient, form.gid);
+  /* Intersex needs a variation and a birth assignment before identity rolls,
+     because `assigned` is what gender labels and presentation are relative to.
+     Without it every Intersex character fell through the `sex === "Female"`
+     ternaries in presStart/presTarget into the masculine branch by accident. */
+  const dsd = form.sex === "Intersex" ? (form.dsd && form.dsd !== "random" ? form.dsd : rollDsd()) : null;
+  const assigned = form.sex === "Intersex"
+    ? (form.assigned && form.assigned !== "random" ? form.assigned : DSD_VARIATIONS[dsd].assign)
+    : form.sex;
+  const hidden = rollHiddenIdentity(form.sex, form.orient, form.gid, form.romantic, form.expr, assigned);
   const clsHealth = { Poor: rnd(45, 70), Working: rnd(55, 80), Middle: rnd(60, 88), Wealthy: rnd(70, 95) }[form.cls];
   const sm = form.stSmarts != null ? +form.stSmarts : rnd(30, 90);
   const subj = {};
@@ -484,9 +663,14 @@ function newCharacter(form) {
        "undefined180". Deriving it here makes the field impossible to omit;
        Creation still passes it explicitly and that value wins, since `form` is
        spread last. */
-    profile: { curSym: (COUNTRIES[form.country] || {}).cur, ...form, usedName: form.first },
+    profile: { curSym: (COUNTRIES[form.country] || {}).cur, ...form, usedName: form.first, dsd, assigned },
     hidden,
-    discovered: { gender: false, orientation: false },
+    /* "Already knows" starts the character self-aware instead of retiring the
+       discovery mechanic — the events still fire, they just land as
+       confirmation rather than revelation. */
+    discovered: form.knowsSelf
+      ? { gender: true, orientation: true, romantic: true }
+      : { gender: false, orientation: false, romantic: false },
     outTo: {},
     stats: {
       health: form.stHealth != null ? +form.stHealth : clsHealth,
@@ -504,6 +688,10 @@ function newCharacter(form) {
     birth: { y: form.birthYear, m: rnd(1, 12), d: rnd(1, 28) },
     ageDays: 0, feed: [], pending: null, timeStep: 7,
     flags: {
+      /* Already labelled against this character's own gender — see
+         syncOrientationToGender. Only pre-split saves need the flip. */
+      orientSynced: true,
+      ...(form.knowsSelf ? { knowsSelf: true } : {}),
       ...(form.discOAt && form.discOAt !== "random" ? { discOAt: +form.discOAt } : {}),
       ...(form.discGAt && form.discGAt !== "random" ? { discGAt: +form.discGAt } : {}),
       fam_newSibRoll: Math.random() < 0.5,
@@ -533,6 +721,32 @@ function migrate(s) {
   if (s.stx.caught == null) s.stx.caught = 0;
   if (s.stx.complaints == null) s.stx.complaints = 0;
   if (!s.outTo || typeof s.outTo !== "object" || Array.isArray(s.outTo)) s.outTo = {};
+  /* Identity axes added after the split. A save from before this carries a
+     gender and a sexual orientation and nothing else, so the new axes are
+     backfilled from what is already true of that character rather than
+     re-rolled — re-rolling would silently rewrite who someone's existing
+     character is, which is the one thing a migration must never do.
+     flags.orientSynced is deliberately left alone: an old save's orientation
+     really was keyed to birth sex and still needs its one-time flip. */
+  if (s.profile && s.profile.assigned === undefined) {
+    s.profile.assigned = s.profile.sex === "Intersex" ? "Female" : s.profile.sex;
+  }
+  if (s.profile && s.profile.dsd === undefined) {
+    s.profile.dsd = s.profile.sex === "Intersex" ? rollDsd() : null;
+  }
+  if (s.hidden) {
+    if (!s.hidden.romantic) s.hidden.romantic = rollRomantic(s.hidden.orientation);
+    if (s.hidden.expr == null) {
+      // keep whatever presentation they have actually drifted to, if any
+      s.hidden.expr = s.emergent && s.emergent.pres != null
+        ? clamp(s.emergent.pres)
+        : exprSeedFor(s.profile.sex, s.hidden.gender, s.profile.assigned);
+    }
+  }
+  if (s.discovered && s.discovered.romantic === undefined) {
+    // they already knew their orientation, so the romantic half isn't a surprise
+    s.discovered.romantic = !!s.discovered.orientation;
+  }
   stxRepairOut(s);
   if (!s.friends) s.friends = {};
   if (!s.children) s.children = {};
@@ -746,6 +960,23 @@ const ORIENT_DISCOVERY_TEXT = {
   Pansexual: `You figure out your compass doesn't point at a gender at all. It points at people.`,
   Asexual: `While everyone else combusts over crushes, you realize you're... not. Not broken — just wired for a different kind of closeness.`,
   Fluid: `You stop trying to pin the needle down. Some seasons it moves. That's not confusion, you realize — that's just its shape.`,
+  /* Every label the roller can produce needs a line here: discoverO renders
+     ORIENT_DISCOVERY_TEXT[o] straight into the feed, so a missing key prints
+     a literal "undefined" at the most important beat in the character's life. */
+  Demisexual: `You work out the pattern eventually: strangers do nothing for you, however objectively gorgeous. It's the ones you've known long enough to trust that you start wanting. The order runs backwards from everyone else's, and it runs fine.`,
+  "Gray-asexual": `It's not never. It's rarely, faintly, and only under conditions you couldn't reproduce on purpose. There's a word for the middle of the map, and living there is allowed.`,
+  Questioning: `You try on every word you've found and none of them close properly. Not knowing yet turns out to be a place you're permitted to stand, for as long as you need to.`,
+};
+
+const ROMANTIC_DISCOVERY_TEXT = {
+  Heteroromantic: `Whoever you want to fall asleep beside, it's someone of another gender. That part, at least, is simple.`,
+  Homoromantic: `The daydream isn't about sex at all — it's a shared kitchen, a shared name on the post. And in it, they're the same gender as you.`,
+  Biromantic: `The falling-in-love part of you doesn't check gender on the way in. It never has.`,
+  Panromantic: `Who you fall for has never once been about what they are. It's about who.`,
+  Aromantic: `Everyone talks about falling like it's gravity. You've never felt the pull — and you notice you don't miss it. Your people are your people; the romance frame was just never the right one.`,
+  Demiromantic: `You can't fall for someone you don't already know deeply. Not won't — can't. Once the trust is there, it can happen, and when it does it's total.`,
+  Grayromantic: `Romantic feeling shows up occasionally, faintly, and then wanders off again. You stop scheduling your life around whether it'll visit.`,
+  Questioning: `The romantic half of the question stays open. You've decided that's allowed to be a resting state, not a waiting room.`,
 };
 
 const MILESTONES = [
@@ -813,6 +1044,46 @@ const MILESTONES = [
     const lines = [`💡 ${ORIENT_DISCOVERY_TEXT[o]}${o !== "Straight" ? " (You can now come out to people — your pace, your order, or never. It's in the People tab.)" : ""}`];
     if (flip) lines.push(`🏳️‍🌈 Paired with what you already know about your gender, it lands as: ${o.toLowerCase()}. The label finally matches the person.`);
     return { auto: lines, fx: { emergent: { selfAwareness: +8 } } };
+  } },
+  /* The romantic axis lands separately from the sexual one, and later — which
+     is the point of modelling it at all. For a character whose two orientations
+     mirror each other this is a one-line confirmation; for a varioriented one
+     it's the beat where the mismatch they've been feeling finally has a name. */
+  { id: "discoverR", at: 6100, run: (s) => {
+    s.discovered.romantic = true;
+    const r = s.hidden.romantic, o = s.hidden.orientation;
+    const mirrored = ROMANTIC_MIRROR[o] === r;
+    const lines = [`💗 ${ROMANTIC_DISCOVERY_TEXT[r]}`];
+    if (!mirrored) {
+      lines.push(`🧭 So the two halves don't point the same way: ${r.toLowerCase()}, and ${o.toLowerCase()}. That combination has a name too — cross-oriented — and knowing it is a lot less lonely than not.`);
+    }
+    return { auto: lines, fx: { emergent: { selfAwareness: mirrored ? +4 : +9 } } };
+  } },
+  /* Intersex discovery fires at the age the specific variation would actually
+     surface — birth for CAH, puberty for CAIS and 5-ARD, and for Klinefelter
+     not until fertility gets investigated in your late twenties. `at` has to be
+     a constant for the timeline, so the gate is in cond and the real timing
+     lives in DSD_VARIATIONS.foundAt. */
+  { id: "discoverDSD", at: 0, cond: (s) => { const d = dsdOf(s); return !!d && !s.profile.dsdKnown && s.ageDays >= d.foundAt; }, run: (s) => {
+    const d = dsdOf(s);
+    s.profile.dsdKnown = true;
+    const y = yearOf(s);
+    const care = y < 1990
+      ? "The doctors talk over you rather than to you, and the word they keep using is 'correct'."
+      : y < 2010
+      ? "You get a diagnosis, a pamphlet, and very little say. There are forums, though, if you know where to look."
+      : "Your doctor actually asks what you want to know first. There are people online who've lived this whole life already, and they're generous with it.";
+    if (d.foundAt === 0) {
+      return { auto: [`🧬 You were born with ${d.label.toLowerCase()} — ${d.chrom} chromosomes. ${d.note} It was known before you had words for it, so it's less a discovery than a fact you grew up inside. ${care}`],
+               fx: { emergent: { selfAwareness: +5 } } };
+    }
+    return { event: { emoji: "🧬", title: "The test results", text:
+      `${d.foundAt > 9000 ? "You went in about something else entirely — why nothing's happening, after all this trying." : "Something about how your body is or isn't changing sent you to a specialist."} The answer is ${d.label.toLowerCase()}: ${d.chrom} chromosomes. ${d.note} ${care}`,
+      options: [
+        { label: "Read everything. Find the others.", fx: { emergent: { selfAwareness: +10, courage: +5 }, flags: { dsdCommunity: true }, feed: `🧬 You read until it stopped being frightening and started being just information. Somewhere in a forum, someone described your exact childhood back to you.` } },
+        { label: "File it away. It changes nothing.", fx: { emergent: { selfAwareness: +3 }, feed: `🧬 You put the folder in a drawer. You are the same person you were before you had the word for it — which is, in fact, true.` } },
+        { label: "It reframes everything you'd wondered about", fx: { emergent: { selfAwareness: +8 }, stats: { happiness: y < 1995 ? -4 : +2 }, feed: `🧬 A dozen small confusions from your life rearranged themselves into a single shape with a name. ${y < 1995 ? "Nobody around you had language for it, and the silence was its own weight." : "Having the name helped more than you expected."}` } },
+      ] } };
   } },
   { id: "discoverG", at: 5850, cond: (s) => isQueerG(s), run: (s) => {
     const g = s.hidden.gender;
@@ -971,7 +1242,11 @@ const POOL = [
   /* ——— ROMANCE ——— */
   { id: "meet", i: 1, w: 3, minAge: 15, maxAge: 75, cd: 520, cond: (s) => s.discovered.orientation && activePartners(s).length < 3, run: (s) => {
     const g = candidateGender(s); const name = candidateName(s, g); const y = yearOf(s); const age = ageYears(s);
-    const ace = s.hidden.orientation === "Asexual";
+    const ace = ["Asexual", "Demisexual", "Gray-asexual"].includes(s.hidden.orientation);
+    /* Aromantic characters still meet people who matter enormously — the
+       reference is explicit that they form deep committed partnerships, just
+       not romantic ones. So the meeting happens; what it can BECOME differs. */
+    const aro = s.discovered.romantic && ["Aromantic", "Grayromantic"].includes(s.hidden.romantic);
     const venue = age < 18 ? pick(["in study hall", "through your oldest friend's chaotic friend circle", "at the record store", "in the library, reaching for the same book"]) :
       y < 1995 ? pick(["at a friend's party", "at work", "at the laundromat, of all places", isOutQueer(s) && eraAcceptance(y) < 50 ? "at a bar you had to know someone to find" : "at a neighborhood bar"]) :
       y < 2013 ? pick(["in an internet chatroom that got surprisingly sincere", "through a dating site with terrible photos", "at a friend's barbecue"]) :
@@ -984,8 +1259,12 @@ const POOL = [
       `${name}. Met ${venue}. You've already told two people about them, which you noticed while telling the second one.`,
       `You met ${name} ${venue}. Nothing dramatic happened. You just kept finding reasons to stay in the conversation.`,
     ]);
-    return { event: { emoji: "💘", title: pick(["Someone new", "A person appears", "Unexpected", "Worth noticing"]), text: spark, options: [
-      { label: "Pursue it", fx: { addRomance: { name, g }, stats: { happiness: +4 }, feed: `💘 You and ${name} are seeing each other. The days got a little brighter and a little more terrifying.` } },
+    return { event: { emoji: aro ? "🤝" : "💘", title: aro ? pick(["Someone who fits", "An unexpected person"]) : pick(["Someone new", "A person appears", "Unexpected", "Worth noticing"]), text: spark, options: [
+      ...(aro ? [
+        { label: "Build something — not romance, but real", fx: { addRomance: { name, g }, stats: { happiness: +5 }, run: (st) => { const e = Object.entries(st.romance).find(([, q]) => q.name === name); if (e) e[1].qpr = true; }, emergent: { selfAwareness: +4 }, feed: `🤝 You and ${name} built the thing that doesn't have a tidy word — closer than friends, not romance, and nobody's second choice. Queerplatonic, if you want the term for it.` } },
+      ] : [
+        { label: "Pursue it", fx: { addRomance: { name, g }, stats: { happiness: +4 }, feed: `💘 You and ${name} are seeing each other. The days got a little brighter and a little more terrifying.` } },
+      ]),
       { label: "Friends is enough", fx: { stats: { happiness: +1 }, run: (st) => { const key = "f" + (st.flags.fSeq = (st.flags.fSeq || 0) + 1); st.friends[key] = makePerson(name, "Friend", { rel: 55 }); }, feed: `You kept ${name} as a friend. Good friends are also rare.` } },
       { label: "Not right now", fx: { feed: `You let the moment pass. It waved politely on its way out.` } },
     ] } }; } },
@@ -4689,8 +4968,12 @@ function hreLendingBar(s, law) {
 
   /* A woman borrowing alone was routinely refused or required a male
      guarantor well into the 1970s in most of these countries. */
-  const female = s.profile.sex === "Female" ||
-    (s.hidden && s.hidden.gender === "Woman");
+  /* Was `s.hidden.gender === "Woman"` — a value the gender vocabulary never
+     produces (it emits "Cisgender" / "Trans woman" / …), so the clause was
+     dead and a trans woman borrowing alone in 1972 was never refused. */
+  const female = s.hidden
+    ? livedGender(s.profile.sex, s.hidden.gender, s.profile.assigned) === "Female"
+    : s.profile.sex === "Female";
   if (female && !joint && e.femaleSoleBorrower === false) return HRE_LOAN_REFUSAL.ineligible;
 
   /* A same-sex couple applying jointly, where joint lending to them was not
@@ -7491,10 +7774,8 @@ POOL.push(...TRANS_POOL);
 /* ═══════════════ INTIMACY · WEDDING · CHILDREN ═══════════════ */
 
 function canConceive(s, p) {
-  const meF = s.profile.sex === "Female", meM = s.profile.sex === "Male";
-  const themF = p.g === "F", themM = p.g === "M";
-  const bio = (meF && themM) || (meM && themF);
-  if (!bio) return false;
+  // one biology test, shared with canConceiveBio, so the two can't drift apart
+  if (!canConceiveBio(s, p)) return false;
   if (typeof isSterile === "function" && isSterile(s)) return false;
   return true;
 }
@@ -7965,7 +8246,15 @@ const STREET_POOL = [
         is lodging. The legacy flag stays FALSE here on purpose — writing movedOut
         would re-assert the error to any reader that has not inverted. */
         hreSetTenure(st, "lodging", null); st.flags.homeless = null; st.money += 40; st.stats.happiness = clamp(st.stats.happiness + 9); push(st, "🛏 A hostel bed for a fortnight and a name to ask for at a warehouse. It isn't stability. It's the first step-shaped thing you've seen in months."); } } },
-    { label: "Swallow it and go home", cond: (st) => st.family.mom.rel > 20 || st.family.dad.rel > 20, fx: { run: (st) => { st.flags.homeless = null; st.stats.happiness = clamp(st.stats.happiness - 4); st.stats.health = clamp(st.stats.health + 6); push(st, "🏠 You went back. Nothing was said about why you left, which is its own kind of sentence. You have a bed and a curfew and a silence at dinner. It's warm, at least."); } } },
+    { label: "Swallow it and go home", cond: (st) => st.family.mom.rel > 20 || st.family.dad.rel > 20, fx: { run: (st) => {
+        /* This route cleared the legacy flag but never told HRE, so the two
+           authorities disagreed for the rest of the life: hreLegacyTenure said
+           "withParents" while s.hre.tenure was still "homeless", and hreTenure
+           prefers the HRE value. Its two sibling options here both transfer
+           authority; this one was the odd one out. Same shape as the S10
+           upkeep bug — an exit route that forgot to tell the owning system. */
+        hreSetTenure(st, "withParents", null);
+        st.flags.homeless = null; st.stats.happiness = clamp(st.stats.happiness - 4); st.stats.health = clamp(st.stats.health + 6); push(st, "🏠 You went back. Nothing was said about why you left, which is its own kind of sentence. You have a bed and a curfew and a silence at dinner. It's warm, at least."); } } },
   ] } }) },
 ];
 POOL.push(...STREET_POOL);
@@ -7990,7 +8279,7 @@ function resolveAskOut(st, key, mod, how) {
   // do they want the same thing? unknown until you ask — that's the whole risk
   const theirO = p.likesYou !== undefined ? p.likesYou : (p.likesYou = Math.random() < 0.45);
   const era = localAcceptance(st);
-  const same = (p.g === "F" && st.profile.sex === "Female") || (p.g === "M" && st.profile.sex === "Male");
+  const same = (p.g === "F" && assignedSex(st) === "Female") || (p.g === "M" && assignedSex(st) === "Male");
   let odds = (p.rel - 40) / 90 + (theirO ? 0.35 : -0.3) + mod;
   if (same) odds -= (100 - era) / 260;
   if (Math.random() < odds) {
@@ -8852,11 +9141,11 @@ function pickSchoolType(s) {
   add(faithy ? "catholic" : "faith", faithy ? (cls === "Wealthy" ? 5 : 4) : 1);
   if (cls === "Middle" || cls === "Wealthy") add("privateDay", cls === "Wealthy" ? 5 : 2);
   if (cls === "Wealthy") { add("prep", 5); add("boarding", 3); }
-  if (faithy || cls === "Wealthy") { add(s.profile.sex === "Female" ? "allGirls" : "allBoys", 2); }
+  if (faithy || cls === "Wealthy") { add(assignedSex(s) === "Female" ? "allGirls" : "allBoys", 2); }
   if (y >= 1985 && Math.random() < 0.04) add("homeschool", 1);
   let t = pick(bag);
   const cfg = SCHOOL_TYPES[t];
-  if (cfg.single && cfg.single !== (s.profile.sex === "Female" ? "F" : "M")) t = "privateDay";
+  if (cfg.single && cfg.single !== (assignedSex(s) === "Female" ? "F" : "M")) t = "privateDay";
   return t;
 }
 
@@ -9187,7 +9476,7 @@ const SCHOOL_POOL = [
   ] } }) },
   { id: "schoolCrushEra", i: 1, w: 3, minAge: 13, maxAge: 18, cd: 800, cond: (s) => inSchool(s) && Object.keys(s.school?.classmates || {}).length > 0 && isQueerO(s) && s.discovered.orientation, run: (s) => {
     const cms = Object.entries(s.school.classmates);
-    const same = cms.filter(([, c]) => (c.g === "F" && s.profile.sex === "Female") || (c.g === "M" && s.profile.sex === "Male"));
+    const same = cms.filter(([, c]) => (c.g === "F" && assignedSex(s) === "Female") || (c.g === "M" && assignedSex(s) === "Male"));
     if (!same.length) return { auto: [] };
     const [k, c] = pick(same);
     return { event: { emoji: "💭", title: `About ${c.name}`, text: `You've been careful not to look for too long. ${c.name} is the ${c.clique}, and thinking about them is the best and worst part of most days.`, options: [
@@ -9208,7 +9497,7 @@ const LATER_FAMILY_POOL = [
   // a new full sibling, while the parents are still together and you're young enough for it to be plausible
   { id: "newSibNews", i: 1, w: 2, minAge: 2, maxAge: 11, cd: 3000, once: true,
     cond: (s) => s.flags.fam_newSibRoll && !s.flags.parentsDivorced && !s.family.mom.deceased && !s.family.dad.deceased && sibCount(s) < 4 && !s.flags.sibDue,
-    run: (s) => ({ event: { emoji: "🤰", title: "News at dinner", text: `${s.family.mom.name} and ${s.family.dad.name} sit you down with the particular seriousness of parents about to say something big: you're going to be a big ${s.profile.sex === "Female" ? "sister" : "brother"}.`, options: [
+    run: (s) => ({ event: { emoji: "🤰", title: "News at dinner", text: `${s.family.mom.name} and ${s.family.dad.name} sit you down with the particular seriousness of parents about to say something big: you're going to be a big ${assignedSex(s) === "Female" ? "sister" : "brother"}.`, options: [
       { label: "Be thrilled", fx: { run: (st) => { st.flags.sibDue = st.ageDays + 240; st.stats.happiness = clamp(st.stats.happiness + 8); push(st, "🤰 You asked forty questions in a row, mostly about whether the baby could talk yet. It cannot. This did not dampen your enthusiasm."); } } },
       { label: "Worry about being replaced", fx: { run: (st) => { st.flags.sibDue = st.ageDays + 240; st.stats.happiness = clamp(st.stats.happiness - 4); st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 3); push(st, "🤰 Nobody said you'd be replaced. You worried about it anyway, quietly, for weeks."); } } },
       { label: "Shrug and go back to what you were doing", fx: { run: (st) => { st.flags.sibDue = st.ageDays + 240; push(st, "🤰 You said 'okay' and returned to what you were doing. It hadn't landed yet. It would."); } } },
@@ -9283,14 +9572,26 @@ function addStepsibs(st) {
 /* ═══════════════ PRESENTATION · DYSPHORIA ═══════════════ */
 
 // where you sit on the presentation axis: 0 = fully masculine, 100 = fully feminine
+/* Expression is its own axis now. This used to COMPUTE the target from gender
+   identity, which quietly made whole kinds of person unplayable — a butch cis
+   woman, a feminine cis man, a trans man who presents androgynously — because
+   the game insisted your presentation was a function of your identity. The
+   target is read from hidden.expr, seeded from gender at birth and free to sit
+   anywhere; the old derivation survives only as the fallback for a state that
+   somehow has no expr. */
 function presTarget(s) {
-  const g = s.hidden.gender;
-  if (g === "Trans woman") return 88;
-  if (g === "Trans man") return 12;
-  if (g === "Non-binary" || g === "Genderfluid") return 50;
-  return s.profile.sex === "Female" ? 82 : 18;
+  if (s.hidden && s.hidden.expr != null) return s.hidden.expr;
+  return exprSeedFor(s.profile.sex, s.hidden.gender, s.profile.assigned);
 }
-function presStart(s) { return s.profile.sex === "Female" ? 78 : 22; }
+/* Where you START is how you were raised, which follows the sex you were
+   ASSIGNED — not the sex you are and not the gender you'll turn out to be.
+   Using profile.sex here sent every Intersex character into the masculine
+   branch of the ternary regardless of how they were actually brought up. */
+function presStart(s) { return assignedSex(s) === "Female" ? 78 : 22; }
+function exprLabel(v) {
+  return v < 20 ? "very masculine" : v < 40 ? "masculine-leaning" : v <= 60 ? "androgynous"
+       : v <= 80 ? "feminine-leaning" : "very feminine";
+}
 function presently(s) { return s.emergent.pres ?? presStart(s); }
 
 // how far your presentation is from where you need it to be
@@ -10217,7 +10518,7 @@ ACT_GROUPS.push(HRE_GROUP);
 function visibleLean(s) {
   const b = s.body || {};
   let v = presently(s) - presStart(s);          // baseline drift
-  const fem = s.profile.sex !== "Male";
+  const fem = assignedSex(s) !== "Male";   // what onlookers expected of you
   const nailsPainted = b.nails && !["clear", "neat"].includes(b.nails);
   if (nailsPainted) v += fem ? 0 : 16;          // painted nails on a male body reads loudly
   if (b.hairLean) v += b.hairLean * 0.7;
@@ -10227,7 +10528,8 @@ function visibleLean(s) {
 // 0-100: how visibly gender-nonconforming you currently are
 function nonconformity(s) {
   const v = visibleLean(s);
-  const wrongWay = s.profile.sex === "Male" ? v > 0 : v < 0;
+  // measured against what people EXPECTED of you, which is your birth assignment
+  const wrongWay = assignedSex(s) === "Male" ? v > 0 : v < 0;
   return wrongWay ? Math.min(100, Math.round(Math.abs(v) * 1.6)) : 0;
 }
 
@@ -11276,6 +11578,9 @@ function orientationFit(s, p) {
 function isSterile(s) {
   if (s.flags.srg_gcs) return true;                       // gender-affirming surgery
   if (s.flags.sterilised) return true;
+  // some intersex variations carry infertility; it's a fact of the body, not a choice
+  const d = dsdOf(s);
+  if (d && !d.repro) return true;
   if (s.flags.hrt) {
     const yrs = (s.ageDays - s.flags.hrt) / 365;
     return yrs >= 2;                                      // prolonged HRT: treated as infertile here
@@ -11285,16 +11590,36 @@ function isSterile(s) {
 function fertilityNote(s, p) {
   if (s.flags.srg_gcs) return "Surgery closed that door, and you knew that when you chose it.";
   if (s.flags.sterilised) return "That isn't possible for you any more.";
+  const d = dsdOf(s);
+  if (d && !d.repro) {
+    return s.profile.dsdKnown
+      ? `${d.label} means this was never going to be the way. You've had time to know that, which is not the same as being at peace with it.`
+      : "Something isn't happening that should be, and neither of you can say why yet.";
+  }
+  if (d && s.profile.dsd === "swyer" && s.profile.dsdKnown) {
+    return "Not with your own eggs — but with a donor egg, your body can carry a pregnancy. The long way round, and a real one.";
+  }
   if (s.flags.hrt && (s.ageDays - s.flags.hrt) / 365 >= 2) return "Years on hormones. Whatever chance there was is behind you now — a thing you weighed, and chose, and still feel on certain days.";
   if (s.flags.hrt) return "You're early enough on hormones that it might still be possible — briefly, and not for much longer.";
   if (!canConceiveBio(s, p)) return "Not between the two of you, biologically.";
   return null;
 }
 // pure biology check, without the sterility overlay
+/* Which gamete role this body can actually play, or null for none. Reading
+   profile.sex directly made every Intersex character biologically unable to
+   conceive with anyone, because "Intersex" matched neither branch of the
+   old (meF && themM) || (meM && themF) test — silently wrong for CAH,
+   5-ARD and ovotesticular characters, whose fertility is typically intact. */
+function reproRole(s) {
+  const d = dsdOf(s);
+  if (d) return d.repro;
+  return s.profile.sex === "Female" ? "Female" : s.profile.sex === "Male" ? "Male" : null;
+}
 function canConceiveBio(s, p) {
-  const meF = s.profile.sex === "Female", meM = s.profile.sex === "Male";
+  const role = reproRole(s);
+  if (!role) return false;
   const themF = p.g === "F", themM = p.g === "M";
-  return (meF && themM) || (meM && themF);
+  return (role === "Female" && themM) || (role === "Male" && themF);
 }
 
 /* — moving cities has consequences — */
@@ -13396,18 +13721,66 @@ function Creation({ onStart }) {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {["Poor", "Working", "Middle", "Wealthy"].map((x) => <button key={x} className="btn" style={chip(form.cls === x)} onClick={() => set("cls", x)}>{x}</button>)}
       </div>
-      <label style={labelStyle}>Sexual orientation</label>
-      <select style={inputStyle} value={form.orient || "random"} onChange={(e) => set("orient", e.target.value)}>
-        <option value="random">🎲 Let life decide</option>
-        {orientOptionsFor(form.sex).map((x) => <option key={x} value={x}>{x}</option>)}
-      </select>
+      {form.sex === "Intersex" && (<>
+        <label style={labelStyle}>Variation</label>
+        <select style={inputStyle} value={form.dsd || "random"} onChange={(e) => set("dsd", e.target.value)}>
+          <option value="random">🎲 Let life decide</option>
+          {Object.entries(DSD_VARIATIONS).map(([k, v]) => <option key={k} value={k}>{v.label} ({v.chrom})</option>)}
+        </select>
+        <label style={labelStyle}>Raised as</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {["random", "Female", "Male"].map((x) => (
+            <button key={x} className="btn" style={chip((form.assigned || "random") === x)} onClick={() => set("assigned", x)}>
+              {x === "random" ? "🎲 Let life decide" : x}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, opacity: 0.6 }}>
+          Sex assignment at birth is made on visible anatomy, so it's what the world around you reacts to — separate from the variation itself, and separate from who you turn out to be.
+        </div>
+      </>)}
       <label style={labelStyle}>Gender identity</label>
       <select style={inputStyle} value={form.gid || "random"} onChange={(e) => set("gid", e.target.value)}>
         <option value="random">🎲 Let life decide</option>
-        {genderOptionsFor(form.sex).map((x) => <option key={x} value={x}>{x}</option>)}
+        {genderOptionsFor(form.sex, form.assigned === "random" ? null : form.assigned).map((x) => <option key={x} value={x}>{x}</option>)}
       </select>
+      <label style={labelStyle}>Sexual orientation</label>
+      <select style={inputStyle} value={form.orient || "random"} onChange={(e) => set("orient", e.target.value)}>
+        <option value="random">🎲 Let life decide</option>
+        {/* keyed to the gender chosen just above, so a trans woman who likes
+            women is offered "Lesbian" — the birth-sex-keyed version offered
+            her "Gay" and then silently relabelled it years later */}
+        {orientOptionsFor(form.sex, form.gid === "random" ? null : form.gid, form.assigned === "random" ? null : form.assigned).map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+      <label style={labelStyle}>Romantic orientation</label>
+      <select style={inputStyle} value={form.romantic || "random"} onChange={(e) => set("romantic", e.target.value)}>
+        <option value="random">🎲 Let life decide</option>
+        {romanticOptionsFor().map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+      <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.5, opacity: 0.6 }}>
+        Who you fall in love with doesn't have to match who you're attracted to. Leave it on 🎲 and it usually will — sometimes it won't.
+      </div>
+      <label style={labelStyle}>Gender expression</label>
+      <select style={inputStyle} value={form.expr ?? "random"} onChange={(e) => set("expr", e.target.value)}>
+        <option value="random">🎲 Let life decide</option>
+        <option value="10">Very masculine</option>
+        <option value="30">Masculine-leaning</option>
+        <option value="50">Androgynous</option>
+        <option value="70">Feminine-leaning</option>
+        <option value="90">Very feminine</option>
+      </select>
+      <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.5, opacity: 0.6 }}>
+        How you present, independent of who you are — a butch cis woman and a femme cis man are both entirely ordinary people.
+      </div>
       <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: CARD, border: `1px solid ${TH.line}`, fontSize: 12.5, lineHeight: 1.5, opacity: 0.75 }}>
         🔒 Whatever you choose stays hidden — your character still discovers who they are through living, the way everyone does. "Let life decide" rolls it secretly.
+      </div>
+      <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+        <input type="checkbox" checked={!!form.knowsSelf} onChange={(e) => set("knowsSelf", e.target.checked)} />
+        <span>My character already knows who they are</span>
+      </label>
+      <div style={{ fontSize: 12, lineHeight: 1.5, opacity: 0.6 }}>
+        Skips the not-knowing. The discovery scenes still happen — they just land as confirmation instead of revelation.
       </div>
       <button className="btn" onClick={() => setAdv(!adv)} style={{ marginTop: 20, width: "100%", padding: 11, borderRadius: 11, border: `1px dashed ${accent}77`, background: "transparent", color: accent, fontSize: 13.5, cursor: "pointer" }}>
         {adv ? "▾ Hide advanced setup" : "▸ Advanced: starting stats & self-discovery"}
@@ -14138,8 +14511,11 @@ function Game({ state, setState, onReset }) {
         )}
         {showProfile && (
           <div className="rise" style={{ padding: "4px 0 8px", fontSize: 13, lineHeight: 1.7 }}>
+            <div>Sex: {state.profile.sex}{dsdOf(state) && state.profile.dsdKnown ? ` · ${dsdOf(state).label} (${dsdOf(state).chrom})` : ""}</div>
             <div>Gender identity: {state.discovered.gender ? state.hidden.gender : "❓ not yet discovered"}</div>
-            <div>Orientation: {state.discovered.orientation ? state.hidden.orientation : "❓ not yet discovered"}</div>
+            <div>Sexual orientation: {state.discovered.orientation ? state.hidden.orientation : "❓ not yet discovered"}</div>
+            <div>Romantic orientation: {state.discovered.romantic ? state.hidden.romantic : "❓ not yet discovered"}</div>
+            <div>Expression: {exprLabel(presently(state))}{Math.abs(presently(state) - presTarget(state)) > 18 ? " · not where you want it" : ""}</div>
             {inSchool(state) && <div>School: {state.education.stage} · GPA {gpa}{state.education.extra ? ` · ${state.education.extra}` : ""}</div>}
             {state.education.college && <div>College: {state.education.college.major} ({COLLEGE_TIERS[state.education.college.tier].name}) · GPA {state.education.college.gpa}</div>}
             {state.education.degree && <div>Degree: {state.education.degree}</div>}
