@@ -1,6 +1,6 @@
 # EDU — Phase 0 Exit
 ### Evidence gathered against the real `life-sim.jsx` · companion to `EDU-ARCHITECTURE.md` and `EDU-ROADMAP.md`
-### Status: **Phase 0 complete. Phases 1–7 shipped. Only P8 (post-secondary, adult, research overlay, inversion) remains.**
+### Status: **COMPLETE. Phases 0–8 shipped, including the call-site inversion.**
 
 `EDU-ARCHITECTURE.md` states plainly that it was written without access to the source:
 
@@ -514,7 +514,59 @@ sections landed in.
 
 ---
 
-## 9 · Sequencing note for Phase 8
+## 8h · What Phase 8 shipped — post-secondary, adult education, and THE INVERSION
+
+The last phase, and the only non-additive one.
+
+**S08 — the ladder above secondary school.** Legacy had exactly one post-secondary idea
+("college"), so a character could earn a bachelor's and then nothing: no master's, no doctorate,
+no vocational qualification. `EDU_STAGES` has had those rungs since P1 and nothing could reach
+them. Eight tracks now exist, gated on credentials rather than age, completing **on schedule**
+— the rule that made graduation reliable.
+
+**S10 — education is not something that only happens to the young.** Re-entry is gated on a
+missing credential, never a birthday: a 61-year-old who never finished can go back. Prison
+education routes through module 12's own `inPrison` predicate rather than a second one.
+
+**S11 — the overlay ships inert, and that is deliberate.** OQ-6 is still unanswered, and unlike
+OQ-7 the blocker is not a defect I could measure — it is that the overlay needs a job to attach
+to, and module 09 owns whether `s.career.job` can carry one. Writing an EDU-side employer,
+salary and promotion ladder to avoid waiting **would be** the duplication architecture §8.2
+exists to prevent, and far more expensive to unpick than boarding was. S11 ships the training
+half only; the suite asserts it declares no salary, no employer, and never writes `s.career`.
+
+The ask for module 09: *does `s.career.job` accept an `eduOverlay` key naming a training track,
+so EDU can advance progress against it without owning employment?*
+
+### The inversion
+
+`s.edu.stage` is now the truth; legacy is its projection. All **nine** legacy writers were
+converted to `eduSetStage`, and `inSchool()` — 31 callers — now asks the canonical model.
+
+The projection is **deliberately lossy**. EDU has 16 rungs and legacy has 6, so a character
+reading for a master's is `"college"` to legacy and cannot be recovered from it. Asking otherwise
+would be asking a narrower vocabulary to remember a word it never had. That forced the gate to
+split in two:
+
+- `eduStageAgreesWithLegacy` — the P3–P7 gate, now scoped to the stages legacy can round-trip.
+- `eduProjectionIsConsistent` — the post-inversion invariant: legacy always matches what the
+  projection says it should be. This is what catches a writer bypassing `eduSetStage`.
+
+Mutation-checked: removing the projection from `eduSetStage`, and mis-mapping one postgraduate
+rung, each fail exactly the assertions written for them (7 failures across the two).
+
+**Two suites' helpers were stale, not broken.** `test-edu-s07` and `test-edu-s12` built
+characters by setting `education.stage` directly — which no longer drives EDU, because that is
+precisely what inversion means. Both now use `eduSetStage`, as every real writer does. Worth
+noting the failure mode: `test-edu-s07` *crashed* rather than failing cleanly, because
+crystallisation returned null for a stage no archetype serves.
+
+**`test-edu-s08.js` — 78 assertions, all green.** Every prior suite is green too, which was the
+phase's stated exit criterion.
+
+---
+
+## 9 · Sequencing note — what remains
 
 **P7 (S07, school life) is next**, and it is where `makeReactionEvent` finally gets production callers. Two things carried forward:
 

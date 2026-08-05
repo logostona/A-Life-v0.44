@@ -325,7 +325,7 @@ sec("6 · state budget");
 }
 
 /* ───────────────────────── 7 · still additive ───────────────────────── */
-sec("7 · additivity");
+sec("7 · inversion");
 
 {
   H.seed(99);
@@ -333,9 +333,16 @@ sec("7 · additivity");
   ok("no crash driving a life with s.edu present", !!a);
   ok("legacy education state still drives everything",
     a.education && typeof a.education.stage === "string");
-  ok("s.edu never became authoritative", M.eduStage(a) === M.eduLegacyStage(a));
-  ok("nothing wrote a stage through the sole writer during play",
-    a.edu.record.length === 0, a.edu.record.length);
+  /* POST-INVERSION (P8). These two assertions were correct for P3-P7, when EDU
+     was additive and passive. Inversion is the documented flip: s.edu.stage is
+     now the truth and legacy is its projection, and the milestones write
+     through eduSetStage rather than to legacy directly. The replacements
+     assert the stronger post-inversion invariants. */
+  ok("s.edu is authoritative", a.edu && !!M.EDU_STAGES[a.edu.stage] && M.eduStage(a) === a.edu.stage);
+  ok("the legacy projection stays consistent with it", M.eduProjectionIsConsistent(a),
+    [a.edu.stage, a.education.stage]);
+  ok("progression now goes through the sole writer",
+    a.edu.record.length > 0, a.edu.record.length);
 }
 
 /* ───────────────────────── 8 · invariants ───────────────────────── */
