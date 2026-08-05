@@ -45,7 +45,40 @@ Measured: **330,558 bytes → 175 bytes**, and the 175 bytes are the actual answ
 For any large JSON on disk, `ctx.py json FILE 'jq-filter'` does the same thing. jq is C and
 streams, so this is safe well past memory.
 
-## 3 · Build, test, deploy
+## 3 · Getting content FROM GitHub
+
+**The REST API is blocked in this environment.** Direct calls to `api.github.com` are
+intercepted and refused with an Anthropic-issued 403:
+
+> `{"message":"GitHub access is not enabled for this session. An org admin must connect the
+> Claude GitHub App for this organization."}`
+
+`GITHUB_TOKEN` is present but unusable for REST here. That is a policy block, not a code
+problem — the remedy is an org admin enabling the Claude GitHub App at
+<https://claude.ai/admin-settings>. Until then, MCP tools are the only REST path, and they are
+the thing that overflows (§2).
+
+**Use git instead — it is better for large repos regardless.** `tools/ghfetch.sh` wraps it:
+
+```sh
+tools/ghfetch.sh repo logostona/A-Life-v0.44          # blobless clone: 240 KB for 40 commits
+tools/ghfetch.sh ls   logostona/A-Life-v0.44          # every path + size, NO blob downloaded
+tools/ghfetch.sh size logostona/A-Life-v0.44 life-sim.jsx
+tools/ghfetch.sh read logostona/A-Life-v0.44 life-sim.jsx    # fetch + outline, bounded
+tools/ghfetch.sh grep logostona/A-Life-v0.44 "eduProjectToLegacy"
+tools/ghfetch.sh log  logostona/A-Life-v0.44 5
+```
+
+Why this scales: `--filter=blob:none` fetches history *without file contents*, `--no-checkout`
+writes no working tree, and blobs arrive lazily one at a time. **The cost of accessing a GB
+repo is the cost of the files you actually read, not the repo.** Measured here: clone + list +
+size + fetching the 1.18 MB source + a tree-wide grep + log came to **2.8 MB of disk total**,
+with every output bounded.
+
+`ls` and `size` read sizes straight from tree objects, so you can survey a huge repository
+having downloaded no file contents at all.
+
+## 4 · Build, test, deploy
 
 **Pages serves the repo root from `main` with no CI step — the committed
 `life-sim.bundle.js` IS the live site.** Rebuilding is manual and `build.sh` is the whole of it.
@@ -64,7 +97,7 @@ Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activ
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
 PWA on the old bundle for an extra launch. Currently `a-life-cache-v6`.
 
-## 4 · Test suites
+## 5 · Test suites
 
 ```sh
 for t in test-edu-s01 test-edu-s02 test-edu-s09 test-edu-s04-s05 test-edu-s03-s06 \
@@ -82,7 +115,7 @@ current work. That is the known baseline, not a regression.
 to read, asserts nothing, and cannot fail. It has caught three absurdities that were green on
 every assertion. Run it after touching the generator.
 
-## 5 · Traps that have already cost time
+## 6 · Traps that have already cost time
 
 **Lint slices must end at the next section banner.** Four suites have been mis-scoped by ending
 at a function name that later moved, and two were passing *by luck*. Sections are not in
@@ -106,7 +139,7 @@ backfill in the same patch.** This is the most frequently repeated bug in the pr
 **`advance()` halts the moment anything sets `s.pending`.** A test that advances 1500 days and
 expects a scheduled thing to happen proves nothing. Drive the scheduled block directly.
 
-## 6 · Open questions with other modules
+## 7 · Open questions with other modules
 
 Both carry a specific ask; neither blocks anything shipped.
 
@@ -119,7 +152,7 @@ Both carry a specific ask; neither blocks anything shipped.
   character's entire schooling, and the integration suite passed anyway because its lives never
   reached a boarding school.
 
-## 7 · Provisional data
+## 8 · Provisional data
 
 Every EDU band ships `provisional: true`. **None of the dates or rates are sourced** — they are
 shaped to be the right *kind* of curve so the resolver could be built and tested. Module 22

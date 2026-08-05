@@ -21,3 +21,6 @@ life-sim.jsx.bak*
 node_modules/
 package-lock.json
 hre-s11.js
+
+# ghfetch.sh's blobless clone cache — regenerable, never committed
+.ghfetch/
