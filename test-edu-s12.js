@@ -31,7 +31,10 @@ function schooled(country, birthYear, opts) {
   const o = opts || {};
   const c = H.mkChar({ country, birthYear, cls: o.cls || "Middle" });
   c.ageDays = o.ageDays != null ? o.ageDays : 5000;
-  c.education.stage = o.stage || "high";
+  /* POST-INVERSION: setting education.stage directly no longer drives EDU —
+     that is what inversion means. Every real writer goes through eduSetStage,
+     so the helper must too, or it builds a character the engine could not. */
+  M.eduSetStage(c, o.rung || (o.stage === "primary" ? "primary" : "upperSec"));
   c.school = { stage: o.stage || "high", name: "Test School", skips: 1, trouble: 0 };
   M.eduOnTick(c);
   return c;
@@ -258,7 +261,9 @@ sec("6 · every character can open every menu");
   ok("a life survives having its menus opened every step", r.crashes === 0, r.crashes);
   ok("...and still ages", M.ageYears(r.state) > 5, M.ageYears(r.state));
   ok("...with no dead ends", r.deadEnds === 0, r.deadEnds);
-  ok("...and the P3 gate still holds", M.eduStageAgreesWithLegacy(r.state));
+    /* POST-INVERSION the meaningful gate is projection consistency: legacy is
+     derived from canonical, not the other way round. */
+  ok("...and the inversion gate still holds", M.eduProjectionIsConsistent(r.state));
 }
 
 /* ───────────── 7 · invariants ───────────── */

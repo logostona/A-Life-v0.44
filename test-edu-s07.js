@@ -30,7 +30,10 @@ function enrolled(country, birthYear, opts) {
   const o = opts || {};
   const c = H.mkChar({ country, birthYear, cls: o.cls || "Middle" });
   c.ageDays = o.ageDays != null ? o.ageDays : 4200;
-  c.education.stage = o.stage || "middle";
+  /* POST-INVERSION: setting education.stage directly no longer drives EDU —
+     that is what inversion means. Every real writer goes through eduSetStage,
+     so the helper must too, or it builds a character the engine could not. */
+  M.eduSetStage(c, o.rung || "lowerSec");
   c.school = { stage: o.stage || "middle", name: o.name || "Test School",
                skips: 0, trouble: 0, classmates: {}, faculty: {} };
   M.eduOnTick(c);

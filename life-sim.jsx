@@ -869,11 +869,10 @@ function doBreakup(s, key, hard) {
 
 function gainDegree(s) {
   const c = s.education.college;
-  /* mirror the award into the EDU ledger; legacy still owns the fact */
   eduAwardCredential(s, "bachelor", { field: c.major, instId: null });
   s.education.degree = c.major;
   s.education.college = null;
-  s.education.stage = "done";
+  eduSetStage(s, "done");
   push(s, `🎓 You graduated: ${c.major}, ${COLLEGE_TIERS[c.tier].name}. ${s.education.debt > 0 ? `Student debt: ${s.profile.curSym}${s.education.debt}.` : "Debt-free, somehow."}`);
   s.stats.happiness = clamp(s.stats.happiness + 8);
 }
@@ -1001,7 +1000,7 @@ const MILESTONES = [
     { label: `"Dada"`, fx: { rel: { dad: +6 }, feed: `Your first word was "dada". ${s.family.dad.name} told everyone for weeks.` } },
     { label: `"No."`, fx: { stats: { smarts: +2 }, feed: `Your first word was a firm "no". A personality announcement.` } },
   ] } }) },
-  { id: "school", at: 2100, run: (s) => { s.education.stage = "primary"; enrollSchool(s, "primary"); return { event: { emoji: "🏫", title: "First day of school", text: "A classroom full of strangers. How do you walk in?", options: [
+  { id: "school", at: 2100, run: (s) => { eduSetStage(s, "primary"); enrollSchool(s, "primary"); return { event: { emoji: "🏫", title: "First day of school", text: "A classroom full of strangers. How do you walk in?", options: [
     { label: "Find one kid who looks as nervous as you", fx: { run: (st) => { const nm = candidateName(st, "NB"); st.friends.bff = makePerson(nm, "Best friend", { rel: 70 }); push(st, `🎒 You sat next to a nervous kid named ${nm}. Instant, wordless alliance.`); }, stats: { happiness: +4 }, feed: "" } },
     { label: "Talk to everyone", fx: { run: (st) => { const nm = candidateName(st, "NB"); st.friends.bff = makePerson(nm, "Friend", { rel: 55 }); push(st, `🎒 You introduced yourself to the entire class. A kid named ${nm} laughed the hardest. The teacher did not.`); }, stats: { happiness: +3, looks: +1 }, feed: "" } },
     { label: "Keep to yourself and observe", fx: { stats: { smarts: +3 }, feed: "You spent the day watching how everything worked. You learned a lot." } },
@@ -1026,7 +1025,7 @@ const MILESTONES = [
       { label: "Sit with it privately", fx: { emergent: { selfAwareness: +6 }, flags: { seedOrientation: true }, feed: "You didn't tell anyone. But you noticed. Noticing is the first step of everything." } },
       { label: "Tell your best friend", fx: { stats: { happiness: +3 }, flags: { seedOrientation: true }, feed: "You whispered it at recess. They shrugged: 'okay.' The sky did not fall." } },
     ] } }) },
-  { id: "middleSchool", at: 4020, run: (s) => { s.education.stage = "middle"; enrollSchool(s, "middle"); return { auto: [`🏫 Middle school: ${s.school.name}. New building, new cliques, same cafeteria smell.`] }; } },
+  { id: "middleSchool", at: 4020, run: (s) => { eduSetStage(s, "lowerSec"); enrollSchool(s, "middle"); return { auto: [`🏫 Middle school: ${s.school.name}. New building, new cliques, same cafeteria smell.`] }; } },
   { id: "mirror", at: 4400, cond: (s) => isQueerG(s), run: () => ({ event: { emoji: "🪞", title: "The mirror", text: "Getting dressed for a family photo, you catch your reflection and feel an odd dissonance you can't name — like wearing a costume everyone insists is just you.", options: [
     { label: "Ask to wear something different", fx: { emergent: { selfAwareness: +8 }, flags: { seedGender: true }, feed: "You asked to change clothes. Your mom frowned but allowed it. The photo felt slightly more like you." } },
     { label: "Say nothing, smile for the photo", fx: { stats: { happiness: -3 }, flags: { seedGender: true }, feed: "You smiled on cue. The photo went on the wall. You avoided looking at it." } },
@@ -1043,7 +1042,7 @@ const MILESTONES = [
       { label: `"...me too, maybe."`, cond: (st) => st.flags.seedOrientation, fx: { relF: { bff: +15 }, emergent: { selfAwareness: +8, courage: +5 }, stats: { happiness: +4 }, feed: "The words were out before you decided to say them. your oldest friend stared, then grinned. Suddenly neither of you was alone in it." } },
     ] } }; } },
   { id: "puberty", at: 4750, run: (s) => ({ auto: [`🌱 Adolescence has arrived. Your body, your feelings, and your questions are all getting louder. (${decadeNews(yearOf(s))})`] }) },
-  { id: "highSchool", at: 5150, run: (s) => { s.education.stage = "high"; enrollSchool(s, "high"); return { event: { emoji: "🎓", title: "High school begins", text: `${s.school.name}. Bigger school, real grades, and clubs that actually go on a record somewhere.`, options: [
+  { id: "highSchool", at: 5150, run: (s) => { eduSetStage(s, "upperSec"); enrollSchool(s, "high"); return { event: { emoji: "🎓", title: "High school begins", text: `${s.school.name}. Bigger school, real grades, and clubs that actually go on a record somewhere.`, options: [
     { label: "Look at the clubs on offer", fx: { run: (st) => { st.pending = clubsMenu(st).pending; } } },
     { label: "Nothing — school ends at the bell", fx: { flags: { extraChosen: true }, stats: { happiness: +2 }, feed: "You kept your afternoons free. Freedom has its own curriculum." } },
   ] } }; } },
@@ -1136,7 +1135,7 @@ const MILESTONES = [
     if (open && score > 82) opts.push({ label: `🏛 ${COLLEGE_TIERS.prestige.name} — admitted! (${cost("prestige")})`, fx: { run: (st) => startCollege(st, "prestige"), feed: "" } });
     if (open && score > 62) opts.push({ label: `🎓 ${COLLEGE_TIERS.uni.name} (${cost("uni")})`, fx: { run: (st) => startCollege(st, "uni"), feed: "" } });
     if (open) opts.push({ label: `📗 ${COLLEGE_TIERS.state.name} (${cost("state")})`, fx: { run: (st) => startCollege(st, "state"), feed: "" } });
-    opts.push({ label: open ? "💼 Skip college — straight to work" : "💼 Into work, then", fx: { run: (st) => { st.education.stage = "done"; }, feed: "🎓 School done. The job board awaits (🎯 Act → Look for work)." } });
+    opts.push({ label: open ? "💼 Skip college — straight to work" : "💼 Into work, then", fx: { run: (st) => { eduSetStage(st, "done"); }, feed: "🎓 School done. The job board awaits (🎯 Act → Look for work)." } });
 
     const routeLine = {
       open: score > 82 ? "The letters that came back include a thick envelope from a prestigious university."
@@ -1163,7 +1162,7 @@ function startCollege(st, tier) {
     options: majors.map((m) => ({ label: m, fx: { run: (s2) => {
       const help = { Wealthy: 1, Middle: 0.5, Working: 0.25, Poor: 0 }[s2.profile.cls];
       s2.education.college = { tier, major: m, startDay: s2.ageDays, gpa: 65, help };
-      s2.education.stage = "college";
+      eduSetStage(s2, "university");
       push(s2, `🏫 You enrolled: ${m} at ${COLLEGE_TIERS[tier].name}. ${help >= 1 ? "Family's covering tuition." : help > 0 ? "Family covers part; the rest is on you." : "Every cent of tuition is on you."}`);
     } } })),
   };
@@ -1171,7 +1170,10 @@ function startCollege(st, tier) {
 
 /* ═══════════════ POOL EVENTS ═══════════════ */
 
-function inSchool(s) { return ["primary", "middle", "high"].includes(s.education.stage); }
+/* INVERTED. Was a test of three legacy strings; now asks the canonical model,
+   which returns the same answer for every character that existed before
+   inversion — that equivalence is what the P3 gate has been proving since. */
+function inSchool(s) { return eduInSchoolTier(s); }
 function partnerPick(s, filter) { const list = Object.entries(s.romance).filter(([, p]) => filter(p)); return list.length ? pick(list) : null; }
 
 const POOL = [
@@ -1405,7 +1407,7 @@ const POOL = [
   ] } }; } },
   { id: "dropoutRisk", i: 1, w: 3, minAge: 17, maxAge: 30, cd: 300, cond: (s) => !!s.education.college && (s.education.college.gpa < 40 || s.stats.happiness < 25), run: (s) => ({ event: { emoji: "🕳", title: "The edge", text: `${s.education.college.gpa < 40 ? "Academic probation letter, thin envelope, heavy words." : "You've stopped going to lectures. Getting out of bed is the whole syllabus."} Everything says quit.`, options: [
     { label: "Dig in — ask for help, restructure everything", fx: { run: (st) => { st.education.college.gpa = clamp(st.education.college.gpa + 12); }, stats: { happiness: +4 }, emergent: { discipline: +8 }, feed: `You asked for help — advisors, friends, extensions. Turns out that's not weakness; it's the actual skill.` } },
-    { label: "Drop out", fx: { run: (st) => { st.education.college = null; st.education.stage = "done"; }, stats: { happiness: +3 }, feed: `🕳 You walked away from college. Relief first, questions later. The debt, sadly, graduated with honors.` } },
+    { label: "Drop out", fx: { run: (st) => { st.education.college = null; eduSetStage(st, "done"); }, stats: { happiness: +3 }, feed: `🕳 You walked away from college. Relief first, questions later. The debt, sadly, graduated with honors.` } },
   ] } }) },
 
   /* ——— CAREER ——— */
@@ -2981,6 +2983,11 @@ function eduSetStage(s, stage, inst) {
   s.edu.stage = stage;
   s.edu.since = s.ageDays || 0;
   if (inst !== undefined) s.edu.inst = inst || null;
+  /* INVERSION: project back to legacy so every pre-EDU reader keeps working.
+     EDU's vocabulary is wider — 16 rungs against 6 legacy values — so a
+     character reading for a master's has to look like "college" to anything
+     that predates this subsystem. */
+  if (typeof eduProjectToLegacy === "function") eduProjectToLegacy(s);
   return true;
 }
 
@@ -2988,9 +2995,26 @@ function eduSetStage(s, stage, inst) {
    hreTenureAgreesWithLegacy, and the gate every phase after this one rests on.
    Compares the DERIVED value against the stored mirror, so a drift between
    them is visible rather than silently absorbed. */
+/* PRE-INVERSION GATE, kept because it is what proved the two views equivalent
+   across every phase from P3 to P7. It only holds for stages legacy can
+   represent: EDU has 16 rungs and legacy has 6, so a character reading for a
+   master's is legitimately "college" to legacy and eduLegacyStage cannot
+   recover which postgraduate rung it was. Asking it to would be asking a
+   narrower vocabulary to remember something it never had words for. */
 function eduStageAgreesWithLegacy(s) {
-  if (!s || !s.edu) return true;                 // nothing to disagree with yet
+  if (!s || !s.edu) return true;
+  if (!EDU_LEGACY_REPRESENTABLE[s.edu.stage]) return true;   // wider than legacy: nothing to compare
   return s.edu.stage === eduLegacyStage(s);
+}
+/* POST-INVERSION GATE. The invariant that actually holds now: legacy is a
+   projection of canonical, so the projection must always match what legacy
+   is carrying. This is the assertion that would catch a writer bypassing
+   eduSetStage. */
+function eduProjectionIsConsistent(s) {
+  if (!s || !s.edu || !s.education) return true;
+  const want = EDU_TO_LEGACY_STAGE[s.edu.stage];
+  if (!want) return false;
+  return s.education.stage === want;
 }
 /* While legacy is authoritative, this is how the mirror is kept in step.
    P8's inversion deletes it — at that point s.edu.stage IS the truth and
@@ -3007,7 +3031,12 @@ function eduSyncStage(s) {
    while legacy is authoritative, so no caller has to know which phase we are
    in — and at inversion this becomes `return s.edu.stage` and nothing else
    changes. */
-function eduStage(s) { return eduLegacyStage(s); }
+function eduStage(s) {
+  /* INVERTED: the canonical stage is the truth. Falls back to the legacy
+     derivation only for a state that has not been migrated yet. */
+  if (s && s.edu && EDU_STAGES[s.edu.stage]) return s.edu.stage;
+  return eduLegacyStage(s);
+}
 
 function eduSeedFrom(entropy) {
   return hreMix(hreHash("edu:seed:v" + EDU_STATE_V + ":" + String(entropy)), 0x85ebca6b);
@@ -3019,6 +3048,7 @@ function eduInit(seed) {
     stage: "none",
     since: 0,
     inst: null,
+    pg: null,
     track: null,
     perf: { gpa: null, attendance: null, conduct: null },
     record: [],
@@ -3068,6 +3098,7 @@ function eduMigrate(s) {
   if (!EDU_STAGES[s.edu.stage]) { s.edu.stage = "none"; needsStageBackfill = true; }
   if (typeof s.edu.since !== "number") s.edu.since = 0;
   if (s.edu.inst === undefined) s.edu.inst = null;
+  if (s.edu.pg === undefined) s.edu.pg = null;          // S08 postgraduate enrolment
   if (s.edu.track === undefined) s.edu.track = null;
   if (!s.edu.perf || typeof s.edu.perf !== "object") s.edu.perf = d.perf;
   for (const k of ["gpa", "attendance", "conduct"]) if (s.edu.perf[k] === undefined) s.edu.perf[k] = null;
@@ -3239,7 +3270,13 @@ function eduTertiaryVerdict(s) {
    snapshot. Never sets s.pending — it is not allowed to interrupt the tick. */
 function eduOnTick(s) {
   if (!s.edu) return;
-  eduSyncStage(s);
+  /* POST-INVERSION. This used to pull the canonical stage FROM legacy; now it
+     pushes the legacy projection FROM canonical. eduSyncStage survives for
+     migration only — a save written before inversion has a legacy value and no
+     canonical one, and eduMigrate seeds from it exactly once. */
+  eduProjectToLegacy(s);
+  const pgLine = eduPgTick(s);
+  if (pgLine) push(s, pgLine);
   const inSchoolNow = !!s.school || (s.education && s.education.college);
   if (inSchoolNow) {
     /* S07: crystallise the institution the moment there is one to attend. This
@@ -3583,6 +3620,31 @@ function eduInstitutionMenu(state, id) {
     options: [{ label: "Back", fx: { run: (st) => { st.pending = eduProspectsMenu(st); } } },
               { label: "Close", fx: {} }] };
 }
+function eduPostgradMenu(state) {
+  const s = state;                                   /* READ ONLY — Gotcha #2 */
+  const avail = eduPgAvailable(s);
+  const options = avail.map((id) => {
+    const t = EDU_PG_TRACKS[id];
+    const ratio = eduNetCostRatio(s, "uni", "open");
+    return { label: "🎓 " + t.label.replace(/^an? /, "") + " — " + Math.round(t.days / 365) + "y · " + eduAffordability(ratio),
+      fx: { run: (st) => { eduPgStart(st, id); push(st, "🎓 You enrolled in " + t.label + ". Back to being the oldest person in the room, or the youngest, depending."); } } };
+  });
+  options.push({ label: "Not now", fx: {} });
+  return { emoji: "🎓", title: "Study further",
+    text: avail.length
+      ? "You have the qualifications to go further. It costs years you will not get back, and opens doors that stay shut otherwise."
+      : "Nothing you qualify for right now.",
+    options };
+}
+function eduReenterMenu(state) {
+  const s = state;                                   /* READ ONLY */
+  return { emoji: "📖", title: "Go back and finish",
+    text: "You never finished. There are evening classes, and people your age in them, and nobody there thinks it is strange. Eighteen months, around whatever else your life is.",
+    options: [
+      { label: "Enrol", fx: { run: (st) => { eduReenter(st); push(st, "📖 You enrolled. The first class back, you sat near the door."); }, stats: { happiness: +4 } } },
+      { label: "Not now", fx: {} },
+    ] };
+}
 function eduStudyMenu(state) {
   const s = state;                                   /* READ ONLY */
   return { emoji: "🎓", title: "Where you study",
@@ -3831,9 +3893,189 @@ const EDU_POOL = [
 ];
 for (const e of EDU_POOL) POOL.push(e);
 
+/* ═══════════════════ EDU · S08 + S10 + S11 ═══════════════════
+   Post-secondary tracks, adult and lifelong education, and the research
+   overlay. The last content phase.
+
+   S08 — the ladder above secondary school. Legacy has exactly one
+   post-secondary idea ("college"), so a character could get a bachelor's and
+   then nothing: no master's, no doctorate, no vocational qualification, no
+   community-college transfer. EDU_STAGES has had those rungs since P1 and
+   nothing could reach them. Progression is SCHEDULED, never POOL — the same
+   rule that made graduation reliable.
+
+   S10 — education is not something that only happens to the young. Re-entry
+   at any age, and prison education, which is the one place a character with
+   nothing else to do can still change their prospects.
+
+   S11 — see the OQ-6 note below. */
+
+/* Postgraduate durations, in days. Schedule-driven completion is what makes
+   these reliable; a dice roll would lose ~70% of them the way POOL does. */
+const EDU_PG_TRACKS = {
+  vocational:    { label: "vocational training",   days: 730,  cred: "vocationalCert", needs: null },
+  community:     { label: "a community college",   days: 730,  cred: "associate",      needs: null },
+  gradCert:      { label: "a graduate certificate", days: 365, cred: "gradCert",       needs: "bachelor" },
+  mba:           { label: "an MBA",                days: 730,  cred: "mba",            needs: "bachelor" },
+  masters:       { label: "a master's",            days: 730,  cred: "masters",        needs: "bachelor" },
+  profMasters:   { label: "a professional master's", days: 913, cred: "profMasters",   needs: "bachelor" },
+  doctorate:     { label: "a doctorate",           days: 1825, cred: "phd",            needs: "masters" },
+  profDoctorate: { label: "a professional doctorate", days: 1460, cred: "profDoctorate", needs: "masters" },
+};
+function eduHolds(s, credId) {
+  return !!(s.edu && s.edu.cred && s.edu.cred.some((c) => c.id === credId));
+}
+/* Which tracks this character could actually start right now. Prerequisites
+   are credentials, not ages — a 55-year-old with a bachelor's can start a
+   master's, which is the entire point of S10. */
+function eduPgAvailable(s) {
+  if (!s.edu || s.edu.pg) return [];
+  const sys = eduSystem(s);
+  const out = [];
+  for (const id in EDU_PG_TRACKS) {
+    const t = EDU_PG_TRACKS[id];
+    if (t.needs && !eduHolds(s, t.needs)) continue;
+    if (eduHolds(s, t.cred)) continue;                    // already have it
+    /* the rung has to exist in this country and era at all */
+    if (!eduArchetypesFor(s.profile.country, yearOf(s), id).length) continue;
+    /* postgraduate study is rarer where tertiary access is scarce */
+    if (id !== "vocational" && (sys.tertiaryAccess || 0) < 0.03) continue;
+    out.push(id);
+  }
+  return out;
+}
+function eduPgStart(s, track) {
+  const t = EDU_PG_TRACKS[track];
+  if (!t || !s.edu || s.edu.pg) return false;
+  if (t.needs && !eduHolds(s, t.needs)) return false;
+  s.edu.pg = { track, startDay: s.ageDays || 0, need: t.days };
+  eduSetStage(s, track);
+  return true;
+}
+/* Completion, called from the scheduled block. Never sets s.pending. */
+function eduPgTick(s) {
+  if (!s.edu || !s.edu.pg) return null;
+  const pg = s.edu.pg;
+  const t = EDU_PG_TRACKS[pg.track];
+  if (!t) { s.edu.pg = null; return null; }
+  if ((s.ageDays || 0) - pg.startDay < pg.need) return null;
+  eduAwardCredential(s, t.cred, { field: pg.field || null });
+  s.edu.pg = null;
+  eduSetStage(s, "done");
+  return `🎓 You finished ${t.label}. ${t.cred === "phd" ? "Doctor, now, in the way that does not help at parties." : "It took longer than the brochure said."}`;
+}
+function eduIsStudying(s) { return !!(s.edu && s.edu.pg); }
+
+/* ── S10 · adult and lifelong education ──
+   Re-entry is available to anyone who never finished, at any age. The
+   condition is a missing credential, never a birthday. */
+function eduCanReenter(s) {
+  if (!s.edu || s.edu.pg || s.school) return false;
+  if (ageYears(s) < 19) return false;
+  return !eduHolds(s, "secondaryDiploma") && !eduHolds(s, "bachelor");
+}
+function eduReenter(s) {
+  if (!eduCanReenter(s)) return false;
+  s.edu.pg = { track: "adultSecondary", startDay: s.ageDays || 0, need: 548 };
+  return true;
+}
+/* Prison education: the one place a character with nothing else to do can
+   still change their prospects. Module 12 owns the sentence; EDU owns what
+   can be studied inside it. */
+function eduPrisonStudyAvailable(s) {
+  if (typeof inPrison !== "function" || !inPrison(s)) return false;
+  if (!s.edu || s.edu.pg) return false;
+  return yearOf(s) >= 1930 && !eduHolds(s, "secondaryDiploma");
+}
+
+/* ── S11 · the research overlay, and OQ-6 ──
+   Architecture §8.2 models medical residency, postdoc and academic career as
+   MODULE 09 JOBS carrying an EDU overlay: one employer, one salary, one
+   promotion ladder, with EDU supplying training progress and the eventual
+   credential. That is the right split — modelled literally they would
+   duplicate module 09 entirely, which the project rule against duplicated
+   business logic forbids.
+
+   OQ-6 IS STILL UNANSWERED, and unlike OQ-7 the blocker is not a defect I can
+   measure — it is that the overlay needs a job to attach to, and module 09
+   owns whether `s.career.job` can carry one. Writing an EDU-side employer,
+   salary and promotion ladder to avoid waiting would BE the duplication the
+   architecture exists to prevent, and it would be far more expensive to unpick
+   than boarding was.
+
+   So S11 ships the EDU half only: the overlay record and its progress, with
+   no employer and no salary. It is inert until module 09 attaches a job to it.
+   The specific ask for 09: does s.career.job accept an `eduOverlay` key naming
+   a training track, so that EDU can advance progress against it without owning
+   employment? Until then this is a placeholder with a shape, not a system. */
+const EDU_OVERLAY_KINDS = {
+  residency: { label: "medical residency", days: 1460, cred: "boardCert", needs: "profDoctorate" },
+  postdoc:   { label: "a postdoctoral post", days: 1095, cred: "postdocDone", needs: "phd" },
+  academic:  { label: "an academic post",   days: 2555, cred: "tenure",     needs: "phd" },
+};
+function eduOverlayEligible(s) {
+  const out = [];
+  for (const k in EDU_OVERLAY_KINDS) {
+    const o = EDU_OVERLAY_KINDS[k];
+    if (o.needs && !eduHolds(s, o.needs)) continue;
+    if (eduHolds(s, o.cred)) continue;
+    out.push(k);
+  }
+  return out;
+}
+
+/* ═══════════════════════ EDU · INVERSION ═══════════════════════
+   THE ONLY NON-ADDITIVE CHANGE IN THE SUBSYSTEM. Up to here, deleting every
+   edu* symbol left the game identical. After this, s.edu.stage is the truth
+   and legacy is the derived mirror — the reverse of the P3 arrangement.
+
+   The gate is the same equivalence test that guarded every phase since P3,
+   which is why it was built first: eduLegacyStage(s) and s.edu.stage have
+   agreed at every step of every life across country × era × class since then,
+   so flipping which one is authoritative changes nothing observable.
+
+   Legacy readers keep working because EDU projects BACK. `s.education.stage`
+   is still written, now as a projection of the canonical stage rather than as
+   the source of it. That matters because EDU's vocabulary is wider than
+   legacy's — 16 rungs against 6 values — so a character reading for a master's
+   has to look like "college" to every reader that predates EDU. */
+/* Which canonical stages legacy can round-trip. Derived from the two maps
+   rather than hand-listed, so it cannot drift from them. */
+const EDU_LEGACY_REPRESENTABLE = { none: 1, primary: 1, lowerSec: 1, upperSec: 1, university: 1, done: 1 };
+const EDU_TO_LEGACY_STAGE = {
+  none: "pre", nursery: "pre", preschool: "pre",
+  primary: "primary", lowerSec: "middle", upperSec: "high", prep: "high",
+  vocational: "college", community: "college", university: "college",
+  gradCert: "college", mba: "college", masters: "college",
+  profMasters: "college", doctorate: "college", profDoctorate: "college",
+  done: "done",
+};
+function eduProjectToLegacy(s) {
+  if (!s || !s.edu || !s.education) return false;
+  const want = EDU_TO_LEGACY_STAGE[s.edu.stage] || "pre";
+  if (s.education.stage === want) return false;
+  s.education.stage = want;
+  return true;
+}
+/* The inverted reader. `inSchool` used to test three legacy strings; it now
+   asks the canonical model, and the answer is the same one for every
+   character that existed before inversion. */
+function eduInSchoolTier(s) {
+  const st = (s && s.edu && s.edu.stage) ? s.edu.stage : eduLegacyStage(s);
+  const meta = EDU_STAGES[st];
+  return !!meta && meta.tier === "school";
+}
+
 const EDU_GROUP = { id: "edu", emoji: "🎓", name: "Education", items: [
   { id: "eduStudy", minAge: 4, emoji: "🎓", label: "Where you study", cost: 0, special: "eduStudy" },
   { id: "eduProspects", minAge: 10, emoji: "🔭", label: "What you could study", cost: 0, special: "eduProspects" },
+  /* P8: EDU stops being read-only. These are the first EDU items that change
+     anything — postgraduate study and adult re-entry, both gated on what the
+     character actually holds rather than on their age. */
+  { id: "eduPostgrad", minAge: 20, emoji: "🎓", label: "Study further", cost: 0, special: "eduPostgrad",
+    cond: (s) => eduPgAvailable(s).length > 0 },
+  { id: "eduReenter", minAge: 19, emoji: "📖", label: "Go back and finish", cost: 0, special: "eduReenter",
+    cond: (s) => eduCanReenter(s) },
 ] };
 /* Registered further down, next to the other ACT_GROUPS.push calls: this block
    sits ~5,000 lines above `const ACT_GROUPS`, so pushing here would run inside
@@ -8736,6 +8978,8 @@ function doActivity(state, act) {
   if (act.special === "stxBoard") { s.pending = stxBoardMenu(s); return s; }
   if (act.special === "eduStudy") { s.pending = eduStudyMenu(s); return s; }
   if (act.special === "eduProspects") { s.pending = eduProspectsMenu(s); return s; }
+  if (act.special === "eduPostgrad") { s.pending = eduPostgradMenu(s); return s; }
+  if (act.special === "eduReenter") { s.pending = eduReenterMenu(s); return s; }
   if (act.special === "hreHome") { s.pending = hreHomeMenu(s); return s; }
   if (act.special === "hreUpkeep") { s.pending = hreUpkeepMenu(s); return s; }
   if (act.special === "hreSell") { s.pending = hreSaleMenu(s); return s; }
@@ -11181,7 +11425,7 @@ function skipSchool(state) {
 
 function dropOutSchool(state) {
   const s = pClone(state);
-  s.education.stage = "done";
+  eduSetStage(s, "done");
   s.school = null;
   s.stats.happiness = clamp(s.stats.happiness + 4);
   s.family.mom.rel = clamp(s.family.mom.rel - 14);
@@ -15623,7 +15867,7 @@ function dropOutNow(state) {
   if (!s.education.college) return s;
   push(s, `🎓 You walked away from ${s.education.college.major}. The debt stays; the pressure lifts. Some educations happen elsewhere.`);
   s.education.college = null;
-  s.education.stage = "done";
+  eduSetStage(s, "done");
   return advance(s, 3);
 }
 

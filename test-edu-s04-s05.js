@@ -191,12 +191,15 @@ sec("4 · the tertiary gate");
 sec("5 · the scheduled step");
 
 {
+  /* POST-INVERSION (P8): the tick PROJECTS canonical → legacy. It used to sync
+     legacy → canonical, which is the arrangement inversion reverses. */
   const c = H.mkChar({ country: "Sweden", birthYear: 1990 });
-  c.education.stage = "high";
-  c.edu.stage = "none";                       // deliberately drifted
+  M.eduSetStage(c, "upperSec");
+  c.education.stage = "pre";                  // deliberately drifted
   M.eduOnTick(c);
-  ok("the tick re-syncs the canonical mirror", c.edu.stage === "upperSec", c.edu.stage);
-  ok("...and it agrees with legacy", M.eduStageAgreesWithLegacy(c));
+  ok("the tick projects canonical onto legacy", c.education.stage === "high", c.education.stage);
+  ok("...and the projection is consistent", M.eduProjectionIsConsistent(c));
+  ok("...and canonical was not overwritten by legacy", c.edu.stage === "upperSec");
 
   c.school = { skips: 1, trouble: 0 };
   M.eduOnTick(c);
@@ -289,7 +292,11 @@ sec("7 · soak (outcomes, never step counts — Gotcha #6)");
            reads the mirror to make a decision before inversion. What must
            never happen is lag that PERSISTS, which would mean the mirror had
            stopped tracking rather than merely trailing. */
-        if (!M.eduStageAgreesWithLegacy(s)) { lagRun++; if (lagRun > 1) disagreements++; }
+        /* POST-INVERSION: the invariant is that legacy is a faithful
+           projection of canonical. A POOL event can still write legacy
+           directly for one step before the tick re-projects, so a single step
+           of lag is tolerated and persistent lag is not. */
+        if (!M.eduProjectionIsConsistent(s)) { lagRun++; if (lagRun > 1) disagreements++; }
         else lagRun = 0;
       },
     });
@@ -306,7 +313,7 @@ sec("7 · soak (outcomes, never step counts — Gotcha #6)");
   ok("no dead ends", deadEnds === 0, deadEnds);
   ok("everyone reached school", reachedSchool === lives, [reachedSchool, lives]);
   ok("nobody was stranded on an unknown stage", stranded === 0, stranded);
-  ok("the mirror never falls persistently out of step", disagreements === 0, disagreements);
+  ok("the legacy projection never falls persistently out of step", disagreements === 0, disagreements);
   ok("more than one stage was observed", Object.keys(stagesSeen).length >= 3, stagesSeen);
 }
 
