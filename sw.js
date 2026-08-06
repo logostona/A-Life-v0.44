@@ -17,8 +17,9 @@
  * v4 — EDU phases 1-6: country/era education model, institutions, admissions.
  * v5 — EDU phase 7: school life, crystallised institutions, boarding.
  * v6 — EDU phase 8: post-secondary, adult education, call-site inversion.
+ * v7 — IQ scale, romantic discovery as a scene, non-transition hormone therapy.
  */
-const CACHE_NAME = "a-life-cache-v6";
+const CACHE_NAME = "a-life-cache-v7";
 const ASSETS = [
   "./",
   "./index.html",
