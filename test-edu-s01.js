@@ -258,14 +258,22 @@ ok("invariant 2: no country equality test in S01", !/country\s*===\s*["']/.test(
    aside in a POOL event at ~12119) which predates this work and is presentation
    flavour, not a CE rule. Recorded in EDU-PHASE0-EXIT.md rather than failed on
    here — this suite tests S01, not the file's history. */
-/* Baseline is 3 known pre-existing matches, none of them a CE rule and none
-   of them EDU's: one inside a comment at ~2066 that literally warns against
-   the pattern, and two in a single cosmetic GDPR aside in a POOL event at
-   ~12119. Pinned exactly so that adding a FOURTH — the thing invariant 2 is
-   actually about — fails this suite. */
+/* COMMENTS ARE STRIPPED FIRST, and that is not a detail.
+   This count used to run against the raw source and was pinned at 3 — but one
+   of those 3 was a comment at ~2066 that literally warns against the pattern,
+   so the baseline was measuring prose. It then failed the moment another
+   subsystem's comment said the same true thing, which is CLAUDE.md §6's trap:
+   a lint that reads prose flags the sentence forbidding the thing as the
+   thing. Stripped, the real count is 2, both halves of a single cosmetic GDPR
+   aside in a POOL event at ~12119 — presentation flavour, not a CE rule.
+   Pinned exactly so that adding a THIRD, in code, fails this suite. */
+const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
 ok("invariant 2: EDU adds no new country conditional",
-  (SRC.match(/country\s*===\s*["']/g) || []).length === 3,
-  (SRC.match(/country\s*===\s*["']/g) || []).length);
+  (CODE.match(/country\s*===\s*["']/g) || []).length === 2,
+  (CODE.match(/country\s*===\s*["']/g) || []).length);
+/* and the prose-vs-code distinction itself, so this cannot silently regress */
+ok("...and the lint is measuring code, not comments",
+  (SRC.match(/country\s*===\s*["']/g) || []).length > (CODE.match(/country\s*===\s*["']/g) || []).length);
 
 /* determinism, demonstrated rather than asserted about */
 {

@@ -95,7 +95,30 @@ the whole file down in P6. Always run the harness import as part of a build chec
 
 Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activate` handler
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
-PWA on the old bundle for an extra launch. Currently `a-life-cache-v7`.
+PWA on the old bundle for an extra launch. Currently `a-life-cache-v8`.
+
+### Adding to the Health subsystem (HLT)
+
+Eleven subtabs, five content tables, one state blob. Everything is a registry, so the common
+changes are data rather than code:
+
+- **a new illness / vaccine / addiction / disability / allergy** → a row in the matching
+  `HLT_*` table, or `hltRegister(kind, id, def)` at runtime for generated content;
+- **a new subtab** → a row in `HLT_TABS` plus a renderer in `HLT_SUBPANELS`. `HealthPanel`
+  itself never changes;
+- **a new health field** → `hltInit` *and* the repair pass in `hltMigrate`, same patch.
+
+`hltExport(s)` is the LLM seam: the whole record as plain JSON with stable ids. There is no
+network call anywhere in the subsystem and there should not be — the game is an offline PWA.
+
+Two things that are easy to get wrong and were:
+
+- **Per-step probabilities compound over ~4,000 weeks of life.** A rate that looks tiny becomes
+  near-certain by eighty. The first cut gave 12 lives out of 12 an alcohol problem. Each
+  substance now carries a `lifetime` figure and the per-step rate is *derived* from it across
+  `HLT_ONSET_WEEKS` — change the age weights and that constant must be recomputed with them.
+- **Risk multipliers must be capped.** Four stacked factors reached 6×, which took alcohol from
+  a 20% lifetime rate to 32%. Capped at 3×.
 
 ### Merging to `main` is not the same as the site updating
 
@@ -141,12 +164,12 @@ Two things that make diagnosis harder here, so do not burn time on them:
 for t in test-edu-s01 test-edu-s02 test-edu-s09 test-edu-s04-s05 test-edu-s03-s06 \
          test-edu-s07 test-edu-s12 test-edu-s08 test-identity test-integration \
          test-render test-deploy test-hre-s11 test-hre-s10 test-hre-s06 \
-         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism; do
+         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism test-health; do
   printf "%-24s " "$t"; node --max-old-space-size=4096 $t.js 2>&1 | grep -oE "[0-9]+ passed, [0-9]+ failed" | tail -1
 done
 ```
 
-**1671 assertions.** `test-hre-s09.js` fails 8 of 87 — a stale pre-Phase-7 fixture that predates
+**1801 assertions.** `test-hre-s09.js` fails 8 of 87 — a stale pre-Phase-7 fixture that predates
 current work. That is the known baseline, not a regression.
 
 `edu-sample-review.js` is **not a test**: it renders generated institutions as prose for a human
@@ -172,8 +195,15 @@ the file — S12 physically precedes S07 — so never assume order; use `ctx.py 
 
 **One name per `const`.** The harness export scanner matches column-0 declarations with a
 single-capture regex, so `const A = 1, B = 2;` exports `A` and silently drops `B` — and a suite
-then asserts on `undefined` and passes. `IQ_SD` shipped this way. Check with:
-`grep -nE '^(const|let|var)\s+\w+\s*=[^;]*,\s*\w+\s*=' life-sim.jsx`
+then asserts on `undefined` and passes. Three lines shipped this way: `IQ_SD`, then
+`A12`/`A25`/`A40` and `PAPER`/`CARD`, all found only because the grep was re-run later. Run it
+after any patch that adds top-level declarations, and do not trust one clean result as proof
+the file is clean — verify a name is actually exported before asserting on it:
+
+```sh
+grep -nE '^(const|let|var)\s+\w+\s*=[^;]*,\s*\w+\s*=' life-sim.jsx
+node -e 'const M=require("./harness.js").M; console.log(M.YOUR_SYMBOL !== undefined)'
+```
 
 **A lint that reads prose flags the sentence forbidding the thing as the thing.** Strip comments
 before scanning, and slice from the `/*` that *opens* a banner, not from the banner text inside
@@ -188,6 +218,16 @@ day. Assert observable outcomes.
 
 **Gotcha #4 — a new state field lands with its `newCharacter()` initializer and its `migrate()`
 backfill in the same patch.** This is the most frequently repeated bug in the project's history.
+
+**Never add a `Math.random()` call to `newCharacter()`.** Every seeded suite depends on the
+ORDER of the draws it makes, so one extra call silently rebuilds every fixture in the repo.
+Nothing fails — the assertions just quietly stop existing. `s.hlt`'s initializer did this and
+`test-edu-s07` dropped from 87 assertions to 75 with a green tick, because its character no
+longer matched the same POOL conditions. Derive new seeds from a value already drawn
+(`hreHash("hlt:" + s.hre.seed + …)`) and assign after the object literal.
+
+**A suite reporting FEWER assertions than last time is a regression**, even when all of them
+pass. Compare counts, not just pass/fail: `git stash && node test-x.js; git stash pop`.
 
 **`advance()` halts the moment anything sets `s.pending`.** A test that advances 1500 days and
 expects a scheduled thing to happen proves nothing. Drive the scheduled block directly.
