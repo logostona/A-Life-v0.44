@@ -146,7 +146,13 @@ const TH = {
    hand-written 8-digit hexes for each were the single largest source of
    near-duplicate colour values in the pre-redesign file. */
 function tint(hex, aa) { return hex + aa; }
-const A06 = "0F", A12 = "1F", A25 = "40", A40 = "66";   /* hex alpha suffixes */
+/* hex alpha suffixes. One name per `const`: the harness export scanner takes a
+   single name per column-0 declaration, so the comma form exported A06 and
+   silently dropped the other three. */
+const A06 = "0F";
+const A12 = "1F";
+const A25 = "40";
+const A40 = "66";
 
 /* Era accent, re-tuned for a dark base. The original DECADE_ACCENT above is
    kept untouched (UI_REDESIGN_PLAN.md §7 asks for that, and it is still the
@@ -177,7 +183,9 @@ const FONT_UI = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helveti
 const FONT_STORY = "Georgia, 'Iowan Old Style', 'Times New Roman', serif";
 const FONT_LEDGER = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
-const INK = TH.text, PAPER = TH.bg, CARD = TH.surface;
+const INK = TH.text;
+const PAPER = TH.bg;
+const CARD = TH.surface;
 
 const WORLD_EVENTS = {
   1973: ["The APA removes homosexuality from its list of mental disorders."],
@@ -771,7 +779,7 @@ function newCharacter(form) {
   const sm = form.stSmarts != null ? +form.stSmarts : normalPercentile();
   const subj = {};
   for (const k in SUBJECTS) subj[k] = clamp(sm + rnd(-15, 15));
-  return {
+  const s = {
     v: 4,
     /* curSym defaults from the country rather than being required on `form`.
        It used to be set in exactly ONE place — the Creation screen's onStart —
@@ -828,6 +836,23 @@ function newCharacter(form) {
     stx: { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] },
     alive: true, death: null,
   };
+  /* HLT S03. Assigned after the literal rather than inside it, and derived
+     from the housing seed rather than from a fresh Math.random(), for a
+     reason worth keeping:
+
+     newCharacter draws from Math.random() several times, and every seeded
+     suite in this repo depends on the ORDER of those draws. Adding one more
+     here shifted the whole stream — which broke nothing visibly, but silently
+     rebuilt every test fixture, and test-edu-s07 quietly went from 87
+     assertions to 75 because its character no longer matched the same POOL
+     conditions. Nothing failed. Twelve checks simply stopped existing.
+
+     s.hre.seed is already randomised per life, so hashing it gives a distinct
+     health seed per character while consuming no additional draw. Gotcha #4
+     still applies: this initializer's migrate() backfill is in the same patch,
+     because newCharacter never calls migrate() itself. */
+  s.hlt = hltInit(hreHash("hlt:" + s.hre.seed + ":" + form.birthYear));
+  return s;
 }
 
 function migrate(s) {
@@ -837,6 +862,9 @@ function migrate(s) {
      s.hre.seed, and backfills the canonical stage from the still-authoritative
      legacy state. Additive: nothing reads s.edu to make a decision yet. */
   eduMigrate(s);
+  /* HLT S03 — same ordering rule as EDU: after hreMigrate, because the health
+     record's seed falls back to s.hre.seed when it has none of its own. */
+  hltMigrate(s);
   if (!s.stx) s.stx = { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] };
   if (!s.stx.req) s.stx.req = {};
   if (!s.stx.staff) s.stx.staff = {};
@@ -2087,7 +2115,11 @@ POOL.push(...EXTRA_POOL);
 /* ═══════════════ MORTALITY ═══════════════ */
 
 function mortalityCheck(s, age) {
-  const healthF = (1.6 - s.stats.health / 100) * (1 + conditionRisk(s) * 0.5);
+  /* HLT contributes alongside the chronic conditions rather than replacing
+     them: untreated addiction and a body run down by years of bad sleep and
+     poor food are their own risk, and this is the only place that difference
+     becomes a shorter life rather than a worse-looking panel. */
+  const healthF = (1.6 - s.stats.health / 100) * (1 + (conditionRisk(s) + hltMortalityLoad(s)) * 0.5);
   let p = 0;
   if (age < 40) p = 0.0002;
   else if (age < 60) p = 0.001 * healthF;
@@ -9055,6 +9087,12 @@ function advance(state, totalDays) {
        `milestoneFired` continues past it precisely when a stage has just
        changed. Here it runs after milestones on every step, fired or not. */
     eduOnTick(s);
+    /* HLT S06 — same position and the same reasoning as eduOnTick above: after
+       the milestone scan so it sees this step's writes, and before the
+       `milestoneFired` continue so lifestyle, illness and addiction advance on
+       every step rather than only on steps where no milestone fired. Never
+       sets s.pending, so health can never depend on a popup being dismissed. */
+    hltOnTick(s, step);
     if (milestoneFired) continue;
 
     if (Math.random() < Math.min(0.72, step * 0.09)) {
@@ -11043,6 +11081,968 @@ const HEALTH_POOL = [
     return { auto: [`${CONDITIONS[id].emoji} Routine check on your ${CONDITIONS[id].name.toLowerCase()} — stable, managed, unremarkable. Unremarkable is the whole victory.`], fx: { stats: { happiness: +2 } } }; } },
 ];
 POOL.push(...HEALTH_POOL);
+
+/* ═══════════════ HLT · S01 · CONTENT REGISTRIES ═══════════════
+
+   The Health screen's eleven subtabs. This block is DATA ONLY — no state, no
+   resolution, no UI — because every table here is meant to be extended without
+   touching code that runs.
+
+   EXTENSIBILITY IS THE POINT, not a nice-to-have.
+   Each table is a plain object keyed by a stable string id, holding only
+   JSON-serialisable values. That buys three things at once:
+     · a save file is a plain object, so it survives being written by one
+       version and read by another;
+     · `hltRegister(kind, id, def)` can append an entry at runtime, so a
+       procedural generator or an LLM can add an illness, an allergy or a
+       vaccine without a source edit;
+     · the whole health record can be serialised into a prompt and generated
+       content can come back as rows, because rows are all there is.
+
+   There is deliberately NO network call anywhere in this subsystem. The game
+   is an offline PWA; the seam is the registry, not a fetch.
+
+   ERA AND PLACE ARE REAL CONSTRAINTS, as everywhere else in this project.
+   `from` is the year a thing becomes available at all; `until` retires it.
+   Access is then scaled by the health system's capacity via hreDevOf — the
+   same four-tier mechanism the hormone-therapy block and the CE tables use,
+   and for the same reason: no `if (country === "…")` anywhere.
+
+   PROVISIONAL, like every other date table here. The shape is drawn from
+   well-known medical history; the exact numbers are not researched to a
+   citation and must not be presented as though they were. Suites assert
+   ORDERINGS, never values. */
+
+/* ── Vaccination ──────────────────────────────────────────────────────────
+   `from` is the year of general rollout, not of discovery — a vaccine that
+   exists in a laboratory has never protected anybody. Smallpox is the one
+   entry with an `until`: routine vaccination stopped after eradication was
+   certified in 1980, which is the only time in this table that the correct
+   answer becomes "no longer given". */
+const HLT_VACCINES = {
+  smallpox:  { name: "Smallpox", emoji: "🩹", from: 1800, until: 1980, at: 1,  routine: 1, note: "Left a small round scar on the upper arm that a whole generation carries." },
+  dtp:       { name: "Diphtheria · tetanus · pertussis", emoji: "💉", from: 1948, at: 0, routine: 1, boost: 10 },
+  polio:     { name: "Polio", emoji: "🦿", from: 1955, at: 0, routine: 1, note: "Parents queued around the block for this one. They had watched what it did." },
+  measles:   { name: "Measles", emoji: "🔴", from: 1963, until: 1971, at: 1, routine: 1 },
+  mmr:       { name: "MMR", emoji: "💉", from: 1971, at: 1, routine: 1, note: "Measles, mumps and rubella in one appointment instead of three." },
+  hepb:      { name: "Hepatitis B", emoji: "🧬", from: 1982, at: 0, routine: 1 },
+  hib:       { name: "Hib", emoji: "🧫", from: 1985, at: 0, routine: 1 },
+  varicella: { name: "Chickenpox", emoji: "🫧", from: 1995, at: 1, routine: 1 },
+  pneumo:    { name: "Pneumococcal", emoji: "🫁", from: 2000, at: 0, routine: 1, elderly: 65 },
+  hpv:       { name: "HPV", emoji: "🛡", from: 2006, at: 12, routine: 1, note: "The first vaccine most people met that was openly described as preventing a cancer." },
+  rota:      { name: "Rotavirus", emoji: "💧", from: 2006, at: 0, routine: 1 },
+  covid:     { name: "COVID-19", emoji: "😷", from: 2020, at: 12, routine: 1, boost: 1, note: "Queued in a car park or a sports hall, with strangers, all slightly giddy about it." },
+  flu:       { name: "Influenza (seasonal)", emoji: "🤧", from: 1945, at: 6, routine: 0, boost: 1, elderly: 65 },
+};
+
+/* ── Current illness ──────────────────────────────────────────────────────
+   Acute and self-limiting, unlike CONDITIONS which are chronic. `days` is
+   typical duration; `prevents` names the vaccine that makes it rare, which is
+   what makes the childhood-illness profile of a 1950s life differ from a
+   2010s one without a single hard-coded year in the resolver. */
+const HLT_ILLNESS = {
+  cold:      { name: "Common cold", emoji: "🤧", days: 7,  sev: 1, contagious: 1, w: 30, note: "A week of being mildly useless and going through a box of tissues." },
+  flu:       { name: "Influenza", emoji: "🌡", days: 10, sev: 3, contagious: 1, w: 12, prevents: "flu", note: "The kind of ill where you genuinely cannot read a page." },
+  gastro:    { name: "Gastroenteritis", emoji: "🤢", days: 4,  sev: 2, contagious: 1, w: 12, note: "Forty-eight hours you will not be describing in detail." },
+  strep:     { name: "Strep throat", emoji: "😷", days: 6,  sev: 2, contagious: 1, w: 8, maxAge: 40 },
+  bronchitis:{ name: "Bronchitis", emoji: "🫁", days: 14, sev: 3, contagious: 0, w: 7, minAge: 20 },
+  pneumonia: { name: "Pneumonia", emoji: "🫁", days: 21, sev: 6, contagious: 0, w: 4, prevents: "pneumo", note: "The one on this list that used to be called the old person's friend." },
+  chicken:   { name: "Chickenpox", emoji: "🫧", days: 10, sev: 2, contagious: 1, w: 14, maxAge: 14, prevents: "varicella", once: 1 },
+  measles:   { name: "Measles", emoji: "🔴", days: 12, sev: 5, contagious: 1, w: 10, maxAge: 16, prevents: "mmr", once: 1 },
+  mumps:     { name: "Mumps", emoji: "🐹", days: 12, sev: 3, contagious: 1, w: 6, maxAge: 18, prevents: "mmr", once: 1 },
+  mono:      { name: "Glandular fever", emoji: "😴", days: 40, sev: 4, contagious: 1, w: 6, minAge: 14, maxAge: 28, once: 1, note: "Six weeks of sleeping through your own life." },
+  uti:       { name: "Urinary infection", emoji: "🔥", days: 5, sev: 2, contagious: 0, w: 8, minAge: 14 },
+  foodpois:  { name: "Food poisoning", emoji: "🍽", days: 3, sev: 2, contagious: 0, w: 9 },
+  migraineA: { name: "Migraine attack", emoji: "⚡", days: 2, sev: 3, contagious: 0, w: 5, minAge: 12 },
+  covid:     { name: "COVID-19", emoji: "😷", days: 12, sev: 4, contagious: 1, w: 14, from: 2020, prevents: "covid" },
+};
+
+/* ── Addictions ───────────────────────────────────────────────────────────
+   Four stages, because "addicted or not" is not how any of this works:
+     0 none · 1 use · 2 dependence · 3 severe
+   `era` is the availability-and-normalisation curve, and it is the part that
+   makes this historical rather than moralising. Smoking is the clearest case:
+   in 1955 it is offered to you at every social occasion and nobody has told
+   you anything alarming; the 1964 Surgeon General report begins a decline that
+   is still going. A character who smokes in 1955 is ordinary. The same
+   character in 2015 is making a choice against a lot of information.
+
+   Recovery is a real path, not a footnote — `quitBase` is the per-attempt odds
+   before support and circumstances are applied, and relapse does not erase
+   progress. Nothing here scores a character as a good or bad person. */
+const HLT_ADDICTIONS = {
+  nicotine: { name: "Nicotine", emoji: "🚬", legalAge: 18, lifetime: 0.42, quitBase: 0.28, tolerate: 0.9,
+    era: [[1900, 0.5], [1930, 0.7], [1955, 0.85], [1964, 0.72], [1980, 0.55], [1995, 0.4], [2010, 0.26], [2020, 0.18]],
+    harm: { health: -2.0, money: -1.2 },
+    note: "Offered, once, at an age when refusing felt like a bigger deal than accepting." },
+  alcohol:  { name: "Alcohol", emoji: "🍷", legalAge: 18, lifetime: 0.2, quitBase: 0.22, tolerate: 0.85,
+    era: [[1900, 0.55], [1930, 0.5], [1960, 0.65], [1980, 0.7], [2000, 0.66], [2015, 0.58], [2020, 0.52]],
+    harm: { health: -1.8, money: -1.4, happiness: -0.6 },
+    note: "Nothing about the first year of it looked like a problem, which is the difficulty." },
+  gambling: { name: "Gambling", emoji: "🎲", legalAge: 18, lifetime: 0.016, quitBase: 0.2, tolerate: 0.7,
+    era: [[1900, 0.2], [1961, 0.35], [1994, 0.5], [2005, 0.68], [2015, 0.8], [2020, 0.85]],
+    harm: { money: -3.2, happiness: -1.2 },
+    note: "The machines got faster, then they got into your pocket, and then they never closed." },
+  cannabis: { name: "Cannabis", emoji: "🌿", legalAge: 18, lifetime: 0.075, quitBase: 0.34, tolerate: 0.75,
+    era: [[1900, 0.08], [1965, 0.25], [1990, 0.3], [2012, 0.45], [2020, 0.55]],
+    harm: { health: -0.6, happiness: -0.3 } },
+  opioid:   { name: "Opioids", emoji: "💊", legalAge: 0, lifetime: 0.018, quitBase: 0.12, tolerate: 1.15,
+    era: [[1900, 0.18], [1925, 0.06], [1996, 0.3], [2010, 0.5], [2017, 0.38], [2020, 0.34]],
+    harm: { health: -4.0, money: -2.2, happiness: -1.5 },
+    note: "It started as a prescription for something that genuinely hurt, which is how most of these start." },
+  stimulant:{ name: "Stimulants", emoji: "⚡", legalAge: 0, lifetime: 0.016, quitBase: 0.16, tolerate: 1.1,
+    era: [[1900, 0.05], [1940, 0.28], [1970, 0.18], [1990, 0.24], [2010, 0.3], [2020, 0.3]],
+    harm: { health: -3.0, money: -2.0, happiness: -1.0 } },
+};
+const HLT_ADDICT_STAGE = ["none", "using", "dependent", "severe"];
+
+/* ── Disabilities ─────────────────────────────────────────────────────────
+   Written on the social model, deliberately. What the tables below vary by era
+   and country is the WORLD's accommodation, never the person's worth: the same
+   body is disabled a great deal more in 1930 than in 2015, because of steps,
+   attitudes and law rather than because of anything about the body.
+
+   `access` is that curve — how much of ordinary life is actually reachable —
+   and it is scaled by development tier, because a kerb cut is infrastructure.
+   The legislative steps are real ones: the 1970s independent-living movement,
+   the ADA in 1990, the UK Disability Discrimination Act in 1995, and the UN
+   Convention in 2006. */
+const HLT_ACCESS_ERA = [[1900, 0.1], [1945, 0.18], [1970, 0.32], [1990, 0.55], [1995, 0.62], [2006, 0.74], [2015, 0.8]];
+const HLT_DISABILITIES = {
+  lowVision:  { name: "Low vision", emoji: "👁", congenital: 0.35, w: 10, aids: "Magnifiers, screen readers, and a white cane that people misread as total blindness." },
+  blind:      { name: "Blindness", emoji: "🦯", congenital: 0.4, w: 4, aids: "Braille where it exists, audio where it does not, and a great deal of other people's assumptions." },
+  hardHearing:{ name: "Hard of hearing", emoji: "👂", congenital: 0.3, w: 12, aids: "Hearing aids, lip-reading, and asking people to face you." },
+  deaf:       { name: "Deafness", emoji: "🤟", congenital: 0.55, w: 5, aids: "Sign language, interpreters when they are funded, and a culture of your own.", community: 1 },
+  mobility:   { name: "Mobility impairment", emoji: "♿", congenital: 0.25, w: 12, aids: "A chair or crutches, and a permanent low-grade audit of whether a building has a ramp." },
+  limbDiff:   { name: "Limb difference", emoji: "🦾", congenital: 0.5, w: 5, aids: "Prosthetics if affordable, adaptation if not, and strangers asking about it." },
+  cp:         { name: "Cerebral palsy", emoji: "🧠", congenital: 1, w: 5, aids: "Physiotherapy from early childhood, and a body that takes more negotiating than most." },
+  downs:      { name: "Down syndrome", emoji: "💛", congenital: 1, w: 4, aids: "Support that has improved beyond recognition within one lifetime.", lifeEra: 1 },
+  spina:      { name: "Spina bifida", emoji: "🩺", congenital: 1, w: 3 },
+  chronicPain:{ name: "Chronic pain condition", emoji: "🔥", congenital: 0.1, w: 9, aids: "Pacing, pain management, and being disbelieved by roughly one clinician in three." },
+  cfs:        { name: "Chronic fatigue", emoji: "🔋", congenital: 0.05, w: 7, aids: "An energy budget you spend deliberately, because overspending costs days." },
+  ms:         { name: "Multiple sclerosis", emoji: "🌐", congenital: 0, w: 4, minAge: 20, maxAge: 50 },
+  sci:        { name: "Spinal cord injury", emoji: "♿", congenital: 0, w: 4, minAge: 14, acquiredOnly: 1 },
+  amputation: { name: "Amputation", emoji: "🦿", congenital: 0, w: 3, minAge: 12, acquiredOnly: 1 },
+  neuro:      { name: "Neurodivergence", emoji: "🧩", congenital: 1, w: 14, aids: "Recognised late if you were born early enough, and reframed from deficit to difference within a lifetime.", dxEra: [[1900, 0.02], [1980, 0.12], [2000, 0.4], [2013, 0.65], [2020, 0.8]] },
+};
+
+/* ── Allergies ────────────────────────────────────────────────────────────
+   `sev` 1 mild · 2 moderate · 3 anaphylactic. `outgrow` is the chance a
+   childhood allergy resolves — milk and egg usually do, peanut usually does
+   not, and that difference is the whole reason the field exists. Adrenaline
+   autoinjectors only become an ordinary thing to carry from the late 1980s. */
+const HLT_EPIPEN_FROM = 1987;
+const HLT_ALLERGIES = {
+  peanut:   { name: "Peanut", emoji: "🥜", kind: "food", sev: 3, w: 8, outgrow: 0.2 },
+  treenut:  { name: "Tree nuts", emoji: "🌰", kind: "food", sev: 3, w: 6, outgrow: 0.1 },
+  milk:     { name: "Milk", emoji: "🥛", kind: "food", sev: 2, w: 9, outgrow: 0.8 },
+  egg:      { name: "Egg", emoji: "🥚", kind: "food", sev: 2, w: 8, outgrow: 0.75 },
+  shellfish:{ name: "Shellfish", emoji: "🦐", kind: "food", sev: 3, w: 7, outgrow: 0.05, adultOnset: 1 },
+  wheat:    { name: "Wheat", emoji: "🌾", kind: "food", sev: 2, w: 5, outgrow: 0.6 },
+  soy:      { name: "Soy", emoji: "🫘", kind: "food", sev: 1, w: 4, outgrow: 0.7 },
+  pollen:   { name: "Pollen", emoji: "🌼", kind: "environmental", sev: 1, w: 26, outgrow: 0.15, seasonal: 1 },
+  dust:     { name: "Dust mites", emoji: "🛏", kind: "environmental", sev: 1, w: 16, outgrow: 0.1 },
+  dander:   { name: "Animal dander", emoji: "🐈", kind: "environmental", sev: 1, w: 14, outgrow: 0.15 },
+  mould:    { name: "Mould", emoji: "🍄", kind: "environmental", sev: 1, w: 7, outgrow: 0.1 },
+  penicillin:{ name: "Penicillin", emoji: "💊", kind: "drug", sev: 3, w: 9, outgrow: 0.3, from: 1945 },
+  bee:      { name: "Bee sting", emoji: "🐝", kind: "insect", sev: 3, w: 5, outgrow: 0.1 },
+  latex:    { name: "Latex", emoji: "🧤", kind: "contact", sev: 2, w: 4, outgrow: 0.1, from: 1980 },
+};
+
+/* ── The subtab registry ──────────────────────────────────────────────────
+   The Health screen renders THIS, in order. Adding a twelfth subtab is a row
+   here plus a renderer — never a change to the panel's own logic. */
+const HLT_TABS = [
+  { id: "physical",  emoji: "🩺", label: "Physical" },
+  { id: "mental",    emoji: "🧠", label: "Mental" },
+  { id: "fitness",   emoji: "🏃", label: "Fitness" },
+  { id: "nutrition", emoji: "🥗", label: "Nutrition" },
+  { id: "sleep",     emoji: "🌙", label: "Sleep" },
+  { id: "history",   emoji: "📜", label: "History" },
+  { id: "illness",   emoji: "🤒", label: "Illness" },
+  { id: "vax",       emoji: "💉", label: "Vaccines" },
+  { id: "addiction", emoji: "🚬", label: "Addiction" },
+  { id: "disability",emoji: "♿", label: "Disability" },
+  { id: "allergy",   emoji: "🌼", label: "Allergies" },
+];
+
+/* ── The extension seam ───────────────────────────────────────────────────
+   The one function an external generator or an LLM needs. Registering is
+   additive and idempotent-by-id: an id that already exists is left alone
+   unless `replace` is set, so a generator run twice does not double anything,
+   and a save referencing a built-in id can never be orphaned by an extension.
+
+   Returns true when the row was accepted, so a caller can count what landed
+   rather than assume. Unknown `kind` is refused rather than silently dropped
+   into a table nobody reads. */
+const HLT_REGISTRY = {
+  vaccine: HLT_VACCINES, illness: HLT_ILLNESS, addiction: HLT_ADDICTIONS,
+  disability: HLT_DISABILITIES, allergy: HLT_ALLERGIES, condition: CONDITIONS,
+};
+function hltRegister(kind, id, def, replace) {
+  const table = HLT_REGISTRY[kind];
+  if (!table || !id || !def || typeof def !== "object") return false;
+  if (table[id] && !replace) return false;
+  table[id] = Object.assign({}, def, { registered: true });
+  return true;
+}
+/* The mirror of it: the whole health record as plain data, which is what you
+   would put in a prompt. Kept deliberately free of functions and undefined. */
+function hltExport(s) {
+  const h = s && s.hlt ? s.hlt : null;
+  if (!h) return null;
+  return JSON.parse(JSON.stringify({
+    age: ageYears(s), year: yearOf(s), country: s.profile.country,
+    vitals: h.vitals, mind: h.mind,
+    illness: h.acute, vaccines: h.vax, addictions: h.addict,
+    disabilities: h.disab, allergies: h.allergy,
+    history: h.hx,
+  }));
+}
+
+/* ═══════════════ HLT · S02 · ERA & ACCESS RESOLUTION ═══════════════
+
+   Four helpers, all pure, all deterministic given their arguments. Everything
+   downstream asks these rather than reading a year directly, so there is one
+   place to correct when module 22 replaces the provisional numbers. */
+
+/* Step curve: the value of the last band whose year has arrived. Shared by
+   every era table in this subsystem. */
+function hltEraValue(bands, year) {
+  let v = bands.length ? bands[0][1] : 0;
+  for (const [from, p] of bands) if (year >= from) v = p;
+  return v;
+}
+/* Health-system capacity, by development tier. Same four tiers, same shape as
+   the hormone-therapy block — country never appears by name. */
+function hltAccess(s) {
+  const tier = hreDevOf(s.profile.country);
+  return { high: 1.0, upper: 0.82, middle: 0.55, low: 0.3 }[tier] || 0.55;
+}
+/* Is a vaccine a thing that exists, here, this year — and how likely is a
+   given child to actually receive it. */
+function hltVaxAvailable(id, s) {
+  const v = HLT_VACCINES[id];
+  if (!v) return 0;
+  const y = yearOf(s);
+  if (y < v.from) return 0;
+  if (v.until && y >= v.until) return 0;
+  /* coverage climbs for two decades after rollout, then plateaus at whatever
+     the health system can sustain */
+  const maturity = Math.min(1, 0.45 + (y - v.from) * 0.028);
+  return Math.max(0, Math.min(1, maturity * hltAccess(s)));
+}
+/* How much of ordinary life a disabled character can actually reach, given
+   when and where they live. Never a statement about the person. */
+function hltAccessibility(s) {
+  return Math.max(0.05, Math.min(1, hltEraValue(HLT_ACCESS_ERA, yearOf(s)) * (0.45 + 0.55 * hltAccess(s))));
+}
+
+/* ═══════════════ HLT · S03 · STATE, GENERATION & MIGRATION ═══════════════
+
+   `s.hlt` is the whole health record and it is plain JSON — no functions, no
+   undefined, no class instances — so it round-trips through a save file and
+   through a prompt without special handling.
+
+   GOTCHA #4, the most repeated bug in this project's history: every field
+   below lands with its `hltInit` initializer AND its `hltMigrate` backfill in
+   this same patch. A field added to one and not the other is a save from
+   yesterday crashing today.
+
+   GENERATION IS SEEDED, NOT RANDOM. Everything congenital is drawn from
+   hreRng(worldSeed, id, namespace) with its own namespace, so adding a future
+   attribute cannot shift the ones already drawn — the same character rolls the
+   same body no matter what gets added later. No Math.random() anywhere in this
+   block; that is a project invariant, not a preference. */
+
+const HLT_STATE_V = 1;
+/* Medical history is a record, not a log file. 48 rows is what keeps the whole
+   health record near the 2.5 KB the other subsystems hold to — at 60 it was
+   the single largest thing in a save, and the entries that fell off the end
+   were never the ones anybody asks about. */
+const HLT_HX_CAP = 48;
+
+function hltInit(seed) {
+  return {
+    v: HLT_STATE_V,
+    seed: seed >>> 0,
+    vitals: { fit: 50, nut: 50, slp: 50 },
+    debt: 0,
+    mind: { mood: 55, stress: 30, resil: 50 },
+    acute: {}, vax: {}, addict: {}, disab: {}, allergy: {},
+    hx: [],
+    /* childhood generation is deferred to the first tick so that country,
+       birth year and family are all settled before anything is drawn from
+       them; this flag is what stops it running twice */
+    born: 0,
+  };
+}
+
+/* The medical history log. `k` is a one-character kind so sixty entries cost
+   about a kilobyte rather than four:
+     d diagnosis · r resolved · v vaccination · i illness · a addiction
+     x disability · g allergy · t treatment · n note                        */
+function hltLog(s, kind, id, extra) {
+  if (!s.hlt) return;
+  const row = { t: s.ageDays | 0, k: kind, id: String(id) };
+  if (extra) row.x = extra;
+  s.hlt.hx.push(row);
+  /* oldest first out — a life of ninety years generates more entries than a
+     panel can usefully show, and the recent ones are the ones a doctor asks
+     about */
+  if (s.hlt.hx.length > HLT_HX_CAP) s.hlt.hx.splice(0, s.hlt.hx.length - HLT_HX_CAP);
+}
+
+/* ── congenital generation ───────────────────────────────────────────────
+   Runs once, at the first tick of a life. Prevalences are deliberately low:
+   these are the odds of being born with something, and inflating them to make
+   the feature "show up more" would misrepresent every one of these conditions
+   and every person who has one. */
+function hltGenerateCongenital(s) {
+  const seed = s.hlt.seed;
+  const key = s.profile.first + s.profile.last + s.profile.birthYear;
+
+  /* Disability present from birth. ~2.4% of lives, then weighted across the
+     variations that can be congenital. */
+  const rD = hreRng(seed, key, "hlt:disab:congenital");
+  if (rD.chance(0.024)) {
+    const table = {};
+    for (const id in HLT_DISABILITIES) {
+      const d = HLT_DISABILITIES[id];
+      if (d.acquiredOnly || !d.congenital) continue;
+      table[id] = (d.w || 1) * d.congenital;
+    }
+    const id = rD.weighted(table);
+    if (id) {
+      s.hlt.disab[id] = { since: 0, cong: 1, known: HLT_DISABILITIES[id].dxEra ? 0 : 1 };
+      hltLog(s, "x", id);
+    }
+  }
+
+  /* Allergies. Childhood onset, one or occasionally two, and the adult-onset
+     ones are excluded here because that is what adult-onset means. */
+  const rA = hreRng(seed, key, "hlt:allergy:child");
+  const nAllergy = rA.chance(0.26) ? (rA.chance(0.22) ? 2 : 1) : 0;
+  for (let i = 0; i < nAllergy; i++) {
+    const table = {};
+    for (const id in HLT_ALLERGIES) {
+      const a = HLT_ALLERGIES[id];
+      if (a.adultOnset || s.hlt.allergy[id]) continue;
+      if (a.from && s.profile.birthYear < a.from) continue;
+      table[id] = a.w || 1;
+    }
+    const id = rA.weighted(table);
+    if (!id) break;
+    s.hlt.allergy[id] = { sev: HLT_ALLERGIES[id].sev, since: 0 };
+    hltLog(s, "g", id);
+  }
+
+  /* Baseline lifestyle. A child does not choose any of this — it is the
+     household's, which is why it reads off class rather than off anything the
+     player did. These are starting points; hltOnTick moves them from here. */
+  const rV = hreRng(seed, key, "hlt:vitals:base");
+  const classLift = { Poor: -10, Working: -4, Middle: 3, Wealthy: 8 }[s.profile.cls] || 0;
+  const dev = (hltAccess(s) - 0.55) * 18;
+  s.hlt.vitals.fit = clamp(56 + classLift * 0.5 + dev * 0.4 + rV.int(-9, 9));
+  s.hlt.vitals.nut = clamp(54 + classLift + dev * 0.6 + rV.int(-8, 8));
+  s.hlt.vitals.slp = clamp(62 + classLift * 0.4 + rV.int(-8, 8));
+  s.hlt.mind.resil = clamp(48 + classLift * 0.3 + rV.int(-12, 12));
+
+  s.hlt.born = 1;
+}
+
+/* ── migration ───────────────────────────────────────────────────────────
+   The guarded-ladder shape EDU uses. A save from a future version is clamped
+   rather than trusted, and the repair pass below runs version-independently so
+   a record damaged by anything at all comes back with every key present. */
+const HLT_STATE_LADDER = {
+  /* v0 -> v1 is the initial schema; future steps append here and never
+     renumber, because a save records the version it was written at. */
+};
+
+function hltMigrate(s) {
+  if (!s) return s;
+  if (!s.hlt || typeof s.hlt !== "object" || Array.isArray(s.hlt)) {
+    s.hlt = hltInit(hreHash(
+      (s.profile ? s.profile.first + ":" + s.profile.last + ":" + s.profile.country + ":" + s.profile.birthYear : "unknown")
+      + ":" + (s.hre && s.hre.seed != null ? s.hre.seed : 0)));
+  }
+  let guard = 0;
+  while (s.hlt.v < HLT_STATE_V && guard++ < 32) {
+    const step = HLT_STATE_LADDER[s.hlt.v];
+    if (!step) { s.hlt.v = HLT_STATE_V; break; }
+    step(s);
+    s.hlt.v = s.hlt.v + 1;
+  }
+  if (s.hlt.v > HLT_STATE_V) s.hlt.v = HLT_STATE_V;
+
+  /* version-independent repair: every key the current schema names, present
+     and of the right type, whatever the save looked like */
+  const d = hltInit(s.hlt.seed != null ? s.hlt.seed : hreHash("hlt:repair"));
+  for (const k of ["vitals", "mind"]) {
+    if (!s.hlt[k] || typeof s.hlt[k] !== "object") s.hlt[k] = d[k];
+    else for (const f in d[k]) if (typeof s.hlt[k][f] !== "number" || !isFinite(s.hlt[k][f])) s.hlt[k][f] = d[k][f];
+  }
+  for (const k of ["acute", "vax", "addict", "disab", "allergy"]) {
+    if (!s.hlt[k] || typeof s.hlt[k] !== "object" || Array.isArray(s.hlt[k])) s.hlt[k] = {};
+  }
+  if (!Array.isArray(s.hlt.hx)) s.hlt.hx = [];
+  if (s.hlt.hx.length > HLT_HX_CAP) s.hlt.hx.splice(0, s.hlt.hx.length - HLT_HX_CAP);
+  if (typeof s.hlt.debt !== "number" || !isFinite(s.hlt.debt)) s.hlt.debt = 0;
+  if (typeof s.hlt.seed !== "number") s.hlt.seed = d.seed;
+  if (s.hlt.born !== 1) s.hlt.born = 0;
+  return s;
+}
+
+/* ═══════════════ HLT · S04 · LIFESTYLE, EMERGENT ═══════════════
+
+   Fitness, nutrition and sleep are NOT meters the player is asked to babysit.
+   Each has a target that circumstances set — age, work, money, housing,
+   illness, children, addictions — and the stored value walks toward that
+   target a little each step. Neglect therefore looks like drift rather than a
+   nagging red bar, and a deliberate intervention shows up as a real but
+   temporary push against a current that is still flowing.
+
+   That design decision matters mechanically: it means a life spent poor, in
+   insecure housing, working nights, never once presents the player with a
+   chore, and still ends measurably earlier. Which is the honest version.
+
+   Each resolver returns the TARGET, not the delta, and each explains itself in
+   the same breath so the panel can show a character WHY their sleep is 38
+   rather than just that it is. `hltReasons` is that explanation, and it is
+   built from exactly the same terms as the number — never a second hand-
+   written list that can drift out of agreement with the maths. */
+
+/* Physically demanding industries wear a body down and keep it strong at the
+   same time; desk industries do neither. Derived from the industry key so a
+   new industry needs no change here — anything unlisted is sedentary. */
+const HLT_JOB_PHYSICAL = { construction: 1, food: 0.7, retail: 0.55, healthcare: 0.6, medicine: 0.35 };
+/* Hours culture, which is what actually eats sleep. */
+const HLT_JOB_HOURS = { medicine: 1, finance: 0.9, law: 0.85, tech: 0.7, media: 0.7, healthcare: 0.75, food: 0.6, construction: 0.5, retail: 0.5, education: 0.4 };
+
+function hltInfants(s) {
+  let n = 0;
+  for (const k in (s.children || {})) {
+    const c = s.children[k];
+    const bornAt = c.since != null ? c.since : c.born;
+    if (bornAt != null && (s.ageDays - bornAt) < 730) n++;
+  }
+  return n;
+}
+function hltAddictLoad(s, id) {
+  const a = s.hlt && s.hlt.addict ? s.hlt.addict[id] : null;
+  return a && a.st > 0 ? a.st : 0;      // 0..3
+}
+function hltAcuteLoad(s) {
+  let sev = 0;
+  for (const id in (s.hlt.acute || {})) sev += (HLT_ILLNESS[id] || {}).sev || 1;
+  return sev;
+}
+
+/* ── the three targets ─────────────────────────────────────────────────── */
+
+/* Fitness. Peaks in the twenties and declines with age no matter what — the
+   decline is real and cannot be trained away, only slowed. */
+function hltFitnessTarget(s) {
+  const age = ageYears(s);
+  const t = [];
+  let v = 62;
+  const ageAdj = age < 12 ? -4 : age < 18 ? 6 : age < 30 ? 8 : age < 45 ? 0 : age < 60 ? -10 : age < 75 ? -20 : -30;
+  v += ageAdj; if (Math.abs(ageAdj) >= 8) t.push([ageAdj, age < 30 ? "young body" : "age"]);
+
+  const job = s.career && s.career.job;
+  if (job) {
+    const phys = HLT_JOB_PHYSICAL[job.industry] || 0;
+    if (phys > 0.5) { v += 8; t.push([8, "physical work"]); }
+    else if (phys === 0) { v -= 6; t.push([-6, "desk job"]); }
+  }
+  const nic = hltAddictLoad(s, "nicotine");
+  if (nic) { v -= nic * 7; t.push([-nic * 7, "smoking"]); }
+  const alc = hltAddictLoad(s, "alcohol");
+  if (alc >= 2) { v -= alc * 4; t.push([-alc * 4, "drinking"]); }
+  if (s.flags && s.flags.homeless) { v -= 14; t.push([-14, "nowhere stable to sleep"]); }
+  const acute = hltAcuteLoad(s);
+  if (acute) { v -= Math.min(18, acute * 3); t.push([-Math.min(18, acute * 3), "being ill"]); }
+  for (const id in s.hlt.disab) {
+    const d = HLT_DISABILITIES[id];
+    if (d && (id === "cfs" || id === "chronicPain" || id === "ms")) { v -= 12; t.push([-12, d.name.toLowerCase()]); break; }
+  }
+  const nut = s.hlt.vitals.nut;
+  if (nut < 40) { v -= 8; t.push([-8, "poor diet"]); }
+  else if (nut > 70) { v += 5; t.push([5, "eating well"]); }
+  return { v: clamp(v), terms: t };
+}
+
+/* Nutrition. Tracks what you can afford and what is around you to buy, which
+   is why it is the axis most tightly bound to money and to place. */
+function hltNutritionTarget(s) {
+  const t = [];
+  let v = 52;
+  const dev = (hltAccess(s) - 0.55) * 20;
+  if (Math.abs(dev) > 3) { v += dev; t.push([dev, dev > 0 ? "food environment" : "what is available here"]); }
+
+  const money = s.money || 0;
+  const moneyAdj = money < 0 ? -18 : money < 300 ? -12 : money < 1500 ? -3 : money < 8000 ? 5 : 10;
+  v += moneyAdj; if (Math.abs(moneyAdj) >= 5) t.push([moneyAdj, moneyAdj < 0 ? "money is tight" : "can afford to eat well"]);
+
+  if (s.flags && s.flags.homeless) { v -= 20; t.push([-20, "no kitchen"]); }
+  const alc = hltAddictLoad(s, "alcohol");
+  if (alc >= 2) { v -= alc * 5; t.push([-alc * 5, "drinking"]); }
+  const op = hltAddictLoad(s, "opioid") + hltAddictLoad(s, "stimulant");
+  if (op >= 2) { v -= 14; t.push([-14, "appetite gone"]); }
+  if (ageYears(s) > 75) { v -= 6; t.push([-6, "eating less with age"]); }
+  if (hltInfants(s) > 0) { v -= 5; t.push([-5, "eating standing up"]); }
+  return { v: clamp(v), terms: t };
+}
+
+/* Sleep. The axis most easily wrecked by circumstance and the one with the
+   sharpest feedback into mood, which is why stress enters it directly. */
+function hltSleepTarget(s) {
+  const age = ageYears(s);
+  const t = [];
+  let v = 68;
+  if (age >= 13 && age <= 19) { v -= 8; t.push([-8, "teenage body clock"]); }
+  if (age > 65) { v -= 7; t.push([-7, "sleep thins with age"]); }
+
+  const job = s.career && s.career.job;
+  if (job) {
+    const h = HLT_JOB_HOURS[job.industry] || 0.5;
+    const adj = Math.round(-14 * h + 4);
+    v += adj; if (Math.abs(adj) >= 4) t.push([adj, adj < 0 ? "the hours" : "regular hours"]);
+  }
+  const inf = hltInfants(s);
+  if (inf) { v -= Math.min(26, inf * 18); t.push([-Math.min(26, inf * 18), inf > 1 ? "small children" : "a baby in the house"]); }
+  if (s.flags && s.flags.homeless) { v -= 24; t.push([-24, "nowhere safe to sleep"]); }
+  if (inPrison(s)) { v -= 12; t.push([-12, "prison nights"]); }
+  const stress = s.hlt.mind.stress;
+  if (stress > 60) { const a = -Math.round((stress - 60) * 0.35); v += a; t.push([a, "stress"]); }
+  const alc = hltAddictLoad(s, "alcohol");
+  if (alc) { v -= alc * 5; t.push([-alc * 5, "drinking"]); }
+  const stim = hltAddictLoad(s, "stimulant");
+  if (stim) { v -= stim * 7; t.push([-stim * 7, "stimulants"]); }
+  if (hasCond(s, "anxiety") && !(s.conditions.anxiety || {}).treated) { v -= 10; t.push([-10, "untreated anxiety"]); }
+  if (hasCond(s, "backPain") && !(s.conditions.backPain || {}).treated) { v -= 8; t.push([-8, "pain at night"]); }
+  return { v: clamp(v), terms: t };
+}
+
+/* Mental health. Mood is the fast-moving one, stress the driver, resilience
+   the slow accumulator that decides how hard the other two hit. Deliberately
+   NOT a copy of stats.happiness: happiness is how the life is going, this is
+   how well the person is holding it. */
+function hltMindTarget(s) {
+  const t = [];
+  let stress = 26;
+  const money = s.money || 0;
+  if (money < 0) { stress += 22; t.push([22, "debt"]); }
+  else if (money < 300) { stress += 14; t.push([14, "money"]); }
+  if (s.flags && s.flags.homeless) { stress += 26; t.push([26, "housing"]); }
+  if (inPrison(s)) { stress += 20; t.push([20, "prison"]); }
+  const job = s.career && s.career.job;
+  if (job) { const h = HLT_JOB_HOURS[job.industry] || 0.5; if (h > 0.7) { stress += 12; t.push([12, "work"]); } }
+  else if (ageYears(s) >= 25 && ageYears(s) < 65 && !s.flags.retired) { stress += 10; t.push([10, "no work"]); }
+  if (hltInfants(s)) { stress += 10; t.push([10, "a small child"]); }
+  const untreatedMH = ["anxiety", "depression"].filter((k) => hasCond(s, k) && !s.conditions[k].treated).length;
+  if (untreatedMH) { stress += untreatedMH * 14; t.push([untreatedMH * 14, "untreated"]); }
+  for (const id in s.hlt.addict) if (s.hlt.addict[id].st >= 2) { stress += 12; t.push([12, "the habit"]); break; }
+  if (s.hlt.vitals.slp < 40) { stress += 12; t.push([12, "not sleeping"]); }
+  /* the protective side — the thing that makes this not a misery generator */
+  const friends = Object.keys(s.friends || {}).length;
+  if (friends >= 2) { stress -= 10; t.push([-10, "people around you"]); }
+  if (activePartners(s).length) { stress -= 8; t.push([-8, "someone at home"]); }
+  return { stress: clamp(stress), terms: t };
+}
+
+/* The explanation, assembled from the same terms as the number. Largest
+   magnitudes first, because that is the order a person would name them. */
+function hltReasons(terms, max) {
+  return terms.filter((x) => Math.abs(x[0]) >= 3)
+    .sort((a, b) => Math.abs(b[0]) - Math.abs(a[0]))
+    .slice(0, max || 3)
+    .map((x) => ({ dir: x[0] > 0 ? 1 : -1, why: x[1], n: Math.round(x[0]) }));
+}
+/* Walk a stored value toward its target. Slow enough that a single good week
+   does not rewrite a decade, fast enough that a changed life is visible within
+   a year or two. */
+function hltDrift(cur, target, days, rate) {
+  const k = 1 - Math.pow(1 - (rate || 0.02), days / 7);
+  return clamp(cur + (target - cur) * k);
+}
+
+/* ═══════════════ HLT · S05 · ILLNESS, ADDICTION & ACQUISITION ═══════════════ */
+
+/* Acute illness. Weighted by the table, gated by era and by whether the
+   vaccine that prevents it was available when this character was a child —
+   which is what makes a 1950s childhood measurably different from a 2010s one
+   without the resolver knowing a single date. */
+function hltIllnessOdds(s) {
+  const v = s.hlt.vitals;
+  let base = 0.010;
+  base *= 1 + (60 - v.nut) / 200;
+  base *= 1 + (60 - v.slp) / 160;
+  base *= 1 + (55 - v.fit) / 260;
+  const age = ageYears(s);
+  if (age < 6) base *= 2.3; else if (age < 12) base *= 1.7; else if (age > 70) base *= 1.6; else if (age > 82) base *= 2.1;
+  if (hltAddictLoad(s, "nicotine")) base *= 1.3;
+  if (s.flags && s.flags.homeless) base *= 1.8;
+  return Math.min(0.2, base);
+}
+function hltPickIllness(s, rng) {
+  const y = yearOf(s), age = ageYears(s);
+  const table = {};
+  for (const id in HLT_ILLNESS) {
+    const ill = HLT_ILLNESS[id];
+    if (ill.from && y < ill.from) continue;
+    if (ill.minAge && age < ill.minAge) continue;
+    if (ill.maxAge && age > ill.maxAge) continue;
+    if (s.hlt.acute[id]) continue;
+    if (ill.once && (s.hlt.hx || []).some((r) => r.k === "i" && r.id === id)) continue;
+    let w = ill.w || 1;
+    /* vaccinated, or living in an era where nearly everyone is */
+    if (ill.prevents) {
+      if (s.hlt.vax[ill.prevents]) w *= 0.08;
+      else w *= 1 - 0.7 * hltVaxAvailable(ill.prevents, s);
+    }
+    if (w > 0) table[id] = w;
+  }
+  return rng.weighted(table);
+}
+function hltStartIllness(s, id, rng) {
+  const ill = HLT_ILLNESS[id];
+  if (!ill || s.hlt.acute[id]) return;
+  const days = Math.max(2, Math.round(ill.days * rng.range(0.7, 1.4)));
+  s.hlt.acute[id] = { since: s.ageDays | 0, days };
+  hltLog(s, "i", id);
+  push(s, `${ill.emoji} ${ill.name}.${ill.note ? " " + ill.note : ""}`);
+}
+function hltResolveIllness(s) {
+  for (const id in s.hlt.acute) {
+    const a = s.hlt.acute[id], ill = HLT_ILLNESS[id] || { name: id, emoji: "🩺", sev: 1 };
+    if (s.ageDays - a.since < a.days) continue;
+    delete s.hlt.acute[id];
+    hltLog(s, "r", id);
+    if (ill.sev >= 4) push(s, `${ill.emoji} Over the ${ill.name.toLowerCase()} at last. It took more out of you than you expected.`);
+  }
+}
+
+/* Addiction. Onset is gated on the era curve — the point of which is that a
+   character offered a cigarette in 1955 is doing an ordinary thing, and the
+   same character in 2015 is doing an unusual one. Stage progression is slow
+   and recovery is a real path, not a footnote. */
+/* CALIBRATION, and the reason it is not one shared number.
+   A per-step probability compounds over roughly four thousand weeks of life,
+   so a rate that looks tiny produces near-certainty by eighty. A single shared
+   0.0016 gave twelve lives out of twelve an alcohol problem and nine an opioid
+   one, which is not a game balance question — it is simply false, and it
+   misrepresents the people it depicts.
+
+   So each substance carries its own `lifetime`: the approximate share of
+   people who develop a problem with it AT THE ERA WHERE IT IS MOST COMMON.
+   The per-step rate is derived from that figure across the window where onset
+   actually happens, rather than guessed. Order of magnitude is what these are
+   for — nicotine an order above cannabis, cannabis an order above opioids —
+   and they are `provisional` like every other table here. */
+/* LIFETIME-EQUIVALENT EXPOSURE, not the length of the onset window.
+   Calibrating against the 15-30 window alone (780 weeks) was wrong by roughly
+   a factor of two: onset keeps accruing at reduced rates for the other sixty
+   years, and those tails are most of a lifespan. Integrating the age weights
+   below over a full life gives
+
+     780x1.0  +  780x0.35  +  2080x0.12  +  780x0.12  ~=  1400
+
+   week-equivalents, so that is what `lifetime` has to be divided across for
+   the figure to mean what the table says it means. Measured before the fix:
+   alcohol landed at 35% against a 20% target. Change the age weights and this
+   constant has to be recomputed with them. */
+const HLT_ONSET_WEEKS = 1400;
+function hltAddictionOdds(s, id) {
+  const a = HLT_ADDICTIONS[id];
+  const age = ageYears(s);
+  if (a.legalAge && age < a.legalAge - 4) return 0;
+  /* era curve normalised against its own peak, so `lifetime` means "at peak"
+     and a 2020 character is not quietly held to a 1955 rate */
+  const peak = a.era.reduce((m, b) => Math.max(m, b[1]), 0) || 1;
+  const eraRel = hltEraValue(a.era, yearOf(s)) / peak;
+  /* constant hazard that integrates to `lifetime` over the onset window */
+  let p = (-Math.log(1 - a.lifetime) / HLT_ONSET_WEEKS) * eraRel;
+  if (age >= 15 && age <= 30) p *= 1;                          // the window it is calibrated on
+  else if (age < 15) p *= 0.12;
+  else if (age <= 45) p *= 0.35;
+  else p *= 0.12;
+  /* Risk factors are real and they compound — but they must not compound
+     without limit. Stacked multiplicatively and uncapped these four reached
+     6x, which took alcohol from a 20% lifetime rate to 32% and turned every
+     hard life into an addicted one. Capped at 3x they still dominate the
+     outcome for someone carrying all of them, without making it inevitable. */
+  let risk = 1;
+  if (s.hlt.mind.stress > 60) risk *= 1.6;
+  if (s.hlt.mind.resil < 40) risk *= 1.4;
+  if ((s.stats.happiness || 50) < 35) risk *= 1.5;
+  if (s.flags && s.flags.homeless) risk *= 1.8;
+  p *= Math.min(3, risk);
+  /* the exception, because it is how a great many opioid dependencies
+     actually begin: a prescription for something that genuinely hurts */
+  if (id === "opioid" && untreated(s).some(([k]) => k === "backPain" || k === "arthritis")) p *= 3.2;
+  return p;
+}
+function hltAddictionTick(s, days, rng) {
+  for (const id in HLT_ADDICTIONS) {
+    const cfg = HLT_ADDICTIONS[id];
+    const cur = s.hlt.addict[id];
+    if (!cur) {
+      if (rng.chance(hltAddictionOdds(s, id) * (days / 7))) {
+        s.hlt.addict[id] = { st: 1, since: s.ageDays | 0, tol: 1, quits: 0 };
+        hltLog(s, "a", id);
+        push(s, `${cfg.emoji} ${cfg.note || "It started without a decision being made."}`);
+      }
+      continue;
+    }
+    if (cur.st <= 0) continue;
+    /* tolerance climbs, and carries the stage with it */
+    cur.tol = Math.min(3.2, cur.tol + (cfg.tolerate - 0.85) * 0.02 * (days / 7));
+    if (cur.st < 3 && rng.chance(0.004 * (days / 7) * cfg.tolerate * (s.hlt.mind.stress > 60 ? 1.7 : 1))) {
+      cur.st += 1;
+      hltLog(s, "a", id, cur.st);
+      push(s, cur.st === 2
+        ? `${cfg.emoji} It stopped being something you chose and became something you arrange your day around.`
+        : `${cfg.emoji} It is running the whole thing now. Everything else fits into the gaps it leaves.`);
+    }
+  }
+}
+/* Quitting. Support, stability and people all help, and a failed attempt is
+   not a reset to zero — `quits` is remembered because in reality each attempt
+   makes the next one likelier to hold. */
+function hltQuitOdds(s, id) {
+  const cfg = HLT_ADDICTIONS[id], a = s.hlt.addict[id];
+  if (!cfg || !a || a.st <= 0) return 0;
+  let p = cfg.quitBase;
+  p *= 1 - (a.st - 1) * 0.22;                       // deeper in is harder out
+  p *= 1 + Math.min(0.5, (a.quits || 0) * 0.12);    // practice counts
+  p += hltAccess(s) * 0.12;                          // support you can actually reach
+  if (Object.keys(s.friends || {}).length >= 2) p += 0.06;
+  if (activePartners(s).length) p += 0.05;
+  if (s.hlt.mind.stress > 65) p -= 0.1;
+  if (s.flags && s.flags.homeless) p -= 0.12;
+  return Math.max(0.03, Math.min(0.85, p));
+}
+
+/* Acquired disability. Rare, and never a punishment — the feed line describes
+   what changed and what the world does about it, not what it cost. */
+function hltAcquiredTick(s, days, rng) {
+  const age = ageYears(s);
+  let p = 0.00012 * (days / 7);
+  if (age > 55) p *= 2.2; else if (age > 70) p *= 3.4;
+  if (untreated(s).length >= 2) p *= 1.8;
+  if (!rng.chance(p)) return;
+  const table = {};
+  for (const id in HLT_DISABILITIES) {
+    const d = HLT_DISABILITIES[id];
+    if (s.hlt.disab[id]) continue;
+    if (d.congenital === 1) continue;                 // congenital-only cannot be acquired
+    if (d.minAge && age < d.minAge) continue;
+    if (d.maxAge && age > d.maxAge) continue;
+    table[id] = (d.w || 1) * (1 - (d.congenital || 0));
+  }
+  const id = rng.weighted(table);
+  if (!id) return;
+  s.hlt.disab[id] = { since: s.ageDays | 0, cong: 0, known: 1 };
+  hltLog(s, "x", id);
+  const acc = hltAccessibility(s);
+  push(s, `${HLT_DISABILITIES[id].emoji} ${HLT_DISABILITIES[id].name}. ${acc > 0.65
+    ? "There is a system for this, imperfect and real, and people whose job is to help you use it."
+    : acc > 0.35 ? "Some of what you need exists. Getting it will take asking repeatedly."
+    : "Almost nothing is set up for it here. What you get, you will build yourself or do without."}`);
+}
+
+/* Late-diagnosed neurodivergence — a real and specific experience, and one
+   the era curve makes honest: the same person born in 1955 and in 2005 gets
+   the same brain and a forty-year difference in whether anyone names it. */
+function hltLateDiagnosisTick(s, days, rng) {
+  const d = s.hlt.disab.neuro;
+  if (!d || d.known) return;
+  const cfg = HLT_DISABILITIES.neuro;
+  const era = hltEraValue(cfg.dxEra, yearOf(s));
+  if (!rng.chance(era * 0.004 * (days / 7) * hltAccess(s))) return;
+  d.known = 1; d.dx = s.ageDays | 0;
+  hltLog(s, "d", "neuro");
+  push(s, `🧩 A name for it, finally — and the strange grief of realising how much of your life you spent assuming it was a character flaw. ${ageYears(s) > 35 ? "Late. Still worth having." : "Early enough to change how school goes."}`);
+}
+
+/* Adult-onset allergy. Shellfish is the classic one and the table marks it. */
+function hltAllergyTick(s, days, rng) {
+  if (!rng.chance(0.00035 * (days / 7))) return;
+  const y = yearOf(s), table = {};
+  for (const id in HLT_ALLERGIES) {
+    const a = HLT_ALLERGIES[id];
+    if (s.hlt.allergy[id]) continue;
+    if (a.from && y < a.from) continue;
+    table[id] = (a.w || 1) * (a.adultOnset ? 3 : 1);
+  }
+  const id = rng.weighted(table);
+  if (!id) return;
+  const a = HLT_ALLERGIES[id];
+  s.hlt.allergy[id] = { sev: a.sev, since: s.ageDays | 0 };
+  hltLog(s, "g", id);
+  push(s, `${a.emoji} ${a.name} — an allergy you did not have last year. Bodies revise themselves without consulting anybody.`);
+}
+/* Childhood allergies that resolve. The reason `outgrow` differs per entry:
+   milk and egg usually go, peanut usually does not. */
+function hltOutgrowTick(s, days, rng) {
+  if (ageYears(s) > 16) return;
+  for (const id in s.hlt.allergy) {
+    const cfg = HLT_ALLERGIES[id], rec = s.hlt.allergy[id];
+    if (!cfg || !cfg.outgrow || rec.since > 0) continue;
+    if (rng.chance(cfg.outgrow * 0.0016 * (days / 7))) {
+      delete s.hlt.allergy[id];
+      hltLog(s, "r", id);
+      push(s, `${cfg.emoji} The ${cfg.name.toLowerCase()} allergy is gone — a challenge test at the hospital and a sandwich you were never allowed before.`);
+    }
+  }
+}
+
+/* Childhood vaccination. Given automatically when available, because that is
+   how it works: a child does not decide, a schedule and a parent do. What
+   varies is whether the schedule reaches them at all. */
+function hltVaxTick(s, rng) {
+  const age = ageYears(s);
+  for (const id in HLT_VACCINES) {
+    const v = HLT_VACCINES[id];
+    if (!v.routine || s.hlt.vax[id]) continue;
+    if (age < (v.at || 0)) continue;
+    if (age > (v.at || 0) + 6 && !(v.elderly && age >= v.elderly)) continue;   // missed the window
+    const avail = hltVaxAvailable(id, s);
+    if (avail <= 0) continue;
+    if (!rng.chance(avail * 0.5)) continue;
+    s.hlt.vax[id] = yearOf(s);
+    hltLog(s, "v", id);
+    if (v.note) push(s, `${v.emoji} ${v.name}. ${v.note}`);
+  }
+}
+
+/* ═══════════════ HLT · S06 · THE TICK ═══════════════
+
+   One entry point, called from advance() once per step. Everything above is
+   pure or takes an explicit rng; this is the only place that writes.
+
+   Determinism: the rng is namespaced on the character's seed AND on the day,
+   so the same life replays identically, and adding a future draw cannot shift
+   the ones already made. */
+function hltOnTick(s, days) {
+  if (!s || !s.hlt) return;
+  const step = days || 7;
+
+  if (!s.hlt.born) hltGenerateCongenital(s);
+
+  const rng = hreRng(s.hlt.seed, s.ageDays, "hlt:tick");
+
+  /* 1 · lifestyle drifts toward what circumstances allow */
+  const fit = hltFitnessTarget(s), nut = hltNutritionTarget(s), slp = hltSleepTarget(s);
+  s.hlt.vitals.fit = hltDrift(s.hlt.vitals.fit, fit.v, step, 0.035);
+  s.hlt.vitals.nut = hltDrift(s.hlt.vitals.nut, nut.v, step, 0.05);
+  s.hlt.vitals.slp = hltDrift(s.hlt.vitals.slp, slp.v, step, 0.09);
+
+  /* sleep debt accumulates below 45 and pays back above 60 */
+  const v = s.hlt.vitals;
+  s.hlt.debt = Math.max(0, Math.min(100, s.hlt.debt + (v.slp < 45 ? (45 - v.slp) * 0.03 : v.slp > 60 ? -(v.slp - 60) * 0.05 : -0.2) * (step / 7)));
+
+  /* 2 · mind */
+  const mind = hltMindTarget(s);
+  s.hlt.mind.stress = hltDrift(s.hlt.mind.stress, mind.stress, step, 0.11);
+  const moodTarget = clamp(72 - s.hlt.mind.stress * 0.55 + (v.slp - 50) * 0.22 + (v.fit - 50) * 0.1 - s.hlt.debt * 0.15);
+  s.hlt.mind.mood = hltDrift(s.hlt.mind.mood, moodTarget, step, 0.09);
+  /* resilience is the slow one: it grows when a person is coping and erodes
+     when they are not, which is why it uses a tenth of the rate */
+  s.hlt.mind.resil = hltDrift(s.hlt.mind.resil, s.hlt.mind.stress < 45 ? 68 : 34, step, 0.008);
+
+  /* 3 · illness */
+  hltResolveIllness(s);
+  if (rng.chance(hltIllnessOdds(s) * (step / 7))) {
+    const id = hltPickIllness(s, rng);
+    if (id) hltStartIllness(s, id, rng);
+  }
+
+  /* 4 · the slow acquisitions */
+  hltVaxTick(s, rng);
+  hltAddictionTick(s, step, rng);
+  hltAcquiredTick(s, step, rng);
+  hltLateDiagnosisTick(s, step, rng);
+  hltAllergyTick(s, step, rng);
+  hltOutgrowTick(s, step, rng);
+
+  /* 5 · the feedback into the game's own health stat. Small per step and
+     relentless, which is the point: this is the mechanism by which a life
+     lived badly ends earlier without ever having nagged the player. */
+  const pull = ((v.fit - 50) * 0.010 + (v.nut - 50) * 0.012 + (v.slp - 50) * 0.010
+              - s.hlt.debt * 0.010 - hltAcuteLoad(s) * 0.09) * (step / 7);
+  let addictDrain = 0;
+  for (const id in s.hlt.addict) {
+    const a = s.hlt.addict[id];
+    if (a.st > 0) addictDrain += ((HLT_ADDICTIONS[id] || {}).harm || {}).health * 0.014 * a.st * (step / 7) || 0;
+  }
+  s.stats.health = clamp(s.stats.health + pull + addictDrain);
+  /* mental health feeds happiness the same way, and only gently — happiness is
+     still the game's own account of how life is going */
+  if (Math.abs(s.hlt.mind.mood - 55) > 12) {
+    s.stats.happiness = clamp(s.stats.happiness + (s.hlt.mind.mood > 55 ? 0.045 : -0.055) * (step / 7));
+  }
+}
+
+/* ── stopping ────────────────────────────────────────────────────────────
+   A menu builder, so it CLONES and RETURNS and never writes to the state it
+   was handed (Gotcha #2 — builders get a clone that is discarded, and a write
+   here is silent data loss with nothing to report it). All mutation is in the
+   options' fx.run, which the engine applies to the real state.
+
+   A failed attempt is not nothing. `quits` is incremented either way, and
+   hltQuitOdds reads it, because in reality most people who stop have stopped
+   before — the attempts that "failed" are what the successful one is built
+   on. Nothing here calls anybody weak for needing several. */
+function hltQuitMenu(state) {
+  const s = pClone(state);
+  const list = Object.entries(s.hlt.addict || {}).filter(([, a]) => a.st > 0);
+  const options = list.map(([id, a]) => {
+    const cfg = HLT_ADDICTIONS[id];
+    const odds = hltQuitOdds(s, id);
+    return {
+      label: `${cfg.emoji} ${cfg.name} — ${odds > 0.45 ? "good odds" : odds > 0.25 ? "a real chance" : "hard, but people do"}`,
+      fx: { run: (st) => {
+        const rec = st.hlt.addict[id];
+        if (!rec) return;
+        rec.quits = (rec.quits || 0) + 1;
+        if (Math.random() < hltQuitOdds(st, id)) {
+          rec.st = 0; rec.cleanSince = st.ageDays | 0;
+          hltLog(st, "r", id, rec.quits);
+          st.stats.happiness = clamp(st.stats.happiness + 6);
+          push(st, `${cfg.emoji} You stopped. ${rec.quits > 1 ? `It took ${rec.quits} goes, which is the ordinary number and not a verdict on you.` : "First attempt, and it held — which happens, and is mostly luck of timing."} The wanting doesn't vanish; it just stops being in charge.`);
+        } else {
+          st.stats.happiness = clamp(st.stats.happiness - 3);
+          hltLog(st, "n", id, rec.quits);
+          push(st, `${cfg.emoji} It didn't hold this time. ${rec.quits >= 3 ? "You know the shape of it now, which is not nothing — each attempt makes the next one likelier." : "Most people who stop for good have stopped several times first."}`);
+        }
+      } } };
+  });
+  s.pending = { emoji: "🌱", title: "Stopping",
+    text: list.length
+      ? `Quitting is a process with a success rate, not a test of character. Support helps, stability helps, and having tried before helps most of all.`
+      : "Nothing to stop.",
+    options: [...options, CANCEL] };
+  return s;
+}
+
+/* Untreated illness and unmanaged addiction shorten a life. Exposed
+   separately so mortality can consult it without importing the whole tick. */
+function hltMortalityLoad(s) {
+  if (!s || !s.hlt) return 0;
+  let r = 0;
+  for (const id in s.hlt.addict) {
+    const a = s.hlt.addict[id];
+    if (a.st >= 2) r += (id === "opioid" || id === "stimulant") ? a.st * 0.9 : a.st * 0.45;
+  }
+  r += hltAcuteLoad(s) * 0.06;
+  if (s.hlt.vitals.fit < 30) r += 0.5;
+  if (s.hlt.vitals.nut < 30) r += 0.5;
+  if (s.hlt.debt > 60) r += 0.4;
+  return r;
+}
 
 /* ═══════════════ THE CLOSET HAS WALLS — SUSPICION · OUTING · RIPPLE ═══════════════ */
 
@@ -16692,28 +17692,117 @@ function HomePanel({ state, apply, accent }) {
   );
 }
 
+/* ── shared bits for the eleven health subtabs ───────────────────────────
+   Extracted rather than repeated: eleven panels sharing one row style is the
+   difference between a consistent screen and eleven that drifted apart. */
+const hltHdr = { fontFamily: FONT_STORY, fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
+const hltRow = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
+function HltEmpty({ children }) {
+  return <div style={{ fontSize: 13, opacity: 0.62, lineHeight: 1.55 }}>{children}</div>;
+}
+function HltChip({ tone, accent, children }) {
+  const c = tone === "bad" ? TH.coral : tone === "warn" ? TH.amber : tone === "good" ? (TH.green || accent) : accent;
+  return <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap", border: `1px solid ${c}66`, background: c + "14", color: c }}>{children}</span>;
+}
+function HltItem({ emoji, name, sub, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px dashed ${TH.line}` }}>
+      <span style={{ fontSize: 20 }}>{emoji}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14 }}>{name}</div>
+        {sub ? <div style={{ fontSize: 11.5, opacity: 0.55, lineHeight: 1.4 }}>{sub}</div> : null}
+      </div>
+      {right}
+    </div>
+  );
+}
+/* "Why is my sleep 38" — rendered from the same terms that produced the
+   number, so the explanation can never disagree with the value. */
+function HltWhy({ terms }) {
+  const rs = hltReasons(terms, 3);
+  /* A settled life has no term large enough to name, and rendering nothing at
+     all read as a bug rather than as an answer. Say the quiet thing instead. */
+  if (!rs.length) return (
+    <div style={{ marginTop: 9, fontSize: 12, opacity: 0.6, lineHeight: 1.6 }}>
+      Nothing much is pulling on this either way at the moment.
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 9, fontSize: 12, opacity: 0.72, lineHeight: 1.6 }}>
+      {rs.map((r, i) => (
+        <span key={i}>
+          <span style={{ color: r.dir > 0 ? (TH.green || TH.text) : TH.coral }}>{r.dir > 0 ? "▲" : "▼"}</span>{" "}{r.why}{i < rs.length - 1 ? " · " : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+const hltYears = (s, since) => Math.max(0, Math.floor((s.ageDays - (since || 0)) / 365));
+
 function HealthPanel({ state, apply, accent }) {
   const s = state;
-  const cur = s.profile.curSym;
-  const age = ageYears(s);
-  const conds = activeConds(s);
-  const sick = untreated(s);
-  const hdr = { fontFamily: FONT_STORY, fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
-  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
-  const act = { flex: 1, padding: "11px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 13, cursor: "pointer" };
-  const hcLevel = HC[s.profile.country] ?? 0.3;
-  const outlook = s.stats.health > 75 ? "Strong" : s.stats.health > 55 ? "Decent" : s.stats.health > 35 ? "Fragile" : "Serious";
+  const [sub, setSub] = useState("physical");
+  /* Every panel below READS. Nothing here writes to state — a panel is handed
+     a clone that gets discarded, so a write is silent data loss with nothing
+     to report it (Gotcha #2). All mutation goes through `apply`. */
+  const h = s.hlt || hltInit(0);
+  const act = { padding: "11px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 13, cursor: "pointer" };
+
+  const body = HLT_SUBPANELS[sub] ? HLT_SUBPANELS[sub]({ s, h, accent, apply, act }) : null;
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* Subtab bar. Eleven labels cannot fit a 360px row, so it scrolls
+          horizontally rather than truncating or wrapping to a second line that
+          would eat the panel below it. */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 12px 8px", borderBottom: `1px solid ${TH.line}`, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
+        {HLT_TABS.map((t) => {
+          const on = sub === t.id;
+          const badge = HLT_BADGE[t.id] ? HLT_BADGE[t.id](s, h) : 0;
+          return (
+            <button key={t.id} className="btn" onClick={() => setSub(t.id)} aria-pressed={on}
+              style={{ flex: "0 0 auto", padding: "6px 11px", borderRadius: 20, cursor: "pointer",
+                border: `1px solid ${on ? accent : TH.line}`, background: on ? accent + "18" : "transparent",
+                color: on ? accent : TH.muted, fontSize: 12, fontWeight: on ? 700 : 500, whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", gap: 5, transition: "color .2s, background .2s, border-color .2s" }}>
+              <span style={{ fontSize: 13, filter: on ? "none" : "grayscale(.5)" }}>{t.emoji}</span>
+              {t.label}
+              {badge ? <span style={{ fontFamily: FONT_LEDGER, fontSize: 10.5, padding: "0 5px", borderRadius: 9, background: TH.coral + "22", color: TH.coral }}>{badge}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 16px", minHeight: 0 }}>{body}</div>
+    </div>
+  );
+}
+
+/* Counts that earn a red pip on the subtab — only things that want attention,
+   never a count of everything present. A disability is not a to-do item. */
+const HLT_BADGE = {
+  physical:  (s) => untreated(s).length,
+  illness:   (s, h) => Object.keys(h.acute || {}).length,
+  addiction: (s, h) => Object.keys(h.addict || {}).filter((k) => h.addict[k].st >= 2).length,
+  mental:    (s) => ["anxiety", "depression"].filter((k) => hasCond(s, k) && !s.conditions[k].treated).length,
+};
+
+/* ── the eleven ──────────────────────────────────────────────────────────
+   A registry, not a switch: adding a twelfth subtab is a row in HLT_TABS plus
+   a function here, and HealthPanel itself never changes. */
+const HLT_SUBPANELS = {
+
+  physical: ({ s, h, accent, apply, act }) => {
+    const conds = activeConds(s), sick = untreated(s);
+    const hcLevel = HC[s.profile.country] ?? 0.3;
+    const outlook = s.stats.health > 75 ? "Strong" : s.stats.health > 55 ? "Decent" : s.stats.health > 35 ? "Fragile" : "Serious";
+    return (<>
       <div style={panelCard(accent)}>
-        <div style={hdr}>🩺 Body</div>
+        <div style={hltHdr}>🩺 Body</div>
         <MiniBar label="Health" value={s.stats.health} accent={accent} note={outlook} />
-        <MiniBar label="Happiness" value={s.stats.happiness} accent={accent} />
-        <div style={{ ...row, borderBottom: "none", marginTop: 6 }}>
-          <span style={{ opacity: 0.6 }}>Age</span><span>{age}</span>
-        </div>
-        <div style={{ ...row, borderBottom: "none" }}>
+        <MiniBar label="Condition" value={(h.vitals.fit + h.vitals.nut + h.vitals.slp) / 3} accent={accent}
+          note={Math.round((h.vitals.fit + h.vitals.nut + h.vitals.slp) / 3)} />
+        <div style={{ ...hltRow, borderBottom: "none", marginTop: 6 }}><span style={{ opacity: 0.6 }}>Age</span><span>{ageYears(s)}</span></div>
+        <div style={{ ...hltRow, borderBottom: "none" }}>
           <span style={{ opacity: 0.6 }}>Healthcare here</span>
           <span>{hcLevel < 0.15 ? "mostly covered" : hcLevel > 0.6 ? "you pay, dearly" : "part-subsidised"}</span>
         </div>
@@ -16723,51 +17812,307 @@ function HealthPanel({ state, apply, accent }) {
           </div>
         )}
       </div>
-
       <div style={panelCard(accent)}>
-        <div style={hdr}>📋 Conditions</div>
-        {conds.length === 0 ? (
-          <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5 }}>Nothing on record. A check-up finds things earlier than symptoms do.</div>
-        ) : conds.map(([id, c]) => {
-          const cfg = CONDITIONS[id];
-          const yrs = Math.max(0, Math.floor((s.ageDays - c.since) / 365));
-          return (
-            <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px dashed ${TH.line}` }}>
-              <span style={{ fontSize: 20 }}>{cfg.emoji}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14 }}>{cfg.name}</div>
-                <div style={{ fontSize: 11.5, opacity: 0.55 }}>{yrs < 1 ? "diagnosed this year" : `${yrs} year${yrs > 1 ? "s" : ""}`}{c.known === false ? " · unmonitored" : ""}</div>
-              </div>
-              <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap", border: `1px solid ${c.treated ? accent + "66" : TH.coral + A25}`, background: c.treated ? accent + "14" : TH.coral + A06, color: c.treated ? accent : TH.coral }}>
-                {c.treated ? "managed" : "untreated"}
-              </span>
-            </div>
-          );
-        })}
-        {sick.length > 0 && (
-          <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => treatMenu(st))}>💊 Treat something</button>
-        )}
+        <div style={hltHdr}>📋 Chronic conditions</div>
+        {conds.length === 0 ? <HltEmpty>Nothing on record. A check-up finds things earlier than symptoms do.</HltEmpty>
+          : conds.map(([id, c]) => {
+            const cfg = CONDITIONS[id];
+            const yrs = hltYears(s, c.since);
+            return <HltItem key={id} emoji={cfg.emoji} name={cfg.name}
+              sub={(yrs < 1 ? "diagnosed this year" : `${yrs} year${yrs > 1 ? "s" : ""}`) + (c.known === false ? " · unmonitored" : "")}
+              right={<HltChip tone={c.treated ? "ok" : "bad"} accent={accent}>{c.treated ? "managed" : "untreated"}</HltChip>} />;
+          })}
+        {sick.length > 0 && <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => treatMenu(st))}>💊 Treat something</button>}
       </div>
-
       <div style={panelCard(accent)}>
-        <div style={hdr}>🏥 Care</div>
-        <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.5, marginBottom: 12 }}>
-          Check-ups, specialists, donations and elective surgery — priced for {s.profile.country}.
+        <div style={hltHdr}>🏥 Care</div>
+        <HltEmpty>Check-ups, specialists, donations and elective surgery — priced for {s.profile.country}.</HltEmpty>
+        <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => doctorMenu(st))}>🩺 See a doctor</button>
+      </div>
+    </>);
+  },
+
+  mental: ({ s, h, accent, apply, act }) => {
+    const mind = hltMindTarget(s);
+    const mh = ["anxiety", "depression"].filter((k) => hasCond(s, k));
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🧠 How you're holding</div>
+        <MiniBar label="Mood" value={h.mind.mood} accent={accent} />
+        <MiniBar label="Stress" value={h.mind.stress} accent={h.mind.stress > 65 ? TH.coral : accent} />
+        <MiniBar label="Resilience" value={h.mind.resil} accent={accent} />
+        <HltWhy terms={mind.terms} />
+        <div style={{ marginTop: 11, fontSize: 12.5, opacity: 0.7, lineHeight: 1.55 }}>
+          {h.mind.stress > 70 ? "You are running on more than you have. That is survivable for a while and then it isn't."
+            : h.mind.mood > 68 ? "Steady. Not the absence of anything hard — just enough room around it."
+            : h.mind.mood < 35 ? "Everything is taking more effort than it should, including the things that used to be free."
+            : "Somewhere in the ordinary middle, which is where most of a life is spent."}
         </div>
-        <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doctorMenu(st))}>🩺 See a doctor</button>
       </div>
-
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>📋 Diagnoses</div>
+        {mh.length === 0 ? <HltEmpty>Nothing diagnosed. That is not the same as nothing there — a psychiatrist is how it gets a name.</HltEmpty>
+          : mh.map((k) => <HltItem key={k} emoji={CONDITIONS[k].emoji} name={CONDITIONS[k].name}
+              sub={`${hltYears(s, s.conditions[k].since)} year${hltYears(s, s.conditions[k].since) === 1 ? "" : "s"}`}
+              right={<HltChip tone={s.conditions[k].treated ? "ok" : "bad"} accent={accent}>{s.conditions[k].treated ? "in treatment" : "untreated"}</HltChip>} />)}
+        <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => doctorMenu(st))}>🧠 See someone</button>
+      </div>
       {(s.emergent.selfAwareness ?? 0) > 0 && (
         <div style={panelCard(accent)}>
-          <div style={hdr}>🧘 Mind</div>
+          <div style={hltHdr}>🧘 Inner weather</div>
           <MiniBar label="Self-awareness" value={s.emergent.selfAwareness} accent={accent} />
           {s.emergent.discipline !== undefined && <MiniBar label="Discipline" value={s.emergent.discipline} accent={accent} />}
           {s.emergent.prudence !== undefined && <MiniBar label="Prudence" value={s.emergent.prudence} accent={accent} />}
         </div>
       )}
-    </div>
-  );
-}
+    </>);
+  },
+
+  fitness: ({ s, h, accent }) => {
+    const t = hltFitnessTarget(s);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🏃 Fitness</div>
+        <MiniBar label="Now" value={h.vitals.fit} accent={accent} />
+        <MiniBar label="Where your life is taking it" value={t.v} accent={accent + "88"} />
+        <HltWhy terms={t.terms} />
+        <div style={{ marginTop: 11, fontSize: 12.5, opacity: 0.7, lineHeight: 1.55 }}>
+          {Math.abs(t.v - h.vitals.fit) < 4 ? "Settled where your circumstances hold it."
+            : t.v > h.vitals.fit ? "Drifting upward — what you're doing is working faster than age is undoing it."
+            : "Drifting down. Not dramatically, and not from one bad week; this is the slow direction."}
+        </div>
+      </div>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>📈 What moves it</div>
+        <HltEmpty>Fitness isn't a meter to top up. It follows the shape of your life — the work you do, what you're carrying, whether you sleep — and it peaks in your twenties whatever you do about it. Deliberate effort bends the curve; it doesn't replace it.</HltEmpty>
+      </div>
+    </>);
+  },
+
+  nutrition: ({ s, h, accent }) => {
+    const t = hltNutritionTarget(s);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🥗 Nutrition</div>
+        <MiniBar label="Now" value={h.vitals.nut} accent={accent} />
+        <MiniBar label="What you can reach" value={t.v} accent={accent + "88"} />
+        <HltWhy terms={t.terms} />
+      </div>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🛒 The honest part</div>
+        <HltEmpty>
+          Eating well is mostly a question of money and of what is within reach of where you live — not of willpower.
+          {(s.money || 0) < 300 ? " Right now it is the money." : ""}
+          {hltAccess(s) < 0.5 ? " And the food environment here does a lot of the deciding." : ""}
+        </HltEmpty>
+      </div>
+    </>);
+  },
+
+  sleep: ({ s, h, accent }) => {
+    const t = hltSleepTarget(s);
+    const hrs = (5.2 + (h.vitals.slp / 100) * 3.4).toFixed(1);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🌙 Sleep</div>
+        <MiniBar label="Quality" value={h.vitals.slp} accent={h.vitals.slp < 40 ? TH.coral : accent} />
+        <MiniBar label="Sleep debt" value={h.debt} accent={h.debt > 50 ? TH.coral : accent} note={h.debt > 60 ? "heavy" : h.debt > 30 ? "building" : "clear"} />
+        <div style={{ ...hltRow, borderBottom: "none", marginTop: 6 }}>
+          <span style={{ opacity: 0.6 }}>Roughly</span><span>{hrs} hours a night</span>
+        </div>
+        <HltWhy terms={t.terms} />
+      </div>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🛏 What it costs</div>
+        <HltEmpty>
+          {h.debt > 55 ? "Debt this size shows up as everything else: mood, judgement, how often you get ill, how the years add up. It is the cheapest thing on this screen to fix and the hardest to find time for."
+            : h.vitals.slp < 45 ? "Short nights, consistently. The body keeps the tab open."
+            : "Sleeping enough, most weeks. It quietly underwrites everything else here."}
+        </HltEmpty>
+      </div>
+    </>);
+  },
+
+  history: ({ s, h, accent }) => {
+    const KIND = { d: ["🔍", "Diagnosed"], r: ["✅", "Resolved"], v: ["💉", "Vaccinated"], i: ["🤒", "Fell ill"],
+                   a: ["🚬", "Dependence"], x: ["♿", "Disability"], g: ["🌼", "Allergy"], t: ["💊", "Treated"], n: ["📝", "Note"] };
+    const NAME = (r) => (CONDITIONS[r.id] || HLT_ILLNESS[r.id] || HLT_VACCINES[r.id] || HLT_ADDICTIONS[r.id]
+                      || HLT_DISABILITIES[r.id] || HLT_ALLERGIES[r.id] || { name: r.id }).name;
+    const rows = (h.hx || []).slice().reverse();
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>📜 Medical history</div>
+        {rows.length === 0 ? <HltEmpty>Nothing recorded yet. This fills itself as a life happens to you.</HltEmpty>
+          : rows.map((r, i) => {
+            const k = KIND[r.k] || ["•", r.k];
+            return <HltItem key={i} emoji={k[0]} name={NAME(r)} sub={`${k[1]} · age ${Math.floor(r.t / 365.25)}`} />;
+          })}
+        {rows.length >= HLT_HX_CAP && (
+          <div style={{ fontSize: 11.5, opacity: 0.5, marginTop: 10, lineHeight: 1.5 }}>
+            Showing the most recent {HLT_HX_CAP}. Earlier entries are archived, the way a real file thins out.
+          </div>
+        )}
+      </div>
+    </>);
+  },
+
+  illness: ({ s, h, accent, apply, act }) => {
+    const acute = Object.entries(h.acute || {});
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🤒 Right now</div>
+        {acute.length === 0 ? <HltEmpty>Nothing acute. You are, at this moment, simply well — which is worth noticing, since it is the state you spend most of your life in and the only one nobody mentions.</HltEmpty>
+          : acute.map(([id, a]) => {
+            const ill = HLT_ILLNESS[id] || { name: id, emoji: "🩺", sev: 1, days: 7 };
+            const left = Math.max(0, a.days - (s.ageDays - a.since));
+            return <HltItem key={id} emoji={ill.emoji} name={ill.name}
+              sub={left > 0 ? `about ${left} more day${left === 1 ? "" : "s"}` : "should be lifting"}
+              right={<HltChip tone={ill.sev >= 4 ? "bad" : ill.sev >= 2 ? "warn" : "ok"} accent={accent}>{ill.sev >= 4 ? "serious" : ill.sev >= 2 ? "rough" : "mild"}</HltChip>} />;
+          })}
+        {acute.length > 0 && <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => doctorMenu(st))}>🩺 Get seen</button>}
+      </div>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🧫 How often, and why</div>
+        <HltEmpty>
+          Falling ill is not bad luck alone — it tracks sleep, food and what you are already carrying.
+          {h.vitals.slp < 45 ? " Short sleep is currently the biggest thing raising your odds." : ""}
+          {Object.keys(h.vax || {}).length > 0 ? ` You are covered against ${Object.keys(h.vax).length} thing${Object.keys(h.vax).length === 1 ? "" : "s"} that used to be ordinary.` : ""}
+        </HltEmpty>
+      </div>
+    </>);
+  },
+
+  vax: ({ s, h, accent, apply, act }) => {
+    /* A record can name a vaccine this build does not have — a save written by
+       a later version, or content a generator registered that is not present
+       now. Unknown ids degrade to a plain row rather than taking the panel
+       down, which is the whole point of an extensible registry: the data
+       outlives any one build of the code. */
+    const vaxOf = (id) => HLT_VACCINES[id] || { name: id, emoji: "💉", from: 0 };
+    const had = Object.keys(h.vax || {});
+    const available = Object.keys(HLT_VACCINES).filter((id) => !h.vax[id] && hltVaxAvailable(id, s) > 0.05);
+    const notYet = Object.keys(HLT_VACCINES).filter((id) => yearOf(s) < HLT_VACCINES[id].from);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>💉 On your record</div>
+        {had.length === 0 ? <HltEmpty>Nothing on record.{yearOf(s) < 1950 ? " Which for this era is unremarkable — most of the schedule does not exist yet." : ""}</HltEmpty>
+          : had.map((id) => <HltItem key={id} emoji={vaxOf(id).emoji} name={vaxOf(id).name} sub={`given ${h.vax[id]}`}
+              right={<HltChip tone="good" accent={accent}>done</HltChip>} />)}
+      </div>
+      {available.length > 0 && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>🕐 Available to you</div>
+          {available.map((id) => <HltItem key={id} emoji={HLT_VACCINES[id].emoji} name={HLT_VACCINES[id].name}
+            sub={`${Math.round(hltVaxAvailable(id, s) * 100)}% of people here get this`} />)}
+          <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => doctorMenu(st))}>💉 Get up to date</button>
+        </div>
+      )}
+      {notYet.length > 0 && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>🔬 Not invented yet</div>
+          <HltEmpty>{notYet.map((id) => HLT_VACCINES[id].name).join(", ")} — none of these exist in {yearOf(s)}. Living before a vaccine is not the same as refusing one.</HltEmpty>
+        </div>
+      )}
+    </>);
+  },
+
+  addiction: ({ s, h, accent, apply, act }) => {
+    const list = Object.entries(h.addict || {}).filter(([, a]) => a.st > 0);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🚬 Dependence</div>
+        {list.length === 0 ? <HltEmpty>Nothing you are dependent on.</HltEmpty>
+          : list.map(([id, a]) => {
+            const cfg = HLT_ADDICTIONS[id] || { name: id, emoji: "•" };
+            const yrs = hltYears(s, a.since);
+            /* the stage lives in the chip only — carrying it in the subtitle
+               too rendered as "Nicotine dependent · 21 years  dependent" */
+            return <HltItem key={id} emoji={cfg.emoji} name={cfg.name}
+              sub={`${yrs < 1 ? "under a year" : yrs + " year" + (yrs > 1 ? "s" : "")}${a.quits ? ` · ${a.quits} attempt${a.quits > 1 ? "s" : ""} to stop` : ""}`}
+              right={<HltChip tone={a.st >= 3 ? "bad" : a.st === 2 ? "warn" : "ok"} accent={accent}>{HLT_ADDICT_STAGE[a.st]}</HltChip>} />;
+          })}
+        {list.length > 0 && (
+          <button className="btn" style={{ ...act, width: "100%", marginTop: 12 }} onClick={() => apply((st) => hltQuitMenu(st))}>🌱 Try to stop</button>
+        )}
+      </div>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>📅 When you lived</div>
+        <HltEmpty>
+          In {yearOf(s)}, smoking sits at about {Math.round(hltEraValue(HLT_ADDICTIONS.nicotine.era, yearOf(s)) * 100)}% social normality —
+          {hltEraValue(HLT_ADDICTIONS.nicotine.era, yearOf(s)) > 0.6
+            ? " it is offered everywhere, and refusing is the thing that needs explaining."
+            : hltEraValue(HLT_ADDICTIONS.nicotine.era, yearOf(s)) > 0.35
+            ? " common, but the warnings have started and the rooms are getting smaller."
+            : " unusual enough that most people around you have never started."}
+        </HltEmpty>
+      </div>
+    </>);
+  },
+
+  disability: ({ s, h, accent }) => {
+    const list = Object.entries(h.disab || {});
+    const acc = hltAccessibility(s);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>♿ Yours</div>
+        {list.length === 0 ? <HltEmpty>Nothing recorded.</HltEmpty>
+          : list.map(([id, d]) => {
+            const cfg = HLT_DISABILITIES[id] || { name: id, emoji: "•" };
+            return <HltItem key={id} emoji={cfg.emoji} name={cfg.name}
+              sub={(d.cong ? "from birth" : hltYears(s, d.since) < 1 ? "this year" : `${hltYears(s, d.since)} year${hltYears(s, d.since) === 1 ? "" : "s"} ago`) + (d.known === 0 ? " · not yet named" : "")}
+              right={cfg.community ? <HltChip tone="ok" accent={accent}>community</HltChip> : null} />;
+          })}
+        {list.some(([id]) => HLT_DISABILITIES[id] && HLT_DISABILITIES[id].aids) && (
+          <div style={{ marginTop: 10, fontSize: 12.5, opacity: 0.72, lineHeight: 1.55 }}>
+            {list.filter(([id]) => HLT_DISABILITIES[id] && HLT_DISABILITIES[id].aids).map(([id]) => HLT_DISABILITIES[id].aids).join(" ")}
+          </div>
+        )}
+      </div>
+      {/* only shown to someone it actually applies to — "how much of the world
+          is open" is not a statistic about a person with no disability, and
+          rendering it to everyone made it read as a general score */}
+      {list.length > 0 && (
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🌍 How much of the world is open</div>
+        <MiniBar label={`${s.profile.country}, ${yearOf(s)}`} value={acc * 100} accent={acc < 0.4 ? TH.coral : accent} note={`${Math.round(acc * 100)}%`} />
+        <HltEmpty>
+          This bar is about the world, not about you. Ramps, lifts, interpreters, whether the law says a building has to let you in —
+          {acc > 0.7 ? " most of that exists here and now, and is taken for granted by people who never needed it."
+            : acc > 0.45 ? " some of it exists, unevenly, and you will spend energy finding out which."
+            : " almost none of it exists yet. The same body in a later decade meets a different world."}
+        </HltEmpty>
+      </div>
+      )}
+    </>);
+  },
+
+  allergy: ({ s, h, accent }) => {
+    const list = Object.entries(h.allergy || {});
+    const epi = yearOf(s) >= HLT_EPIPEN_FROM;
+    const severe = list.filter(([id]) => (HLT_ALLERGIES[id] || {}).sev >= 3);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🌼 Allergies</div>
+        {list.length === 0 ? <HltEmpty>None known.</HltEmpty>
+          : list.map(([id, a]) => {
+            const cfg = HLT_ALLERGIES[id] || { name: id, emoji: "•", kind: "", sev: 1 };
+            return <HltItem key={id} emoji={cfg.emoji} name={cfg.name} sub={cfg.kind + (a.since === 0 ? " · since childhood" : " · adult onset")}
+              right={<HltChip tone={cfg.sev >= 3 ? "bad" : cfg.sev === 2 ? "warn" : "ok"} accent={accent}>
+                {cfg.sev >= 3 ? "anaphylactic" : cfg.sev === 2 ? "moderate" : "mild"}</HltChip>} />;
+          })}
+      </div>
+      {severe.length > 0 && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>💉 Carrying</div>
+          <HltEmpty>
+            {epi ? "An adrenaline autoinjector lives in your bag, and you have explained how to use it to more people than you can count."
+              : `Autoinjectors are not an ordinary thing to carry in ${yearOf(s)} — they arrive around ${HLT_EPIPEN_FROM}. Until then it is avoidance, and hoping.`}
+          </HltEmpty>
+        </div>
+      )}
+    </>);
+  },
+};
 
 /* ═══════════════ GAME ═══════════════ */
 

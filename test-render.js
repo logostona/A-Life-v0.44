@@ -357,5 +357,97 @@ sec("7 · no light-theme literals left in the UI layer");
     /const TH = \{/.test(src) && /const DECADE_ACCENT_DARK = \{/.test(src));
 }
 
+/* ═══════════════ 8 · the eleven health subtabs actually render ═══════════════
+   Every one of them, against several different lives. A panel that throws only
+   for a character who happens to have an allergy is a panel that throws for
+   the player and never for the suite, so the fixtures below deliberately
+   include the states that are easy to forget: empty, populated, and a life
+   lived before most of the content existed. */
+sec("8 · the health subtabs");
+if (mod) {
+  const M2 = mod;
+  const mk = (country, year, age, fill) => {
+    const c = H.mkChar({ country: country, birthYear: year - age, cls: "Middle" });
+    c.ageDays = Math.round(age * 365.25);
+    if (fill) fill(c);
+    return c;
+  };
+  const FIXTURES = {
+    "a new life, nothing on record": mk("Sweden", 2010, 20),
+    "a life with everything": mk("Sweden", 2015, 62, (c) => {
+      c.hlt.addict.nicotine = { st: 2, since: 3000, tol: 1.2, quits: 2 };
+      c.hlt.disab.mobility = { since: 8000, cong: 0, known: 1 };
+      c.hlt.allergy.peanut = { sev: 3, since: 0 };
+      c.hlt.acute.flu = { since: c.ageDays - 3, days: 10 };
+      c.hlt.vax.polio = 1958; c.hlt.vax.mmr = 1971;
+      c.conditions = { asthma: { since: 900, treated: true, known: true },
+                       diabetes: { since: 12000, treated: false, known: true } };
+      c.hlt.hx = [{ t: 900, k: "d", id: "asthma" }, { t: 3000, k: "a", id: "nicotine" },
+                  { t: 8000, k: "x", id: "mobility" }, { t: 100, k: "v", id: "polio" }];
+    }),
+    "born before most of it existed": mk("Nigeria", 1930, 40, (c) => {
+      c.hlt.disab.deaf = { since: 0, cong: 1, known: 1 };
+      c.hlt.allergy.bee = { sev: 3, since: 0 };
+    }),
+    "a record with unknown ids in it": mk("Sweden", 2010, 30, (c) => {
+      /* a save written by a future version, or by a generator that registered
+         content this build does not have. It must degrade, not explode. */
+      c.hlt.acute.__gone = { since: 0, days: 5 };
+      c.hlt.allergy.__gone = { sev: 2, since: 0 };
+      c.hlt.disab.__gone = { since: 0, cong: 1, known: 1 };
+      c.hlt.addict.__gone = { st: 2, since: 0, tol: 1, quits: 0 };
+      c.hlt.vax.__gone = 1999;
+      c.hlt.hx = [{ t: 100, k: "?", id: "__gone" }];
+    }),
+  };
+
+  ok("the subtab registry is exported", !!M2.HLT_SUBPANELS && !!M2.HLT_TABS);
+  let broke = [];
+  for (const tab of (M2.HLT_TABS || [])) {
+    for (const label of Object.keys(FIXTURES)) {
+      const s = FIXTURES[label];
+      try {
+        const el = M2.HLT_SUBPANELS[tab.id]({
+          s: s, h: s.hlt, accent: "#8899FF", apply: () => {},
+          act: { padding: 4 },
+        });
+        const out = ReactDOMServer.renderToStaticMarkup(
+          React.createElement("div", null, el));
+        if (!out || out.length < 20) broke.push(tab.id + " / " + label + " (empty)");
+        if (/undefined|\[object Object\]|NaN/.test(out)) broke.push(tab.id + " / " + label + " (undefined in output)");
+      } catch (e) {
+        broke.push(tab.id + " / " + label + ": " + String(e.message).slice(0, 90));
+      }
+    }
+  }
+  ok("all eleven subtabs render against every fixture without throwing",
+    broke.length === 0, broke.slice(0, 6));
+
+  /* the panel itself, which is what the tab bar mounts */
+  let panelErr = null, panelHtml = "";
+  try {
+    panelHtml = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(M2.HealthPanel, { state: FIXTURES["a life with everything"], apply: () => {}, accent: "#8899FF" }));
+  } catch (e) { panelErr = e; }
+  ok("the Health panel mounts", !panelErr && panelHtml.length > 200, panelErr && String(panelErr).slice(0, 200));
+  ok("...showing every subtab in the bar",
+    (M2.HLT_TABS || []).every((t) => panelHtml.indexOf(">" + t.label + "<") > -1 || panelHtml.indexOf(t.label) > -1),
+    (M2.HLT_TABS || []).filter((t) => panelHtml.indexOf(t.label) === -1).map((t) => t.label));
+  ok("...and no raw undefined reached the markup", !/undefined|NaN/.test(panelHtml));
+
+  /* GOTCHA #2 — a panel is handed a clone that gets discarded, so a write in
+     one is silent data loss with nothing to report it. */
+  const probe = FIXTURES["a life with everything"];
+  const before = JSON.stringify(probe);
+  for (const tab of (M2.HLT_TABS || [])) {
+    try {
+      ReactDOMServer.renderToStaticMarkup(React.createElement("div", null,
+        M2.HLT_SUBPANELS[tab.id]({ s: probe, h: probe.hlt, accent: "#8899FF", apply: () => {}, act: {} })));
+    } catch (e) { /* already reported above */ }
+  }
+  ok("rendering a subtab never mutates the state it was handed",
+    JSON.stringify(probe) === before);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

@@ -18,8 +18,10 @@
  * v5 — EDU phase 7: school life, crystallised institutions, boarding.
  * v6 — EDU phase 8: post-secondary, adult education, call-site inversion.
  * v7 — IQ scale, romantic discovery as a scene, non-transition hormone therapy.
+ * v8 — Health subsystem (HLT): eleven subtabs, emergent lifestyle, era-gated
+ *      vaccination, addiction, disability, allergies, medical history.
  */
-const CACHE_NAME = "a-life-cache-v7";
+const CACHE_NAME = "a-life-cache-v8";
 const ASSETS = [
   "./",
   "./index.html",
