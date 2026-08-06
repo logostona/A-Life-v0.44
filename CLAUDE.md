@@ -95,7 +95,7 @@ the whole file down in P6. Always run the harness import as part of a build chec
 
 Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activate` handler
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
-PWA on the old bundle for an extra launch. Currently `a-life-cache-v6`.
+PWA on the old bundle for an extra launch. Currently `a-life-cache-v7`.
 
 ## 5 · Test suites
 
@@ -103,24 +103,39 @@ PWA on the old bundle for an extra launch. Currently `a-life-cache-v6`.
 for t in test-edu-s01 test-edu-s02 test-edu-s09 test-edu-s04-s05 test-edu-s03-s06 \
          test-edu-s07 test-edu-s12 test-edu-s08 test-identity test-integration \
          test-render test-deploy test-hre-s11 test-hre-s10 test-hre-s06 \
-         test-hre-s08b test-hre-phase7-gate test-hre-s09; do
+         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism; do
   printf "%-24s " "$t"; node --max-old-space-size=4096 $t.js 2>&1 | grep -oE "[0-9]+ passed, [0-9]+ failed" | tail -1
 done
 ```
 
-**1618 assertions.** `test-hre-s09.js` fails 8 of 87 — a stale pre-Phase-7 fixture that predates
+**1671 assertions.** `test-hre-s09.js` fails 8 of 87 — a stale pre-Phase-7 fixture that predates
 current work. That is the known baseline, not a regression.
 
 `edu-sample-review.js` is **not a test**: it renders generated institutions as prose for a human
 to read, asserts nothing, and cannot fail. It has caught three absurdities that were green on
 every assertion. Run it after touching the generator.
 
+**Read new content as prose before shipping it, whatever the assertions say.** Rendering the
+scenes and menus added in the IQ/romantic/HRT patch turned up four things that were green on
+every assertion: an aromantic character told to "sit with the mismatch", a grayromantic one
+handed demiromantic's text, a sixteen-year-old starting pubertal induction told to expect the
+risks first because of a trial of postmenopausal HRT, and Klinefelter — the commonest
+indication for lifelong testosterone in medicine — offered nothing at all, because the code
+read `repro` (a **fertility** field) as an endocrine one. Assertions check the shape you
+thought to check. Prose shows you the one you didn't.
+
 ## 6 · Traps that have already cost time
 
-**Lint slices must end at the next section banner.** Four suites have been mis-scoped by ending
-at a function name that later moved, and two were passing *by luck*. Sections are not in
-numeric order in the file — S12 physically precedes S07 — so never assume order; use
-`ctx.py outline` to check.
+**Lint slices must end at the next section banner.** Five suites have been mis-scoped by ending
+at a function name, and two were passing *by luck*. The fifth ended at `function hrtMenu(state)`,
+which lives **inside** its section rather than after it, so about half the block was never
+linted at all and nobody could tell from the green tick. Sections are not in numeric order in
+the file — S12 physically precedes S07 — so never assume order; use `ctx.py outline` to check.
+
+**One name per `const`.** The harness export scanner matches column-0 declarations with a
+single-capture regex, so `const A = 1, B = 2;` exports `A` and silently drops `B` — and a suite
+then asserts on `undefined` and passes. `IQ_SD` shipped this way. Check with:
+`grep -nE '^(const|let|var)\s+\w+\s*=[^;]*,\s*\w+\s*=' life-sim.jsx`
 
 **A lint that reads prose flags the sentence forbidding the thing as the thing.** Strip comments
 before scanning, and slice from the `/*` that *opens* a banner, not from the banner text inside
