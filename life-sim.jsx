@@ -231,6 +231,97 @@ const COLLEGE_TIERS = { state: { name: "State college", fee: 3500, presBonus: 0 
 /* ═══════════════ HELPERS ═══════════════ */
 
 const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+
+/* ─────────────────────────── IQ ───────────────────────────
+   The stat the player sees is an IQ score, not a "smarts %".
+
+   HOW IT IS STORED, AND WHY THAT IS NOT A FUDGE.
+   `stats.smarts` stays a 0-100 value, because 69 call sites read and WRITE it
+   on that scale and converting them all would be a large change with nothing
+   to show for it. What that number means is a PERCENTILE RANK, and an IQ score
+   is exactly a percentile rank mapped onto a mean-100, standard-deviation-15
+   scale. So the stored value and the displayed value are two views of one
+   fact, which is how real testing works — a raw score is meaningless until it
+   is ranked against a population.
+
+   WHAT CHANGED TO MAKE IT HONEST.
+   Generation was `rnd(30, 90)` — a uniform draw, which would mean IQ 70 and
+   IQ 100 are equally common. Ability is not uniform; it is close to normal.
+   `normalPercentile()` samples a standard normal and converts to a percentile,
+   so the population now has the shape a population actually has: most people
+   near the middle, tails genuinely rare.
+
+   THE FLYNN EFFECT, AND WHY IT IS NOT MODELLED.
+   Measured IQ norms rise roughly 3 points per decade, so tests are re-normed
+   and the mean is held at 100 for the CONTEMPORARY population. A character is
+   therefore scored against their own era, which is what a real test would give
+   them, and that is what this returns. Modelling cross-era drift would need an
+   "absolute ability" concept the game does not have, and inventing one to
+   display a more interesting number would be inventing a fact. */
+function normalSample() {
+  /* Box-Muller. Two uniforms in, one standard normal out. */
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+/* Standard normal CDF, via a high-accuracy erf approximation
+   (Abramowitz & Stegun 7.1.26; |error| < 1.5e-7). */
+function normalCdf(z) {
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return 0.5 * (1 + sign * y);
+}
+/* Inverse: percentile -> z. Acklam's rational approximation, refined once by
+   Halley's method so the round-trip is accurate to ~1e-9. */
+function normalQuantile(p) {
+  if (p <= 0) return -3.5;
+  if (p >= 1) return 3.5;
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  const pl = 0.02425, ph = 1 - pl;
+  let q, r, x;
+  if (p < pl) { q = Math.sqrt(-2 * Math.log(p));
+    x = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+  else if (p > ph) { q = Math.sqrt(-2 * Math.log(1-p));
+    x = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+  else { q = p - 0.5; r = q*q;
+    x = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1); }
+  const e = normalCdf(x) - p;
+  const u = e * Math.sqrt(2 * Math.PI) * Math.exp(x * x / 2);
+  return x - u / (1 + x * u / 2);
+}
+/* A percentile drawn from a normal population, 1-99 (never 0 or 100: nobody
+   is at or beyond the ends of a distribution they are a member of). */
+function normalPercentile() {
+  return Math.max(1, Math.min(99, Math.round(normalCdf(normalSample()) * 100)));
+}
+/* One name per `const`: the harness export scanner reads column-0 declarations
+   with a single-capture regex, so `const A = 1, B = 2;` exports A and silently
+   drops B — and a suite then asserts on `undefined` and passes. */
+const IQ_MEAN = 100;
+const IQ_SD = 15;
+/* Percentile -> IQ. Clamped to 55-145 (about ±3 SD): scores outside that are
+   real but so rare that generating them would misrepresent the population, and
+   standard tests do not reliably discriminate out there anyway. */
+function iqFromPercentile(pct) {
+  const p = Math.max(0.5, Math.min(99.5, pct)) / 100;
+  return Math.max(55, Math.min(145, Math.round(IQ_MEAN + normalQuantile(p) * IQ_SD)));
+}
+function iqOf(s) {
+  const pct = (s && s.stats && s.stats.smarts != null) ? s.stats.smarts : 50;
+  return iqFromPercentile(pct);
+}
+/* The band a psychologist would actually write down. */
+function iqBand(iq) {
+  return iq >= 130 ? "very superior" : iq >= 120 ? "superior" : iq >= 110 ? "high average"
+       : iq >= 90 ? "average" : iq >= 80 ? "low average" : iq >= 70 ? "borderline"
+       : "extremely low";
+}
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v) => Math.max(0, Math.min(100, v));
 
@@ -519,6 +610,30 @@ const ROMANTIC_MIRROR = { Straight: "Heteroromantic", Gay: "Homoromantic", Lesbi
                           Bisexual: "Biromantic", Pansexual: "Panromantic", Fluid: "Biromantic",
                           Demisexual: "Demiromantic", "Gray-asexual": "Grayromantic",
                           Asexual: "Aromantic", Questioning: "Questioning" };
+/* WHICH KIND OF DIFFERENCE IT IS.
+   "Does the romantic label equal the mirror of the sexual one" is one bit, and
+   the axis needs more than one: three of the eight labels differ from their
+   orientation in a way that has nothing to do with direction. Splitting on the
+   bit alone told an aromantic character to sit with a mismatch, told a
+   demiromantic one their answers pointed different ways when the difference is
+   about WHEN attraction forms rather than toward whom, and told a panromantic
+   bisexual they had spent months confused by a distinction most people would
+   call a rounding error.
+
+   So direction is compared as direction, and the labels that are not about
+   direction are classified before it is consulted at all. */
+const ROMANTIC_DIRECTION = { Heteroromantic: "other", Homoromantic: "same",
+                             Biromantic: "any", Panromantic: "any" };
+const ORIENT_DIRECTION = { Straight: "other", Gay: "same", Lesbian: "same",
+                           Bisexual: "any", Pansexual: "any", Fluid: "any" };
+/* -> "absent" | "conditional" | "open" | "crossed" | "mirrored" */
+function romanticShape(orientation, romantic) {
+  if (romantic === "Aromantic") return "absent";
+  if (romantic === "Demiromantic" || romantic === "Grayromantic") return "conditional";
+  if (romantic === "Questioning") return "open";
+  const a = ORIENT_DIRECTION[orientation], b = ROMANTIC_DIRECTION[romantic];
+  return a && b && a !== b ? "crossed" : "mirrored";
+}
 function rollRomantic(orientation) {
   const mirrored = ROMANTIC_MIRROR[orientation] || "Biromantic";
   const ace = orientation === "Asexual" || orientation === "Demisexual" || orientation === "Gray-asexual";
@@ -651,7 +766,9 @@ function newCharacter(form) {
     : form.sex;
   const hidden = rollHiddenIdentity(form.sex, form.orient, form.gid, form.romantic, form.expr, assigned);
   const clsHealth = { Poor: rnd(45, 70), Working: rnd(55, 80), Middle: rnd(60, 88), Wealthy: rnd(70, 95) }[form.cls];
-  const sm = form.stSmarts != null ? +form.stSmarts : rnd(30, 90);
+  /* A normal draw, not rnd(30, 90): a uniform one would make IQ 70 and IQ 100
+     equally common, which is not how ability is distributed in a population. */
+  const sm = form.stSmarts != null ? +form.stSmarts : normalPercentile();
   const subj = {};
   for (const k in SUBJECTS) subj[k] = clamp(sm + rnd(-15, 15));
   return {
@@ -694,6 +811,7 @@ function newCharacter(form) {
       ...(form.knowsSelf ? { knowsSelf: true } : {}),
       ...(form.discOAt && form.discOAt !== "random" ? { discOAt: +form.discOAt } : {}),
       ...(form.discGAt && form.discGAt !== "random" ? { discGAt: +form.discGAt } : {}),
+      ...(form.discRAt && form.discRAt !== "random" ? { discRAt: +form.discRAt } : {}),
       fam_newSibRoll: Math.random() < 0.5,
       fam_divorceRoll: Math.random() < 0.28,
       fam_deathRoll: Math.random() < 0.1,
@@ -729,6 +847,8 @@ function migrate(s) {
   if (s.stx.caught == null) s.stx.caught = 0;
   if (s.stx.complaints == null) s.stx.complaints = 0;
   if (!s.outTo || typeof s.outTo !== "object" || Array.isArray(s.outTo)) s.outTo = {};
+  /* medical hormone therapy — distinct from flags.hrt, which is affirming care */
+  if (s.flags && s.flags.medHrt === undefined) s.flags.medHrt = null;
   /* Identity axes added after the split. A save from before this carries a
      gender and a sexual orientation and nothing else, so the new axes are
      backfilled from what is already true of that character rather than
@@ -1058,15 +1178,119 @@ const MILESTONES = [
      is the point of modelling it at all. For a character whose two orientations
      mirror each other this is a one-line confirmation; for a varioriented one
      it's the beat where the mismatch they've been feeling finally has a name. */
+  /* Romantic discovery, as a scene the player is IN rather than a flag flip.
+     It used to set discovered.romantic and print two lines; gender and sexual
+     orientation both got a real moment with a choice, and the axis that
+     produces the most confusing lived experience — wanting someone in a way
+     that does not match how you want anyone else — got the least. Now it is
+     shaped like the other two, and what the character does with the knowledge
+     changes what they carry out of it. */
   { id: "discoverR", at: 6100, run: (s) => {
-    s.discovered.romantic = true;
     const r = s.hidden.romantic, o = s.hidden.orientation;
-    const mirrored = ROMANTIC_MIRROR[o] === r;
-    const lines = [`💗 ${ROMANTIC_DISCOVERY_TEXT[r]}`];
-    if (!mirrored) {
-      lines.push(`🧭 So the two halves don't point the same way: ${r.toLowerCase()}, and ${o.toLowerCase()}. That combination has a name too — cross-oriented — and knowing it is a lot less lonely than not.`);
+    const shape = romanticShape(o, r);
+    /* whether the sexual side is ALSO absent or conditional. An aromantic
+       asexual and an aromantic bisexual are both "absent" on this axis and
+       have almost nothing else in common, and the same is true of the
+       conditional pair — so each branch asks. */
+    const aceToo = o === "Asexual";
+    const demiToo = o === "Demisexual" || o === "Gray-asexual";
+    const opts = [];
+    const done = (st) => { st.discovered.romantic = true; };
+    let title, text;
+
+    if (shape === "absent") {
+      title = "The pull everyone describes";
+      text = aceToo
+        ? `Everyone around you talks about falling for someone as though it were weather — inevitable, and happening to them. You have been waiting for it politely for years. It has not arrived. Neither has the other thing everyone assumes goes with it, and you are starting to suspect that this is simply how you are built rather than something running late.`
+        : `Everyone around you talks about falling for someone as though it were weather — inevitable, and happening to them. You want people. That part works, and has never been in doubt. It is the falling that has not arrived, and you are starting to suspect it is not going to, and that this might not be a fault.`;
+      opts.push({ label: "Let it be what it is",
+        fx: { run: done, emergent: { selfAwareness: +6 }, stats: { happiness: +2 },
+              feed: `💗 ${ROMANTIC_DISCOVERY_TEXT[r]}` } });
+      opts.push({ label: "Work out what you want instead of romance",
+        fx: { run: (st) => { done(st); st.flags.knowsQpr = true; },
+              emergent: { selfAwareness: +9 }, stats: { happiness: +4 },
+              feed: `💗 ${ROMANTIC_DISCOVERY_TEXT[r]} What you do want is harder to name and no less real: people who are yours without the frame everyone assumes. Queerplatonic, if a word helps.` } });
+      if (!aceToo) {
+        /* the specifically aro-allosexual bind: wanting someone and not
+           wanting the thing everyone assumes wanting them leads to */
+        opts.push({ label: "Try to explain that wanting someone isn't the same as falling for them",
+          fx: { run: (st) => { done(st); st.flags.knowsSplit = true; },
+                emergent: { selfAwareness: +8 }, stats: { happiness: -1 },
+                feed: `💗 You said it as plainly as you could: you do want them, you are not going to fall in love with them, and both of those are permanent. It was heard as a negotiating position roughly half the time.` } });
+      }
+      opts.push({ label: "Assume it is just late arriving",
+        fx: { run: done, stats: { happiness: -3 }, emergent: { selfAwareness: +2 },
+              feed: `💗 You gave it a few more years to show up. It used those years the same way it had used all the others.` } });
+
+    } else if (shape === "conditional") {
+      /* demi and gray are both conditional, and the conditions are not the
+         same one: demi is about the ORDER (trust first, or not at all), gray
+         is about the FREQUENCY (rarely, faintly, unpredictably). Giving gray
+         demi's text told a character their feelings needed someone they
+         already knew, which is a different life. */
+      const gray = r === "Grayromantic";
+      title = gray ? "How rarely it visits" : "The condition on it";
+      text = gray
+        ? (demiToo
+          ? `It is not that it never happens. It is that it happens about as often as snow does here, arrives without warning, and is gone before you have worked out what to do about it — and tonight you notice that this is true of all of it, not just the falling.`
+          : `You have never had trouble wanting someone across a room. The other half of it is a rarer weather system entirely: it turns up perhaps twice a decade, faintly, under conditions you could not reproduce on purpose, and then it wanders off again while you are still deciding whether it counted.`)
+        : (demiToo
+          ? `It is not that you don't. It is that you can't, not from a standing start — and you notice tonight that this is true of the whole of it, not just the falling. Strangers are strangers. The people you have let in are a different category entirely.`
+          : `You have never had trouble wanting someone across a room. Tonight you work out that the other half of it does not run on the same fuel at all: it needs time, and trust, and someone you already know — and it has been waiting for those the whole while.`);
+      opts.push({ label: gray ? "Stop scheduling your life around whether it turns up"
+                              : "Stop treating it as a fault in the wiring",
+        fx: { run: (st) => { done(st); st.flags.knowsSplit = true; },
+              emergent: { selfAwareness: +9 }, stats: { happiness: +4 },
+              feed: `💗 ${ROMANTIC_DISCOVERY_TEXT[r]} ${gray ? "You stopped treating the gaps as a problem to be solved, which is most of what living in the middle of the map takes." : "The order runs differently from most people's. It does not run worse."}` } });
+      opts.push({ label: gray ? "Keep waiting for it to settle into something regular"
+                              : "Keep trying to force it on everyone else's schedule",
+        fx: { run: done, stats: { happiness: -4 }, emergent: { selfAwareness: +2 },
+              feed: gray
+                ? `💗 You kept treating every visit as the start of a pattern, and every silence afterwards as evidence something had gone wrong. Neither reading was right.`
+                : `💗 You kept starting things at the speed other people started them, and kept arriving at the same confused halt about six weeks in.` } });
+
+    } else if (shape === "open") {
+      title = "The other half of the question";
+      text = `You have spent a while now trying words on for the first half of the question. Tonight it occurs to you there is a second half — who you want to keep, rather than who you want — and that you have no answer to that one either, and possibly never needed one on a deadline.`;
+      opts.push({ label: "Let it stay open",
+        fx: { run: done, emergent: { selfAwareness: +6 }, stats: { happiness: +2 },
+              feed: `💗 ${ROMANTIC_DISCOVERY_TEXT[r]}` } });
+      opts.push({ label: "Pick a label and see whether it holds",
+        fx: { run: done, emergent: { selfAwareness: +4 },
+              feed: `💗 You chose a word, mostly to have one when asked. It fit the way a borrowed coat fits: well enough, and not yours.` } });
+
+    } else if (shape === "crossed") {
+      /* the genuine cross-orientation: both halves point somewhere, and the
+         somewheres differ. This is what the split attraction model is for. */
+      title = "The other half of the question";
+      text = `There is a question underneath the one you already answered. Not who you want. Who you want to keep. And the answers are not the same, which you have been quietly failing to make sense of for months.`;
+      opts.push({ label: "Sit with the mismatch until it has a name",
+        fx: { run: (st) => { done(st); st.flags.knowsSplit = true; },
+              emergent: { selfAwareness: +10 }, stats: { happiness: +3 },
+              feed: `💗 ${ROMANTIC_DISCOVERY_TEXT[r]} And it does not point the same way as the rest of you — ${r.toLowerCase()}, but ${o.toLowerCase()}. There is a word for that too: cross-oriented. Knowing it is a great deal less lonely than not.` } });
+      opts.push({ label: "Decide one of them must be wrong",
+        fx: { run: done, stats: { happiness: -4 }, emergent: { selfAwareness: +3 },
+              feed: `💗 You assumed one half was a mistake, and spent a while trying to work out which. Neither was. That took longer to arrive at than it needed to.` } });
+      opts.push({ label: "Tell someone and see if it lands",
+        cond: (st) => !!st.friends && Object.keys(st.friends).length > 0,
+        fx: { run: (st) => { done(st); st.flags.knowsSplit = true;
+                const k = Object.keys(st.friends)[0];
+                if (k && st.friends[k]) st.friends[k].rel = clamp(st.friends[k].rel + 6); },
+              emergent: { selfAwareness: +8, courage: +4 }, stats: { happiness: +4 },
+              feed: `💗 You tried to explain it out loud, badly. They said "…okay, so?" and asked what you wanted for dinner. Which was, it turned out, exactly the right response.` } });
+
+    } else {
+      /* mirrored: it lines up, and noticing it is a small thing */
+      title = "The other half of the question";
+      text = `You have known for a while who you want. Tonight you notice there is a second question underneath it — not who you want, but who you want to BE WITH — and that for you the two have the same answer.`;
+      opts.push({ label: "Notice it, and let it be simple",
+        fx: { run: done, emergent: { selfAwareness: +4 }, stats: { happiness: +2 },
+              feed: `💗 ${ROMANTIC_DISCOVERY_TEXT[r]} It matches the rest of you, which you had assumed was how it worked for everyone.` } });
+      opts.push({ label: "Never think about it again",
+        fx: { run: done, feed: `💗 You never gave it a name. It never needed one.` } });
     }
-    return { auto: lines, fx: { emergent: { selfAwareness: mirrored ? +4 : +9 } } };
+
+    return { event: { emoji: "💗", title: title, text: text, options: opts } };
   } },
   /* Intersex discovery fires at the age the specific variation would actually
      surface — birth for CAH, puberty for CAIS and 5-ARD, and for Klinefelter
@@ -8806,6 +9030,7 @@ function advance(state, totalDays) {
       if (s.flags["m_" + m.id]) continue;
       const at = m.id === "discoverO" && s.flags.discOAt ? s.flags.discOAt * 365.25
                : m.id === "discoverG" && s.flags.discGAt ? s.flags.discGAt * 365.25
+               : m.id === "discoverR" && s.flags.discRAt ? s.flags.discRAt * 365.25
                : m.at;
       if (s.ageDays >= at && (!m.cond || m.cond(s))) {
         s.flags["m_" + m.id] = true;
@@ -8916,6 +9141,8 @@ const ACT_GROUPS = [
       { label: "🧘 Yoga & stretching", fx: { stats: { health: +2, happiness: +2 } }, feed: "🧘 An hour of yoga. Your spine sent a formal thank-you." },
       { label: "🏊 Swimming", fx: { stats: { health: +3, happiness: +1 } }, feed: "🏊 Laps until your arms unionized. Slept like a stone." },
     ] } },
+    { id: "medhrt", minAge: 12, emoji: "💊", label: "Hormone therapy (medical)", cost: 1, special: "medHrt",
+      cond: (s) => hrtMedicalAvailable(s) },
     { id: "checkup", minAge: 18, emoji: "🩺", label: "Doctor check-up", cost: 1, price: 60, fx: { stats: { health: +5 } }, lines: ["🩺 Full check-up. Caught the small stuff early — worth every cent.", "🩺 Bloodwork, questions, a lollipop you were too old for and took anyway. All clear."] },
     { id: "sleepin", minAge: 6, emoji: "😴", label: "Sleep in", cost: 1, fx: { stats: { health: +2, happiness: +2 } }, lines: ["😴 You slept until the day gave up on rushing you.", "😴 Twelve hours. You woke up a new person with the same problems and more patience."] },
     { id: "spa", minAge: 16, emoji: "🧖", label: "Spa day", cost: 1, price: 40, fx: { stats: { looks: +2, happiness: +3 } }, lines: ["🧖 Steam, scrubs, cucumber water. You emerged glowing and lighter in every sense."] },
@@ -9038,6 +9265,7 @@ function doActivity(state, act) {
   if (act.special === "prison") { return Object.assign(s, { pending: prisonMenu(s).pending }); }
   if (act.special === "expunge") { return Object.assign(s, { pending: expungeMenu(s).pending }); }
   if (act.special === "hrt") { return Object.assign(s, { pending: hrtMenu(s).pending }); }
+  if (act.special === "medHrt") { return Object.assign(s, { pending: medicalHrtMenu(s).pending }); }
   if (act.special === "blockers") { return Object.assign(s, { pending: blockersMenu(s).pending }); }
   if (act.special === "srgTop") { return Object.assign(s, { pending: surgeryMenu(s, "top").pending }); }
   if (act.special === "srgGcs") { return Object.assign(s, { pending: surgeryMenu(s, "gcs").pending }); }
@@ -9645,6 +9873,240 @@ function partyMenu(state) {
 // rough per-country year when legal gender-marker change becomes possible
 function markerLegalYear(country) { return clamp2(COUNTRIES[country].ssm - 22, 1972, 2060); }
 function clamp2(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* ═══════════════ MEDICAL HORMONE THERAPY ═══════════════
+   HRT is not one thing, and until now the game modelled only one of them.
+
+   "HRT" in ordinary medicine most often means MENOPAUSAL hormone therapy —
+   by a wide margin the most prescribed hormone therapy there has ever been.
+   Testosterone replacement for hypogonadism is routine men's healthcare.
+   Pubertal induction is medically necessary for several of the intersex
+   variations this game already generates: a character with Swyer syndrome or
+   Turner syndrome does not go through puberty at all without it.
+
+   None of those are transition care, and the game hid all of them behind a UI
+   gate that shows the Transition menu only to characters who are trans or
+   non-binary (see the `g.id === "journey"` check in the Act sheet). So a
+   52-year-old cis woman could not be prescribed the single most common
+   hormone therapy in the world, and a girl with Swyer syndrome could not be
+   given the treatment without which she has no puberty.
+
+   These therefore live under health, not under transition, which is also
+   where a patient would actually encounter them.
+
+   `flags.hrt` is left alone and still means gender-affirming HRT specifically.
+   It drives presentation drift, the 🦋 status chip, dating dynamics and
+   sterility, and none of those should follow from a menopause prescription.
+   Medical therapy gets its own `flags.medHrt`.
+
+   ERA AND COUNTRY ARE REAL CONSTRAINTS, NOT FLAVOUR.
+   Conjugated estrogens were approved in 1942 and became a mass prescription
+   through the 1960s. In July 2002 the Women's Health Initiative trial was
+   halted early over breast-cancer and cardiovascular findings, and prescribing
+   fell off a cliff — roughly half of users stopped within a year. Guidance and
+   uptake partially recovered from the mid-2010s with lower doses and
+   transdermal routes. Testosterone was synthesised in 1935 and stayed a
+   specialist treatment until direct-to-consumer "low T" marketing in the
+   2000s, after which a 2015 FDA cardiovascular warning tightened it again.
+   The availability curve below is that history, and access is additionally
+   scaled by development tier because a prescription requires a health system
+   able to write it.
+
+   PROVISIONAL, like every other date table in this project: the shape is
+   sourced from well-known history, the exact numbers are not researched to a
+   citation and should not be presented as though they were. */
+const HRT_KINDS = {
+  menopause: {
+    label: "menopausal hormone therapy",
+    short: "Menopause — hormone therapy",
+    /* availability by era: [fromYear, 0-1 likelihood a doctor will offer it] */
+    era: [[1942, 0.15], [1960, 0.45], [1975, 0.60], [1990, 0.72], [2002, 0.30], [2015, 0.50], [2020, 0.55]],
+    minAge: 44, maxAge: 62,
+    needs: "ovaries",
+  },
+  androgen: {
+    label: "testosterone replacement",
+    short: "Low testosterone — treatment",
+    era: [[1940, 0.10], [1960, 0.20], [1980, 0.28], [2000, 0.55], [2015, 0.40], [2020, 0.42]],
+    minAge: 38, maxAge: 78,
+    needs: "testes",
+    /* suppresses spermatogenesis — a real and often unmentioned consequence */
+    sterilising: true,
+  },
+  induction: {
+    label: "pubertal hormone induction",
+    short: "Puberty induction (medically indicated)",
+    era: [[1950, 0.35], [1970, 0.60], [1990, 0.80], [2010, 0.92]],
+    minAge: 12, maxAge: 22,
+    needs: "inductionIndicated",
+  },
+  /* Where induction leads. A character with Turner or Swyer syndrome is on
+     replacement hormones every day of their adult life; before this existed the
+     game told them "nothing indicated for you at the moment", which is the one
+     answer that is certainly wrong. It supersedes the two age-related kinds
+     rather than stacking with them — see hrtMedicalOptions. */
+  lifelong: {
+    label: "hormone replacement",
+    short: "Hormone replacement (ongoing)",
+    era: [[1950, 0.30], [1970, 0.55], [1990, 0.78], [2010, 0.90]],
+    minAge: 18, maxAge: 75,
+    needs: "lifelongIndicated",
+  },
+};
+/* WHAT THE GONADS ACTUALLY DO — which is not what `repro` records.
+   `repro` is a FERTILITY field: it answers "could this character conceive or
+   father a child". Three variations answer no to that for reasons with nothing
+   to do with whether a gonad is producing hormones, so inferring endocrine
+   facts from it got all three wrong. Klinefelter is the commonest indication
+   for lifelong testosterone replacement in medicine and was offered nothing;
+   Turner needs oestrogen continued for decades and was offered nothing; and
+   the Swyer exclusion was written `d.id !== "swyer"` against entries that
+   carry no `id` field at all, so it never excluded anybody.
+
+   The endocrine facts are therefore stated per variation, once, here.
+     ovaries   — gonads producing oestrogen unaided
+     testes    — gonads producing testosterone the body can use
+     induction — puberty will not start without help
+     lifelong  — needs replacement past the induction window, and which hormone
+   Sources are the same standard clinical picture the rest of this block cites,
+   and are `provisional` in the same way: the shape is right, the exact ages a
+   clinician would use are not researched to a citation. */
+const DSD_ENDOCRINE = {
+  /* adrenal, not gonadal — the ovaries work, which is why nothing is indicated */
+  cah:    { ovaries: true,  testes: false, induction: false, lifelong: null },
+  /* testes present and producing testosterone the body cannot respond to at
+     all: that is what "complete" means, so `testes` is false for this purpose */
+  cais:   { ovaries: false, testes: false, induction: true,  lifelong: "estrogen" },
+  /* functional testes; the deficit is conversion to DHT, and puberty arrives */
+  ard5:   { ovaries: false, testes: true,  induction: false, lifelong: null },
+  swyer:  { ovaries: false, testes: false, induction: true,  lifelong: "estrogen" },
+  klf:    { ovaries: false, testes: false, induction: true,  lifelong: "testosterone" },
+  turner: { ovaries: false, testes: false, induction: true,  lifelong: "estrogen" },
+  ovo:    { ovaries: true,  testes: false, induction: false, lifelong: null },
+};
+function dsdEndocrine(s) {
+  return (s.profile && s.profile.dsd) ? (DSD_ENDOCRINE[s.profile.dsd] || null) : null;
+}
+/* Does this body have the thing the therapy acts on? Reads the intersex
+   variation where there is one, because that is precisely what decides it. */
+function hrtBodyHas(s, need) {
+  const e = dsdEndocrine(s);
+  if (need === "ovaries") return e ? e.ovaries : s.profile.sex === "Female";
+  if (need === "testes") return e ? e.testes : s.profile.sex === "Male";
+  if (need === "inductionIndicated") return !!e && e.induction;
+  if (need === "lifelongIndicated") return !!e && !!e.lifelong;
+  return false;
+}
+function hrtEraAvailability(kind, year) {
+  const bands = HRT_KINDS[kind].era;
+  let v = 0;
+  for (const [from, p] of bands) if (year >= from) v = p;
+  return v;
+}
+/* Country enters through the health system's capacity, not through a name.
+   No `if (country === …)` anywhere — same rule the CE tables run under. */
+function hrtAccessScale(s) {
+  const tier = (typeof hreDevOf === "function") ? hreDevOf(s.profile.country) : "middle";
+  return { high: 1.0, upper: 0.8, middle: 0.55, low: 0.3 }[tier] || 0.55;
+}
+/* Every medical therapy this character could be offered right now, with the
+   reason it is or is not on the table. */
+function hrtMedicalOptions(s) {
+  const y = yearOf(s), age = ageYears(s);
+  const out = [];
+  for (const id in HRT_KINDS) {
+    const k = HRT_KINDS[id];
+    if (age < k.minAge || age > k.maxAge) continue;
+    if (!hrtBodyHas(s, k.needs)) continue;
+    const avail = hrtEraAvailability(id, y) * hrtAccessScale(s);
+    if (avail < 0.05) continue;                       // not a thing here, this decade
+    out.push({ id, label: k.short, avail, kind: k });
+  }
+  /* A body on lifelong replacement is not additionally a candidate for the
+     age-related therapies: the prescription it needs is the one it is already
+     on. Without this a Klinefelter character turning 38 would be offered
+     testosterone twice under two different names.
+     The two windows overlap from 18 to 22, and inside that overlap induction
+     wins — someone who has not started yet is starting puberty, not continuing
+     a replacement they were never on. */
+  const only = (id) => out.filter((o) => o.id === id);
+  if (out.some((o) => o.id === "induction")) return only("induction");
+  if (out.some((o) => o.id === "lifelong")) return only("lifelong");
+  return out;
+}
+function hrtMedicalAvailable(s) {
+  return !s.flags.medHrt && hrtMedicalOptions(s).length > 0;
+}
+/* What the appointment feels like, per therapy per era. The four histories do
+   not line up: menopausal HRT has a cliff in 2002, testosterone has one in the
+   opposite direction in the 2000s and a warning in 2015, and induction and
+   lifelong replacement simply get more protocol-driven over time and never
+   have a scandal at all. */
+function hrtEraNote(kind, y) {
+  if (kind === "lifelong") {
+    return y < 1970 ? "Nobody says how long you will be doing this. The answer, which nobody says, is all of it."
+         : y < 1990 ? "A repeat prescription and a yearly appointment, indefinitely. It stops being an event fairly quickly."
+         : "A repeat prescription, a yearly appointment, and bloodwork. It is the least dramatic permanent thing about you.";
+  }
+  if (kind === "menopause") {
+    return y < 1960 ? "This is new medicine, and your doctor's confidence in it runs ahead of the evidence."
+         : y < 2002 ? "It is prescribed freely and discussed as though it were uncomplicated."
+         : y < 2015 ? "The trial results changed how this gets discussed; expect the risks first and the benefits second."
+         : "The dose is lower than it would have been thirty years ago, and the conversation is more careful than it was ten.";
+  }
+  if (kind === "androgen") {
+    return y < 1960 ? "It exists, barely, and asking about it marks you as odd."
+         : y < 2000 ? "A specialist writes this, if one agrees you need it, and the waiting is the longest part."
+         : y < 2015 ? "There is advertising for this now, which has made it easier to get and harder to know whether you should."
+         : "The cardiovascular warning tightened prescribing; expect bloodwork before anyone commits to anything.";
+  }
+  return y < 1970 ? "Nobody is quite sure of the timing, and the plan is being improvised around you."
+       : y < 1990 ? "There is a protocol for this now, and you are on it, which is a newer thing than it sounds."
+       : "Routine, staged over years, with someone watching the bloodwork the whole way.";
+}
+
+function medicalHrtMenu(state) {
+  const s = pClone(state);
+  const y = yearOf(s);
+  const opts = hrtMedicalOptions(s);
+  const options = opts.map((o) => {
+    const pct = Math.round(o.avail * 100);
+    return { label: `${o.label} — ${pct > 60 ? "routinely offered" : pct > 30 ? "available if you ask" : "hard to get here"}`,
+      fx: { money: -40, run: (st) => {
+        st.flags.medHrt = { kind: o.id, since: st.ageDays || 0 };
+        st.stats.happiness = clamp(st.stats.happiness + (o.id === "induction" ? 7 : 4));
+        if (o.id === "menopause") {
+          st.stats.health = clamp(st.stats.health + 3);
+          push(st, y >= 2002 && y < 2015
+            ? `💊 The consultation was mostly about risk. Since the trial was halted, the conversation starts with what it might do to you rather than what it might do for you. You weighed it and started anyway; the night sweats had been running your life.`
+            : `💊 You started hormone therapy. Within a fortnight you slept through the night for the first time in a year, and had not realised how much of you that had been eating.`);
+        } else if (o.id === "androgen") {
+          st.stats.health = clamp(st.stats.health + 2);
+          push(st, `💊 Testosterone replacement. The tiredness that everyone had told you was just your age lifted, which was infuriating and wonderful in roughly equal measure. Nobody mentioned, until you asked, what it does to fertility.`);
+        } else if (o.id === "lifelong") {
+          st.stats.health = clamp(st.stats.health + 3);
+          const which = (dsdEndocrine(st) || {}).lifelong;
+          push(st, which === "testosterone"
+            ? `💊 Testosterone, ongoing, from here on. Not a treatment for something that went wrong later — just the thing your body was always going to need somebody else to supply.`
+            : `💊 Oestrogen, ongoing, from here on. Not a treatment for something that went wrong later — just the thing your body was always going to need somebody else to supply.`);
+        } else {
+          push(st, `💊 Hormone induction. Your body was never going to do this on its own; now it does, on a schedule someone is watching. It is medical, and routine, and it is also the year you finally grow up alongside everyone else.`);
+        }
+      } } };
+  });
+  options.push({ label: "Not now", fx: {} });
+  /* The era note has to come from the therapy on offer, not from the year
+     alone. The 2002 trial that reset how menopausal HRT is discussed was a
+     study of postmenopausal estrogen-plus-progestin; telling a sixteen-year-old
+     starting pubertal induction to "expect the risks first" because of it is
+     the wrong medicine and the wrong conversation. */
+  s.pending = { emoji: "💊", title: "Hormone therapy",
+    text: opts.length
+      ? `Not everything called HRT is about gender. ${hrtEraNote(opts[0].id, y)}`
+      : "Nothing indicated for you at the moment.",
+    options };
+  return s;
+}
 
 function hrtMenu(state) {
   const s = pClone(state);
@@ -13579,6 +14041,10 @@ function isSterile(s) {
   // some intersex variations carry infertility; it's a fact of the body, not a choice
   const d = dsdOf(s);
   if (d && !d.repro) return true;
+  /* testosterone replacement suppresses spermatogenesis; menopausal therapy
+     does not cause infertility (those characters are already past it) */
+  if (s.flags.medHrt && s.flags.medHrt.kind === "androgen"
+      && (s.ageDays - s.flags.medHrt.since) / 365 >= 1) return true;
   if (s.flags.hrt) {
     const yrs = (s.ageDays - s.flags.hrt) / 365;
     return yrs >= 2;                                      // prolonged HRT: treated as infertile here
@@ -15337,17 +15803,21 @@ async function wipeGame() { try { await window.storage.delete(SAVE_KEY); } catch
 const STAT_COLOR = {
   Health:    (v) => (v < 25 ? TH.coral : v < 50 ? TH.amber : TH.green),
   Happiness: () => TH.gold,
-  Smarts:    () => TH.blue,
+  IQ:        () => TH.blue,
   Looks:     () => TH.pink,
 };
 
-function StatBar({ label, emoji, value, accent, compact }) {
+function StatBar({ label, emoji, value, accent, compact, display }) {
   const col = (STAT_COLOR[label] ? STAT_COLOR[label](value) : accent) || accent;
+  /* `value` drives the bar (0-100); `display` overrides the printed number when
+     the stat is shown on a different scale — IQ is a percentile rendered on a
+     mean-100 scale, so the bar and the number are two views of one value. */
+  const shown = display != null ? display : value;
   return (
     <div style={{ marginBottom: compact ? 5 : 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 10.5 : 12, marginBottom: 2, color: TH.muted }}>
         <span>{emoji} {label}</span>
-        <span style={{ fontFamily: FONT_LEDGER, fontVariantNumeric: "tabular-nums", color: col, fontWeight: 600 }}>{value}</span>
+        <span style={{ fontFamily: FONT_LEDGER, fontVariantNumeric: "tabular-nums", color: col, fontWeight: 600 }}>{shown}</span>
       </div>
       <div style={{ height: compact ? 4 : 6, background: TH.lineSoft, borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: `${value}%`, height: "100%", background: col, borderRadius: 3, transition: "width .5s ease, background .4s ease" }} />
@@ -15365,7 +15835,10 @@ function StatRail({ stats, accent }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 14, rowGap: 0, padding: "8px 0 2px" }}>
       <StatBar compact label="Health" emoji="🩺" value={stats.health} accent={accent} />
       <StatBar compact label="Happiness" emoji="😊" value={stats.happiness} accent={accent} />
-      <StatBar compact label="Smarts" emoji="🧠" value={stats.smarts} accent={accent} />
+      {/* the bar is still driven by the 0-100 percentile every rule reads;
+          only the number beside it is converted to the IQ scale */}
+      <StatBar compact label="IQ" emoji="🧠" value={stats.smarts}
+               display={iqFromPercentile(stats.smarts != null ? stats.smarts : 50)} accent={accent} />
       <StatBar compact label="Looks" emoji="✨" value={stats.looks} accent={accent} />
     </div>
   );
@@ -15788,12 +16261,16 @@ function Creation({ onStart }) {
         <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: CARD, border: `1px solid ${TH.line}` }}>
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.6, marginBottom: 4 }}>Starting stats</div>
           <div style={{ fontSize: 11.5, opacity: 0.55, lineHeight: 1.5, marginBottom: 12 }}>Leave on Random to let birth, class and luck decide.</div>
-          {[["stHealth", "Health", "❤️"], ["stHappiness", "Happiness", "🙂"], ["stSmarts", "Smarts", "🧠"], ["stLooks", "Looks", "✨"]].map(([k, label, em]) => (
+          {/* The slider always moves the underlying 0-100 value, because that is
+              what every rule in the game reads. The readout is what the player
+              is actually choosing, so IQ is printed on its own scale. */}
+          {[["stHealth", "Health", "❤️"], ["stHappiness", "Happiness", "🙂"],
+            ["stSmarts", "IQ", "🧠", iqFromPercentile], ["stLooks", "Looks", "✨"]].map(([k, label, em, xform]) => (
             <div key={k} style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                 <span style={{ fontSize: 13.5 }}>{em} {label}</span>
                 <span style={{ fontSize: 12.5, color: form[k] == null ? INK : accent, opacity: form[k] == null ? 0.5 : 1, fontWeight: form[k] == null ? 400 : 600 }}>
-                  {form[k] == null ? "🎲 Random" : form[k]}
+                  {form[k] == null ? "🎲 Random" : (xform ? xform(form[k]) : form[k])}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -15815,7 +16292,12 @@ function Creation({ onStart }) {
             <option value="random">🎲 Around 16 (default)</option>
             {[4, 6, 8, 10, 12, 13, 14, 15, 17, 19, 22, 26, 30, 35, 40, 50, 60].map((a) => <option key={a} value={a}>Age {a}</option>)}
           </select>
-          <div style={{ fontSize: 11.5, opacity: 0.5, lineHeight: 1.5, marginTop: 10 }}>Gender only applies if you're trans or non-binary — cis characters skip it.</div>
+          <label style={{ ...labelStyle, margin: "12px 0 6px" }}>Realise your romantic orientation at</label>
+          <select style={inputStyle} value={form.discRAt ?? "random"} onChange={(e) => set("discRAt", e.target.value === "random" ? "random" : +e.target.value)}>
+            <option value="random">🎲 Around 17 (default)</option>
+            {[10, 12, 14, 15, 16, 18, 20, 22, 25, 30, 35, 40, 50, 60].map((a) => <option key={a} value={a}>Age {a}</option>)}
+          </select>
+          <div style={{ fontSize: 11.5, opacity: 0.5, lineHeight: 1.5, marginTop: 10 }}>Gender only applies if you're trans or non-binary — cis characters skip it. Romantic orientation lands later than sexual orientation for most people, which is usually when the mismatch — if there is one — starts to make sense.</div>
         </div>
       )}
 

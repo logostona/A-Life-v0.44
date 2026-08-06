@@ -149,11 +149,16 @@ if (mod) {
 
 /* Render an actual in-progress life, not just the creation screen — the
    redesign's header, stat rail and compass only exist on that path. */
-let gameHtml = "", gameErr = null;
+let gameHtml = "", gameErr = null, gameState = null;
 if (mod) {
   try {
     const s = H.mkChar({ country: "United Kingdom", cls: "Middle", birthYear: 1990 });
     s.ageDays = Math.ceil(24 * 365.25) + 1;
+    /* pinned so the IQ readout can be checked against the value it came from;
+       76 is chosen because iqFromPercentile(76) is 111 — outside the 0-100
+       percentile range, so the two scales cannot be confused for each other */
+    s.stats.smarts = 76;
+    gameState = s;
     M.push(s, "A test line for the feed.");
     s.feed.push({ date: "1998", text: "A world event.", world: true });
     gameHtml = ReactDOMServer.renderToStaticMarkup(
@@ -231,8 +236,28 @@ sec("4 · stats are always visible, not behind a disclosure");
 {
   const g = gameHtml;
   ok("all four stats render without opening anything",
-    ["Health", "Happiness", "Smarts", "Looks"].every((s) => g.indexOf(s) > -1));
+    ["Health", "Happiness", "IQ", "Looks"].every((s) => g.indexOf(s) > -1));
   ok("the old 'stats ▾' disclosure is gone", g.indexOf("stats ▾") === -1);
+  ok("the intelligence stat is not labelled as a percentage any more",
+    g.indexOf("Smarts") === -1);
+  /* The bar is a percentile and the number beside it is an IQ. Those are two
+     different scales, and the bug this guards against is printing the
+     percentile next to the IQ label: the character rendered above is on the
+     76th percentile, which is an IQ of 111 — not 76. */
+  const iqCell = /🧠 IQ<\/span>.*?>(\d+)</s.exec(g);
+  ok("the IQ readout is present", !!iqCell, iqCell && iqCell[1]);
+  if (iqCell) {
+    const shown = +iqCell[1];
+    const pct = gameState.stats.smarts;
+    ok("the IQ readout is the IQ of the character's percentile",
+      shown === M.iqFromPercentile(pct), { shown: shown, pct: pct, expect: M.iqFromPercentile(pct) });
+    ok("...which is a different number from the percentile itself", shown !== pct,
+      { shown: shown, pct: pct });
+    /* the bar must still be driven by the percentile, or a 145 IQ would
+       overflow a 0-100 width */
+    ok("the bar width is still the percentile", g.indexOf("width:" + pct + "%") > -1
+      || g.indexOf("width: " + pct + "%") > -1, pct);
+  }
 }
 
 /* ═══════════════════════ 5 · contrast, the real check ═══════════════════════ */
@@ -309,7 +334,7 @@ sec("6 · the stat colour ramp");
   ok("middling health reads as caution", health(40) === TH.amber, health(40));
   ok("good health reads as well", health(90) === TH.green, health(90));
   ok("the alert colour is never used for a healthy character", health(100) !== TH.coral);
-  for (const k of ["Happiness", "Smarts", "Looks"]) {
+  for (const k of ["Happiness", "IQ", "Looks"]) {
     ok(k + " has its own fixed colour", typeof M.STAT_COLOR[k]([]) === "string" && M.STAT_COLOR[k]() !== TH.coral);
   }
   /* every stat colour has to survive on the bar's own track */

@@ -186,7 +186,9 @@ function mkChar(opts) {
     city: o.city || countryData.cities[0],
     birthYear: o.birthYear != null ? +o.birthYear : 1990,
   };
-  for (const k of ["stHealth", "stHappiness", "stSmarts", "stLooks", "discOAt", "discGAt",
+  for (const k of ["stHealth", "stHappiness", "stSmarts", "stLooks",
+                   /* the three discovery ages — one per attraction axis */
+                   "discOAt", "discGAt", "discRAt",
                    /* identity axes: romantic orientation, gender expression,
                       intersex variation, birth assignment, self-aware start */
                    "romantic", "expr", "dsd", "assigned", "knowsSelf"]) {
