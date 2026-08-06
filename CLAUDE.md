@@ -97,6 +97,44 @@ Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activ
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
 PWA on the old bundle for an extra launch. Currently `a-life-cache-v7`.
 
+### Merging to `main` is not the same as the site updating
+
+There is no workflow file in this repo — `.github/workflows` does not exist. Publishing is
+GitHub's auto-generated **`pages build and deployment`** run (`event: dynamic`), and it is a
+separate thing that can fail on its own after a perfectly good merge.
+
+**A healthy run finishes in about 30 seconds.** That is the number to judge against: measured
+across this repo's history, every successful run completed within ~30 s of being created.
+Anything still queued after a couple of minutes is not "slow", it is stuck.
+
+The wedged state looks like this, and none of it is fixable from the repo side:
+
+```sh
+python3 tools/ctx.py overflow '.workflow_runs[0] | "\(.head_sha[0:8]) \(.status)/\(.conclusion) \(.updated_at)"'
+```
+
+- run sits at `queued`/`pending` with `updated_at` frozen, then flips to `cancelled` on its own
+  with **nothing having superseded it**;
+- `list_workflow_jobs` returns `total_count: 0` — the run exists but never made a job;
+- `rerun_workflow_run` returns 201 and changes nothing, and a follow-up cancel then fails with
+  `409 Cannot cancel a workflow re-run that has not yet queued`.
+
+**The recovery is a new commit on `main`** — that mints a fresh run id and check suite instead
+of fighting the stuck one. Rerunning the same run does not work.
+
+Two things that make diagnosis harder here, so do not burn time on them:
+
+- **The live site is unreachable from this environment.** `logostona.github.io` is refused by
+  the agent proxy (`CONNECT tunnel failed, response 403`), via both `curl` and `WebFetch`, as is
+  `githubstatus.com`. So "did the site actually update" cannot be answered directly — the
+  closest available check is reading the artifact out of `origin/main`, which is what Pages
+  publishes but is one step short of end to end.
+- **Ordinary supersession also shows as `cancelled`.** Pushing twice in quick succession
+  cancels the first run, which is normal and harmless. Distinguish by timing: a superseded run
+  is cancelled within seconds of the next push, a wedged one is cancelled minutes later with no
+  newer run to blame. Batch a follow-up commit into the same PR rather than pushing again a
+  minute later.
+
 ## 5 · Test suites
 
 ```sh
