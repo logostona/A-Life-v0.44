@@ -313,12 +313,45 @@ function normalPercentile() {
    drops B — and a suite then asserts on `undefined` and passes. */
 const IQ_MEAN = 100;
 const IQ_SD = 15;
-/* Percentile -> IQ. Clamped to 55-145 (about ±3 SD): scores outside that are
-   real but so rare that generating them would misrepresent the population, and
-   standard tests do not reliably discriminate out there anyway. */
+/* Percentile -> IQ, over a 75-180 range.
+   The DISTRIBUTION is untouched — still mean 100, SD 15, still a real bell
+   curve — and only the clamp moved. Worth being clear about what that does and
+   does not mean: a random draw still lands between about 61 and 139 before
+   clamping, so the top of this range is not something the roller reaches.
+   180 is there to be CHOSEN at character creation, not stumbled into; making
+   it a likely roll would need an SD around 31, which is not what an IQ scale
+   is and would misrepresent every score below it too. */
+const IQ_MIN = 75;
+const IQ_MAX = 180;
+/* TWO-SIDED SPREAD, and this is a deliberate departure from a clinical scale.
+   A standard mean-100 SD-15 curve puts its 0.5th and 99.5th percentiles at
+   about 61 and 139, so simply widening the clamp to 75-180 left the top half
+   of the range unreachable — 180 was a number nothing could ever produce.
+   Making it reachable means the spread above the mean has to be wider than the
+   spread below it, so the two sides carry their own SD:
+
+     below the mean  (100-75)/2.576  ~= 9.7   -> p0.5  lands on 75
+     above the mean  (180-100)/2.576 ~= 31.1  -> p99.5 lands on 180
+
+   The consequence, stated plainly: this is no longer a clinical IQ scale.
+   Real-world "IQ 115" means +1 SD, and here +1 SD above the mean reads 131.
+   The curve is still a proper bell — monotonic, densest at 100, thinning to
+   both tails — it is just asymmetric, which is what having 75 and 180 as the
+   ends of one scale requires. */
+const IQ_SD_LOW = (IQ_MEAN - IQ_MIN) / 2.5758;
+const IQ_SD_HIGH = (IQ_MAX - IQ_MEAN) / 2.5758;
 function iqFromPercentile(pct) {
   const p = Math.max(0.5, Math.min(99.5, pct)) / 100;
-  return Math.max(55, Math.min(145, Math.round(IQ_MEAN + normalQuantile(p) * IQ_SD)));
+  const z = normalQuantile(p);
+  const iq = IQ_MEAN + z * (z < 0 ? IQ_SD_LOW : IQ_SD_HIGH);
+  return Math.max(IQ_MIN, Math.min(IQ_MAX, Math.round(iq)));
+}
+/* The creation screen picks an IQ directly rather than a percentile, so the
+   full range is actually reachable there. Inverse of the above. */
+function iqToPercentile(iq) {
+  const v = Math.max(IQ_MIN, Math.min(IQ_MAX, iq));
+  const z = (v - IQ_MEAN) / (v < IQ_MEAN ? IQ_SD_LOW : IQ_SD_HIGH);
+  return Math.max(1, Math.min(99, Math.round(normalCdf(z) * 100)));
 }
 function iqOf(s) {
   const pct = (s && s.stats && s.stats.smarts != null) ? s.stats.smarts : 50;
@@ -9129,6 +9162,7 @@ function advance(state, totalDays) {
     crOnTick(s);
     if (milestoneFired) continue;
 
+    let poolFired = false;
     if (Math.random() < Math.min(0.72, step * 0.09)) {
       const age = nowY;
       const eligible = POOL.filter((e) => {
@@ -9140,6 +9174,7 @@ function advance(state, totalDays) {
         return last === undefined || s.ageDays - last >= (e.cd || 0);
       });
       if (eligible.length) {
+        poolFired = true;
         // 60% of the time, prefer events that actually ask you something
         const inter = eligible.filter((e) => e.i);
         const base = inter.length && Math.random() < 0.35 ? inter : eligible;
@@ -9153,6 +9188,14 @@ function advance(state, totalDays) {
         if (out && out.fx) applyFx(s, out.fx);
         if (out && out.event) s.pending = out.event;
       }
+    }
+    /* EVT P1 — strictly additive. Runs only on steps where the hand-written
+       pool fired nothing, so a generated event can never displace one of the
+       220 written ones. See the note above evtMaybeFire for the measurement
+       that made this the integration point rather than a POOL entry. */
+    if (!poolFired && !s.pending) {
+      const gen = evtMaybeFire(s);
+      if (gen) s.pending = gen;
     }
   }
   return s;
@@ -12706,6 +12749,17 @@ function pplIn(s, cat) {
   return pplAll(s).filter((x) => x.cat === cat);
 }
 function pplIsFav(s, addr) { return !!(s.pplFav && s.pplFav[addr]); }
+/* Toggling for the UI, which needs a NEW object rather than a mutated one.
+   `apply` is `setState(fn(state))`, so a function that mutates its argument and
+   returns it hands React the identical reference — React bails out of the
+   re-render and the star never repaints, the count never updates, and the
+   screen only catches up when something else happens to change. That looked
+   like three separate bugs (no fill, no refresh, stale position) and was one. */
+function pplFavToggled(state, addr) {
+  const s = pClone(state);
+  pplToggleFav(s, addr);
+  return s;
+}
 function pplToggleFav(s, addr) {
   if (!s.pplFav) s.pplFav = {};
   if (s.pplFav[addr]) delete s.pplFav[addr];
@@ -13033,6 +13087,500 @@ const CR_TABS = [
   { id: "hustle",  emoji: "🚀", label: "Side hustle" },
   { id: "history", emoji: "🗂", label: "History" },
 ];
+
+/* ═══════════════ EVT · P1 · PROPOSER · REGISTRY · VALIDATOR ═══════════════
+
+   Phase 1 of EVENTGEN-ARCHITECTURE.md. Generated events flow end to end using
+   ONLY their fallbacks — there is no model here, no network, and nothing async.
+   That is deliberate: everything in this block has to be correct and testable
+   before anything unpredictable is allowed near it.
+
+   THE THREE LAYERS, and the boundary between them is the design:
+
+     1. PROPOSER   deterministic, free, always runs. Decides that an event
+                   should happen, of what KIND, involving WHOM, with effects
+                   somewhere in WHICH BANDS. Emits a Proposal — plain JSON.
+     2. REALISER   (P2/P3, not here) turns a Proposal into prose and specific
+                   numbers chosen inside the bands.
+     3. VALIDATOR  deterministic, always runs, trusts nothing it is handed.
+
+   THE INVARIANT: a realiser never widens what is possible. It only picks a
+   point inside a space the proposer already declared legal. Everything good
+   about this design follows from that one line, and the validator below is
+   what makes it true rather than merely intended.
+
+   WHY THIS IS WORTH HAVING EVEN IF NO MODEL EVER ARRIVES.
+   220 POOL events are bespoke closures: each one hand-writes its own casting,
+   its own bounds and its own prose, and 95 of them reach for `fx.run`, which
+   is arbitrary code and therefore untestable in general. A KIND declares its
+   cast, its bounds and its permitted flags as data, so it can be checked. */
+
+/* Keys applyFx accepts that are safe to synthesise. `run` is deliberately and
+   permanently absent: it is an arbitrary function, and the whole security
+   boundary of generated content is that it can never be produced. `next`,
+   `addFriend`, `addRomance`, `breakup` and `setR` are also withheld — they
+   create or destroy people, which is a proposer's decision, not a realiser's. */
+const EVT_FX_ALLOW = ["stats", "money", "rel", "relF", "relR", "subj", "emergent", "flags", "feed"];
+/* The stat and trait names a band may address. Anything else is dropped rather
+   than clamped, because an unknown key is a mistake, not an overreach. */
+const EVT_STAT_KEYS = ["health", "happiness", "smarts", "looks"];
+const EVT_REL_GROUPS = { rel: "family", relF: "friends", relR: "romance" };
+
+/* ── the kinds ───────────────────────────────────────────────────────────
+   A kind is a POOL event with its prose removed and its bounds declared.
+
+     cast    slots the proposer fills from real people in the save, so a
+             realiser can never invent someone or pick the dead one;
+     bands   the effect envelope, `$slot` resolving to the cast member's key;
+     flags   the ONLY flags this kind may set — flags drive game logic, so a
+             generated event must not be able to set `retired` or `homeless`;
+     build   the fallback: a complete, playable event. Not an error message —
+             if no realiser ever answers, this is what the player sees, and
+             they should not be able to tell. */
+/* VARIANTS ARE NOT DECORATION. A kind with one fixed fallback string produces
+   the identical sentence every time it fires, and the always-castable kinds
+   fire often — a soak showed eight consecutive generated events with the same
+   text and a different name in it, which reads as a bug rather than as a life.
+   Each kind therefore carries several phrasings and picks with the proposal's
+   own rng, so the same life still replays identically.
+
+   This matters more in P1 than it will later: with no realiser, the fallback
+   IS the content. */
+const EVT_KINDS = [
+  {
+    id: "friendDrift", w: 4, minAge: 14, maxAge: 90, cd: 2200, interactive: 1,
+    cast: [{ slot: "friend", from: "friends", where: (p) => (p.rel || 0) < 60 && !p.pet && !p.deceased }],
+    bands: { "stats.happiness": [-6, 3], "relF.$friend": [-14, 12], "emergent.loyalty": [-4, 6] },
+    flags: [], optionCount: [2, 3],
+    build: (s, cast, rng) => ({
+      emoji: "🫧", title: "The gap",
+      text: rng.pick([
+        `You and ${cast.friend.name} have not spoken in a while. Not a falling-out — just the slow kind of drift where each of you assumed the other would call.`,
+        `${cast.friend.name}'s name comes up in a story someone else is telling, and you realise you do not know what they are doing this year.`,
+        `There is a message from ${cast.friend.name} you have been meaning to answer properly rather than quickly. It is now old enough that answering it at all would be an event.`,
+        `You see something ${cast.friend.name} would find funny and get as far as opening the message before deciding it has been too long to send it.`,
+      ]),
+      options: [
+        { label: rng.pick(["Call, and be the one who blinked", "Ring them anyway", "Send it anyway"]),
+          fx: { stats: { happiness: 3 }, relF: { [cast.friend.key]: 10 }, emergent: { loyalty: 4 },
+          feed: `🫧 You called ${cast.friend.name}. Forty minutes, most of it nonsense. Neither of you mentioned the gap.` } },
+        { label: rng.pick(["Leave it a bit longer", "Not tonight"]),
+          fx: { stats: { happiness: -2 }, relF: { [cast.friend.key]: -8 },
+          feed: `🫧 You thought about calling ${cast.friend.name}, and then it was late, and then it was another month.` } },
+      ],
+    }),
+  },
+  {
+    /* the always-castable one, so it takes the longest cooldown and the
+       smallest weight — otherwise it crowds out everything that needs a job,
+       a friend or a bad night's sleep to become possible */
+    id: "smallKindness", w: 2, minAge: 8, maxAge: 100, cd: 3000,
+    cast: [{ slot: "who", from: "any", where: (p) => !p.pet && !p.deceased }],
+    bands: { "stats.happiness": [0, 5], "emergent.kindness": [0, 5] },
+    flags: [], optionCount: [1, 2],
+    build: (s, cast, rng) => ({
+      emoji: "🌤", title: "Unprompted",
+      text: rng.pick([
+        `${cast.who.name} did something small and completely unnecessary for you today, and did not make a thing of it.`,
+        `${cast.who.name} remembered something you mentioned once, months ago, and acted on it without saying that was why.`,
+        `You find that ${cast.who.name} has quietly dealt with the thing you had been dreading dealing with.`,
+        `${cast.who.name} covered for you in a small way that cost them something and that they will never bring up.`,
+      ]),
+      options: [
+        { label: rng.pick(["Say so, out loud", "Tell them it landed", "Thank them properly"]),
+          fx: { stats: { happiness: 4 }, emergent: { kindness: 3 },
+          feed: `🌤 You told ${cast.who.name} it had landed. They looked briefly embarrassed and changed the subject.` } },
+        { label: rng.pick(["Just remember it", "Say nothing, keep it"]),
+          fx: { stats: { happiness: 2 },
+          feed: `🌤 You did not say anything, but you did not forget it either.` } },
+      ],
+    }),
+  },
+  {
+    id: "moneyPinch", w: 3, minAge: 18, maxAge: 80, cd: 1800, interactive: 1,
+    cond: (s) => (s.money || 0) < 900,
+    cast: [], bands: { "stats.happiness": [-7, 2], "money": [-120, 60], "emergent.prudence": [0, 5] },
+    flags: [], optionCount: [2, 3],
+    build: (s, cast, rng) => ({
+      emoji: "🧾", title: "The arithmetic",
+      text: rng.pick([
+        `You do the sum twice because the first answer was not one you liked. It is the same answer.`,
+        `Everything is fine until the month has five weeks in it, and this one does.`,
+        `The bill is not large. It is just larger than the gap you had left for it.`,
+        `You have started checking the balance before buying things you would previously have bought without checking.`,
+      ]),
+      options: [
+        { label: rng.pick(["Cut something you will miss", "Drop the one you actually liked"]),
+          fx: { money: 55, stats: { happiness: -4 }, emergent: { prudence: 4 },
+          feed: `🧾 You cancelled the thing you actually enjoyed, because it was the only line with any give in it.` } },
+        { label: rng.pick(["Carry it another month", "Push it to next month"]),
+          fx: { stats: { happiness: -2 },
+          feed: `🧾 You moved the problem one month to the right, where it will be waiting, slightly larger.` } },
+      ],
+    }),
+  },
+  {
+    id: "workFriction", w: 3, minAge: 18, maxAge: 70, cd: 1600, interactive: 1,
+    cond: (s) => !!(s.career && s.career.job),
+    cast: [{ slot: "colleague", from: "ppl", where: (p) => p.cat === "work" }],
+    bands: { "stats.happiness": [-6, 3], "emergent.courage": [0, 6], "emergent.prudence": [0, 4] },
+    flags: [], optionCount: [2, 3],
+    build: (s, cast, rng) => ({
+      emoji: "💼", title: "In the meeting",
+      text: rng.pick([
+        `${cast.colleague.name} says the thing you were about to say, thirty seconds before you say it, and the room agrees with them.`,
+        `A decision you were not consulted on arrives in your inbox as a decision you are implementing, with ${cast.colleague.name}'s name on it.`,
+        `${cast.colleague.name} asks you a question they already know the answer to, in front of people.`,
+        `You and ${cast.colleague.name} disagree about something small, and it becomes clear it is not really about that.`,
+      ]),
+      options: [
+        { label: rng.pick(["Say it was yours", "Correct the record", "Push back, evenly"]),
+          fx: { stats: { happiness: 2 }, emergent: { courage: 5 },
+          feed: `💼 You said, evenly, that you had raised it on Tuesday. The room went quiet and then moved on. It was noted.` } },
+        { label: rng.pick(["Let it go", "Say nothing, note it"]),
+          fx: { stats: { happiness: -3 }, emergent: { prudence: 3 },
+          feed: `💼 You let it go, which was easier, and which you thought about again on the way home.` } },
+      ],
+    }),
+  },
+  {
+    id: "bodyNotices", w: 3, minAge: 25, maxAge: 95, cd: 2000,
+    cond: (s) => !!(s.hlt && (s.hlt.vitals.fit < 45 || s.hlt.debt > 40)),
+    cast: [], bands: { "stats.health": [-3, 3], "stats.happiness": [-4, 3] },
+    flags: [], optionCount: [2, 2],
+    build: (s, cast, rng) => ({
+      emoji: "🫀", title: "A quiet note",
+      text: s.hlt.debt > 40
+        ? rng.pick([
+            `You wake before the alarm and lie there doing nothing, which is somehow more tiring than getting up.`,
+            `You have been tired for long enough that you have stopped describing yourself as tired.`,
+            `Somebody asks whether you slept badly and you have to think about when you last slept well.`,
+          ])
+        : rng.pick([
+            `Stairs you have taken a thousand times ask something of you today that they did not use to.`,
+            `You catch yourself planning the walk around where you can sit down.`,
+            `Getting up off the floor has become a two-stage operation and you are not sure when that happened.`,
+          ]),
+      options: [
+        { label: rng.pick(["Take the hint", "Do one small thing"]),
+          fx: { stats: { health: 2, happiness: 1 },
+          feed: `🫀 You did one small thing about it, which is not nothing and is not a transformation either.` } },
+        { label: rng.pick(["File it under later", "Not this month"]),
+          fx: { stats: { happiness: -1 },
+          feed: `🫀 You filed it under later, where a number of things are now stacked.` } },
+      ],
+    }),
+  },
+  {
+    /* Cast from `family`, not `relatives`, and that is load-bearing: applyFx
+       has exactly three relationship writers — rel/relF/relR onto family,
+       friends and romance — and NONE addresses s.relatives. A band written as
+       "rel.$elder" over a relatives cast silently writes nothing, in the
+       fallback as well as in any realisation. evtBandsAddressable below turns
+       that authoring mistake into a caught error rather than a no-op. */
+    id: "olderRelative", w: 3, minAge: 20, maxAge: 75, cd: 2400, interactive: 1,
+    cast: [{ slot: "elder", from: "family", where: (p) => !p.deceased && /mom|dad|mother|father|brother|sister/i.test(p.role || "") }],
+    bands: { "stats.happiness": [-4, 5], "rel.$elder": [-6, 10], "emergent.kindness": [0, 5] },
+    flags: [], optionCount: [2, 3],
+    build: (s, cast, rng) => ({
+      emoji: "☎️", title: "The long call",
+      text: rng.pick([
+        `${cast.elder.name} rings, and it is not about anything. It goes on a while. Twice they tell you something they have already told you.`,
+        `${cast.elder.name} calls to ask about a thing that could have been a message, and then stays on for an hour.`,
+        `You notice, on the phone to ${cast.elder.name}, that you have started being the one who reassures.`,
+        `${cast.elder.name} mentions, lightly and in passing, that the house is very quiet now.`,
+      ]),
+      options: [
+        { label: rng.pick(["Let it go on", "Stay on the line"]),
+          fx: { stats: { happiness: 3 }, rel: { [cast.elder.key]: 8 }, emergent: { kindness: 4 },
+          feed: `☎️ You let the call run its length. You are fairly sure that was the point of it.` } },
+        { label: rng.pick(["Wind it up kindly", "Find a gentle exit"]),
+          fx: { stats: { happiness: 1 }, rel: { [cast.elder.key]: -2 },
+          feed: `☎️ You found a gentle exit at eleven minutes. They said of course, of course, you're busy.` } },
+      ],
+    }),
+  },
+];
+const EVT_BY_ID = (() => { const o = {}; for (const k of EVT_KINDS) o[k.id] = k; return o; })();
+
+/* ── casting ─────────────────────────────────────────────────────────────
+   Resolved by the PROPOSER, never by anything downstream. That kills a whole
+   class of failure where generated content invents a person, addresses one who
+   has died, or writes to a store key that does not exist. */
+function evtCandidates(s, from) {
+  const out = [];
+  const take = (store) => {
+    for (const key in (s[store] || {})) {
+      const p = s[store][key];
+      if (p && typeof p === "object" && p.name) out.push({ store, key, p, name: p.name, rel: p.rel, cat: p.cat });
+    }
+  };
+  if (from === "any") { for (const st of ["family", "friends", "relatives", "romance", "ppl"]) take(st); }
+  else take(from);
+  return out;
+}
+function evtResolveCast(s, kind, rng) {
+  const cast = {};
+  for (const slot of (kind.cast || [])) {
+    let pool = evtCandidates(s, slot.from);
+    if (slot.where) pool = pool.filter((c) => slot.where(c.p));
+    if (!pool.length) return null;                 // a kind that cannot be cast is not eligible
+    const pick = rng.pick(pool);
+    cast[slot.slot] = { store: pick.store, key: pick.key, name: pick.name, rel: pick.rel || 0 };
+  }
+  return cast;
+}
+
+/* ── bands ───────────────────────────────────────────────────────────────
+   `$slot` resolves to the cast member's actual store key, so a band written
+   as "relF.$friend" becomes "relF.f2" for this particular proposal. A band
+   naming a slot that was not cast is dropped rather than left dangling. */
+function evtResolveBands(kind, cast) {
+  const out = {};
+  for (const raw in (kind.bands || {})) {
+    const i = raw.indexOf(".");
+    const group = i < 0 ? raw : raw.slice(0, i);
+    let leaf = i < 0 ? null : raw.slice(i + 1);
+    if (leaf && leaf.charAt(0) === "$") {
+      const slot = leaf.slice(1);
+      if (!cast || !cast[slot]) continue;
+      leaf = cast[slot].key;
+    }
+    out[leaf == null ? group : group + "." + leaf] = kind.bands[raw];
+  }
+  return out;
+}
+
+/* ── the proposer ────────────────────────────────────────────────────────
+   Deterministic and free. Returns a Proposal, or null when nothing is
+   eligible — which is a normal answer, not a failure. */
+/* AUTHORING CHECK, not a runtime one. A band that names a cast slot must use
+   the fx group that actually writes to that slot's store, or the effect is a
+   silent no-op — which is the worst kind of bug, because everything renders
+   correctly and nothing happens. Returns the offending band keys. */
+function evtBandsAddressable(kind) {
+  const bad = [];
+  const slotStore = {};
+  for (const c of (kind.cast || [])) slotStore[c.slot] = c.from;
+  for (const raw in (kind.bands || {})) {
+    const i = raw.indexOf(".");
+    if (i < 0) continue;
+    const group = raw.slice(0, i), leaf = raw.slice(i + 1);
+    if (leaf.charAt(0) !== "$") continue;
+    const want = EVT_REL_GROUPS[group];
+    if (!want) continue;                       // not a relationship band
+    const got = slotStore[leaf.slice(1)];
+    if (got !== want) bad.push(raw + " addresses " + want + " but the slot casts from " + got);
+  }
+  return bad;
+}
+
+/* Can this kind be cast at all right now? Checked WITHOUT an rng, so it can
+   gate eligibility rather than being discovered after a kind has already been
+   chosen. A fresh character has zero friends — they are made during play — so
+   `friendDrift` is age-eligible long before it is castable, and without this
+   the POOL entry would win its slot and then produce nothing, silently
+   spending an event the player never sees. */
+function evtCastable(s, kind) {
+  for (const slot of (kind.cast || [])) {
+    let pool = evtCandidates(s, slot.from);
+    if (slot.where) pool = pool.filter((c) => slot.where(c.p));
+    if (!pool.length) return false;
+  }
+  return true;
+}
+function evtEligible(s) {
+  const age = ageYears(s);
+  return EVT_KINDS.filter((k) => {
+    if (age < k.minAge || age > k.maxAge) return false;
+    if (k.cond && !k.cond(s)) return false;
+    if (!evtCastable(s, k)) return false;
+    const last = s.flags["evt_" + k.id];
+    return last === undefined || s.ageDays - last >= (k.cd || 0);
+  });
+}
+function evtPropose(s, rng) {
+  const pool = evtEligible(s);
+  if (!pool.length) return null;
+  const total = pool.reduce((a, k) => a + k.w, 0);
+  let r = rng.float() * total;
+  let kind = pool[0];
+  for (const k of pool) { r -= k.w; if (r <= 0) { kind = k; break; } }
+
+  const cast = evtResolveCast(s, kind, rng);
+  if (cast === null) {
+    /* uncastable this step — try the rest once rather than firing nothing,
+       so a sparse address book does not silently disable the whole feature */
+    for (const k of pool) {
+      if (k === kind) continue;
+      const c = evtResolveCast(s, k, rng);
+      if (c !== null) return evtBuildProposal(s, k, c, rng);
+    }
+    return null;
+  }
+  return evtBuildProposal(s, kind, cast, rng);
+}
+function evtBuildProposal(s, kind, cast, rng) {
+  let fallback = null;
+  try { fallback = kind.build(s, cast, rng); } catch (e) { return null; }
+  if (!fallback || !fallback.text || !Array.isArray(fallback.options) || !fallback.options.length) return null;
+  return {
+    id: "evt:" + kind.id + ":" + (s.ageDays | 0),
+    kind: kind.id,
+    seed: rng.int(0, 2147483646),
+    cast: cast,
+    /* ONLY what the player can already see. Nothing from s.hidden unless the
+       matching s.discovered flag is set, and no other person's hidden
+       identity, ever — the same rule buildNarrationContext follows, and the
+       reason the coming-out mechanics stay honest. */
+    situation: {
+      age: ageYears(s), year: yearOf(s), country: s.profile.country,
+      recentFeed: (s.feed || []).slice(-3).map((f) => (f && f.text) || ""),
+    },
+    bands: evtResolveBands(kind, cast),
+    optionCount: kind.optionCount || [2, 3],
+    flags: kind.flags || [],
+    fallback: fallback,
+  };
+}
+
+/* ── the validator ───────────────────────────────────────────────────────
+   Trusts nothing. Six steps, in order, and ANY failure returns null so the
+   caller uses the proposal's own fallback. Never throws.
+
+   This is the piece that makes the invariant true rather than merely stated:
+   a realiser that overreaches gets clamped, one that invents a person gets
+   dropped, and one that emits `run` gets it removed without the value ever
+   reaching a code path that reasons about it. */
+function evtClamp(v, band) {
+  if (typeof v !== "number" || !isFinite(v)) return null;
+  return Math.max(band[0], Math.min(band[1], v));
+}
+function evtValidate(proposal, realisation) {
+  if (!proposal || !realisation || typeof realisation !== "object") return null;
+
+  /* 1 · shape */
+  const text = typeof realisation.text === "string" ? realisation.text.trim() : "";
+  if (!text || text.length > 600) return null;
+  if (!Array.isArray(realisation.options)) return null;
+  const [minOpt, maxOpt] = proposal.optionCount || [1, 4];
+  if (realisation.options.length < minOpt || realisation.options.length > maxOpt) return null;
+
+  const castKeys = {};
+  for (const slot in (proposal.cast || {})) {
+    const c = proposal.cast[slot];
+    castKeys[c.store + ":" + c.key] = true;
+  }
+  const flagAllow = {};
+  for (const f of (proposal.flags || [])) flagAllow[f] = true;
+
+  const options = [];
+  const seenLabel = {};
+  for (const raw of realisation.options) {
+    if (!raw || typeof raw !== "object") return null;
+    const label = typeof raw.label === "string" ? raw.label.trim() : "";
+    if (!label || label.length > 60) return null;
+    if (seenLabel[label]) return null;                       // duplicate choices read as a bug
+    seenLabel[label] = 1;
+
+    const src = raw.fx && typeof raw.fx === "object" ? raw.fx : {};
+    const fx = {};
+    /* 2 · allowlist. Copying only known keys is what drops `run` — it is never
+       inspected, never logged, never reasoned about. */
+    for (const key of EVT_FX_ALLOW) {
+      if (!(key in src)) continue;
+      const val = src[key];
+
+      if (key === "feed") { if (typeof val === "string" && val.trim() && val.length <= 400) fx.feed = val.trim(); continue; }
+
+      if (key === "money") {
+        const band = proposal.bands.money;
+        if (!band) continue;
+        const n = evtClamp(val, band);
+        if (n !== null && n !== 0) fx.money = Math.round(n);
+        continue;
+      }
+
+      if (key === "flags") {
+        if (!val || typeof val !== "object") continue;
+        const out = {};
+        for (const f in val) if (flagAllow[f]) out[f] = val[f] === true ? true : val[f];
+        if (Object.keys(out).length) fx.flags = out;
+        continue;
+      }
+
+      if (!val || typeof val !== "object") continue;
+      const out = {};
+      for (const leaf in val) {
+        /* 3 · cast allowlist — a relationship key is legal only because the
+           proposer cast that person into this scene */
+        if (EVT_REL_GROUPS[key] && !castKeys[EVT_REL_GROUPS[key] + ":" + leaf]) continue;
+        if (key === "stats" && EVT_STAT_KEYS.indexOf(leaf) === -1) continue;
+        const band = proposal.bands[key + "." + leaf];
+        if (!band) continue;                                  // unbanded is unauthorised
+        /* 4 · clamp, never reject — an overreaching realiser still produces a
+           playable scene, it just does not get to overreach */
+        const n = evtClamp(val[leaf], band);
+        if (n !== null && n !== 0) out[leaf] = Math.round(n * 100) / 100;
+      }
+      if (Object.keys(out).length) fx[key] = out;
+    }
+    options.push({ label: label, fx: fx });
+  }
+
+  /* 5 · an event whose every option does nothing is not an event */
+  if (!options.some((o) => Object.keys(o.fx).length > 0)) return null;
+
+  /* 6 · assemble. `emoji`/`title` come from the proposal's own fallback rather
+     than from the realisation, so generated content cannot restyle the game. */
+  return {
+    id: proposal.id,
+    emoji: proposal.fallback.emoji || "✨",
+    title: proposal.fallback.title || "Something happens",
+    text: text,
+    options: options,
+    generated: 1,
+  };
+}
+
+/* ── the one integration point ───────────────────────────────────────────
+   GENERATED EVENTS FILL EMPTY SLOTS. THEY DO NOT COMPETE FOR FULL ONES.
+
+   The first version registered this in POOL alongside the 220 hand-written
+   events, which was wrong in a way that only a soak revealed: winning a POOL
+   draw means some hand-written event did NOT fire that step, and a few percent
+   of that is enough to starve progression. Measured — with generated events in
+   POOL, `test-edu-s07` reported 279 disagreements between the two housing
+   authorities, because characters were missing the move-out event often enough
+   to reach 26 still flagged as living with their parents while HRE's own model
+   had moved them on. Making the entry produce literally nothing did not fix it:
+   occupying the slot was the whole problem.
+
+   So this fires only on steps where the hand-written pool fired NOTHING. It is
+   strictly additive: no hand-written event is ever displaced, and "augment
+   rather than dilute" becomes a structural property instead of a hope. */
+const EVT_GLOBAL_CD = 500;        /* days between generated events, at most */
+/* Returns an event to show, or null. Called from advance() ONLY when nothing
+   else fired this step. Never throws; null is an ordinary answer. */
+function evtMaybeFire(s) {
+  const age = ageYears(s);
+  if (age < 8 || age > 100) return null;
+  const last = s.flags.evt_last;
+  if (last !== undefined && s.ageDays - last < EVT_GLOBAL_CD) return null;
+  /* seeded, never Math.random: a life must replay identically */
+  const rng = hreRng((s.hre && s.hre.seed) || 1, s.ageDays, "evt:propose");
+  if (!rng.chance(0.35)) return null;             // an empty step is often just an empty step
+  const proposal = evtPropose(s, rng);
+  if (!proposal) return null;
+  s.flags["evt_" + proposal.kind] = s.ageDays;
+  s.flags.evt_last = s.ageDays;
+  /* P1 ships fallback-only. P2/P3 will offer the proposal to a realiser and
+     pass whatever comes back through evtValidate, falling back to exactly this
+     on any failure — which is why the fallback is a complete event and not a
+     placeholder. */
+  const ev = proposal.fallback;
+  return { id: proposal.id, emoji: ev.emoji, title: ev.title, text: ev.text, options: ev.options, generated: 1 };
+}
 
 /* ═══════════════ KB · KEYBINDINGS ═══════════════
 
@@ -18636,9 +19184,10 @@ function PplCard({ entry, state, accent, apply }) {
         </div>
         <span style={{ fontSize: 13, opacity: 0.85 }}>{heart}</span>
         <button className="btn" aria-label={fav ? "Unpin" : "Pin to favourites"}
-          onClick={() => apply((st) => { pplToggleFav(st, entry.addr); return st; })}
-          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "2px 4px", color: fav ? TH.gold : TH.faint, filter: fav ? "none" : "grayscale(1)" }}>
-          {fav ? "⭐" : "☆"}
+          onClick={() => apply((st) => pplFavToggled(st, entry.addr))}
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: "4px 5px",
+            lineHeight: 1, color: fav ? TH.text : TH.faint }}>
+          {fav ? "★" : "☆"}
         </button>
       </div>
       <div style={{ height: 4, background: TH.lineSoft, borderRadius: 3, overflow: "hidden", marginTop: 9 }}>
@@ -18695,9 +19244,11 @@ function PeoplePanel({ state, apply, accent, confirm, openRel, toggleRel, sub, s
               {/* the pin sits over RelCard rather than inside it, so the
                   existing card keeps working untouched everywhere else */}
               <button className="btn" aria-label={pplIsFav(s, e.addr) ? "Unpin" : "Pin to favourites"}
-                onClick={() => apply((st) => { pplToggleFav(st, e.addr); return st; })}
-                style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "2px 4px", color: pplIsFav(s, e.addr) ? TH.gold : TH.faint, filter: pplIsFav(s, e.addr) ? "none" : "grayscale(1)" }}>
-                {pplIsFav(s, e.addr) ? "⭐" : "☆"}
+                onClick={() => apply((st) => pplFavToggled(st, e.addr))}
+                style={{ position: "absolute", top: 4, right: 4, zIndex: 2, lineHeight: 1,
+                  background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: "4px 5px",
+                  color: pplIsFav(s, e.addr) ? TH.text : TH.faint }}>
+                {pplIsFav(s, e.addr) ? "★" : "☆"}
               </button>
             </div>
           )

@@ -34,17 +34,35 @@ sec("1 · IQ");
 {
   /* the defining properties of the scale */
   ok("the median percentile is IQ 100", M.iqFromPercentile(50) === 100, M.iqFromPercentile(50));
-  ok("+1 SD is IQ 115", Math.abs(M.iqFromPercentile(84) - 115) <= 1, M.iqFromPercentile(84));
-  ok("-1 SD is IQ 85", Math.abs(M.iqFromPercentile(16) - 85) <= 1, M.iqFromPercentile(16));
-  ok("+2 SD is about IQ 130", Math.abs(M.iqFromPercentile(97.7) - 130) <= 2, M.iqFromPercentile(97.7));
+  /* THIS IS DELIBERATELY NOT A CLINICAL SCALE, and the suite should say so
+     rather than quietly encode the old one. The range was widened to 75-180 on
+     request; a mean-100 SD-15 curve puts p0.5/p99.5 at about 61/139, so the
+     top of that range was unreachable until the spread above the mean was
+     widened independently of the spread below it. What is asserted now is the
+     SHAPE — ordered, monotonic, densest in the middle, both ends reachable —
+     not the clinical anchors, which no longer hold and should not pretend to. */
+  ok("the scale is asymmetric by design", M.IQ_SD_HIGH > M.IQ_SD_LOW,
+    [M.IQ_SD_LOW, M.IQ_SD_HIGH]);
+  ok("a point above the mean is further from it than the mirrored point below",
+    (M.iqFromPercentile(84) - 100) > (100 - M.iqFromPercentile(16)),
+    [M.iqFromPercentile(16), M.iqFromPercentile(84)]);
+  ok("...and both stay ordered around the median",
+    M.iqFromPercentile(16) < M.iqFromPercentile(50) && M.iqFromPercentile(50) < M.iqFromPercentile(84));
   ok("the mean and SD are the standard ones", M.IQ_MEAN === 100 && M.IQ_SD === 15);
   ok("it is monotonic", (() => {
     let prev = -1;
     for (let p = 1; p <= 99; p++) { const v = M.iqFromPercentile(p); if (v < prev) return false; prev = v; }
     return true;
   })());
-  ok("it is clamped at both ends", M.iqFromPercentile(0) >= 55 && M.iqFromPercentile(100) <= 145,
+  ok("it is clamped at both ends", M.iqFromPercentile(0) >= M.IQ_MIN && M.iqFromPercentile(100) <= M.IQ_MAX,
     [M.iqFromPercentile(0), M.iqFromPercentile(100)]);
+  /* the requested range must be REACHABLE, not merely permitted by a clamp —
+     widening the clamp alone left everything above 139 impossible to produce */
+  ok("the bottom of the range is reachable", M.iqFromPercentile(0.5) === M.IQ_MIN, M.iqFromPercentile(0.5));
+  ok("the top of the range is reachable", M.iqFromPercentile(99.5) === M.IQ_MAX, M.iqFromPercentile(99.5));
+  ok("...and the round trip holds at both ends",
+    M.iqFromPercentile(M.iqToPercentile(M.IQ_MAX)) > 160 && M.iqFromPercentile(M.iqToPercentile(M.IQ_MIN)) < 90,
+    [M.iqFromPercentile(M.iqToPercentile(M.IQ_MAX)), M.iqFromPercentile(M.iqToPercentile(M.IQ_MIN))]);
   ok("out-of-range input does not produce NaN",
     isFinite(M.iqFromPercentile(-10)) && isFinite(M.iqFromPercentile(200)));
 }
@@ -70,19 +88,31 @@ sec("1 · IQ");
   for (let i = 0; i < N; i++) vals.push(M.iqFromPercentile(M.normalPercentile()));
   const mean = vals.reduce((a, b) => a + b, 0) / N;
   const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / N);
-  ok("the generated mean is near 100", Math.abs(mean - 100) < 3, mean);
-  ok("the generated SD is near 15", Math.abs(sd - 15) < 3, sd);
+  /* The asymmetric scale pulls the arithmetic mean above the median — a wider
+     upper tail has to. The MEDIAN is what stays pinned at 100, and that is the
+     honest statistic to assert on a skewed distribution. */
+  const sorted = vals.slice().sort((a, b) => a - b);
+  const median = sorted[Math.floor(N / 2)];
+  ok("the median is 100", Math.abs(median - 100) <= 2, median);
+  ok("the mean sits above it, because the upper tail is longer", mean > median, [mean, median]);
+  ok("the spread is wider than a clinical scale's", sd > 15, sd);
 
-  const within1 = vals.filter((v) => v >= 85 && v <= 115).length / N;
-  const within2 = vals.filter((v) => v >= 70 && v <= 130).length / N;
-  ok("about 68% fall within 1 SD", Math.abs(within1 - 0.68) < 0.07, within1);
-  ok("about 95% fall within 2 SD", Math.abs(within2 - 0.95) < 0.05, within2);
-  /* the distinguishing test: uniform would give ~0.33 here */
-  ok("the middle is denser than the tails — i.e. NOT uniform", within1 > 0.55, within1);
+  /* the shape assertions, restated in percentile terms so they survive any
+     future change to where the ends of the range sit */
+  const q = (pc) => sorted[Math.floor(N * pc)];
+  ok("quartiles are ordered", q(0.25) < median && median < q(0.75), [q(0.25), median, q(0.75)]);
+  const mid = vals.filter((v) => v >= q(0.16) && v <= q(0.84)).length / N;
+  ok("the middle two thirds really are the middle two thirds", Math.abs(mid - 0.68) < 0.06, mid);
+  /* THE DISTINGUISHING TEST, unchanged in intent: a uniform draw over the same
+     range would put only about a third of its mass in the middle band. */
+  const band = vals.filter((v) => v >= 90 && v <= 120).length / N;
+  ok("the middle is denser than the tails — i.e. NOT uniform", band > 0.4, band);
+  ok("both ends of the range are actually produced",
+    sorted[0] < 85 && sorted[N - 1] > 150, [sorted[0], sorted[N - 1]]);
 }
 {
   const c = H.mkChar({ country: "Sweden", birthYear: 1990 });
-  ok("a character has an IQ", M.iqOf(c) >= 55 && M.iqOf(c) <= 145, M.iqOf(c));
+  ok("a character has an IQ", M.iqOf(c) >= M.IQ_MIN && M.iqOf(c) <= M.IQ_MAX, M.iqOf(c));
   ok("IQ derives from the stored percentile", M.iqOf(c) === M.iqFromPercentile(c.stats.smarts));
   ok("the stored stat is still a 0-100 percentile",
     c.stats.smarts >= 0 && c.stats.smarts <= 100, c.stats.smarts);
@@ -96,6 +126,7 @@ sec("1 · IQ");
     .every((v) => typeof M.iqBand(v) === "string" && M.iqBand(v).length > 3));
   ok("100 is average", M.iqBand(100) === "average");
   ok("135 is very superior", M.iqBand(135) === "very superior");
+  ok("the top of the range still has a name", typeof M.iqBand(M.IQ_MAX) === "string" && M.iqBand(M.IQ_MAX).length > 3);
 }
 
 /* ───────────────── 2 · romantic orientation, discovered ───────────────── */
@@ -434,7 +465,7 @@ sec("4 · lives still run");
       maxSteps: 2000,
       onStep: (s) => {
         const iq = M.iqOf(s);
-        if (!(iq >= 55 && iq <= 145)) bad.push(["iq", country, iq]);
+        if (!(iq >= M.IQ_MIN && iq <= M.IQ_MAX)) bad.push(["iq", country, iq]);
       },
     });
     crashes += r.crashes; deadEnds += r.deadEnds;

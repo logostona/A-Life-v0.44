@@ -24,8 +24,10 @@
  *      favourites, generated colleagues/neighbours/rivals. Stat rounding fix.
  * v10 — Career subtabs, one shared scrollable subtab bar with an affordance,
  *      and rebindable keyboard shortcuts with a settings screen.
+ * v11 — EVT P1: procedurally proposed events with a validator. Favourite-star
+ *      re-render fix. IQ range widened to 75-180.
  */
-const CACHE_NAME = "a-life-cache-v10";
+const CACHE_NAME = "a-life-cache-v11";
 const ASSETS = [
   "./",
   "./index.html",
