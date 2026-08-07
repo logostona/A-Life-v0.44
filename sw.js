@@ -20,8 +20,10 @@
  * v7 — IQ scale, romantic discovery as a scene, non-transition hormone therapy.
  * v8 — Health subsystem (HLT): eleven subtabs, emergent lifestyle, era-gated
  *      vaccination, addiction, disability, allergies, medical history.
+ * v9 — People subsystem (PPL): eighteen categories over a derived taxonomy,
+ *      favourites, generated colleagues/neighbours/rivals. Stat rounding fix.
  */
-const CACHE_NAME = "a-life-cache-v8";
+const CACHE_NAME = "a-life-cache-v9";
 const ASSETS = [
   "./",
   "./index.html",

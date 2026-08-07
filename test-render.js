@@ -258,6 +258,27 @@ sec("4 · stats are always visible, not behind a disclosure");
     ok("the bar width is still the percentile", g.indexOf("width:" + pct + "%") > -1
       || g.indexOf("width: " + pct + "%") > -1, pct);
   }
+  /* NO STAT EVER RENDERS A RAW FLOAT. Stats were integers everywhere until the
+     health tick started adding fractional amounts per step, and the header
+     then displayed "96.58660014915087". The value keeps its precision — slow
+     drift depends on sub-integer accumulation — but the display is rounded. */
+  const floaty = M.mkFloatProbe ? null : (() => {
+    const s = H.mkChar({ country: "United Kingdom", cls: "Middle", birthYear: 1990 });
+    s.ageDays = Math.ceil(40 * 365.25) + 1;
+    s.stats.health = 96.58660014915087;
+    s.stats.happiness = 41.333333333333336;
+    s.stats.looks = 12.005;
+    M.push(s, "probe");
+    return ReactDOMServer.renderToStaticMarkup(
+      React.createElement(mod.Game || mod.default, { state: s, setState: () => {}, onReset: () => {} }));
+  })();
+  /* Checked against VISIBLE TEXT only. Matching the whole markup also catches
+     the compass dial's SVG geometry, which is legitimately fractional — the
+     claim is about what a player reads, not about path coordinates. */
+  const visible = (floaty.match(/>[^<>]+</g) || []).join(" ");
+  ok("a fractional stat never reaches the screen as a raw float",
+    !/\d+\.\d{3,}/.test(visible), (visible.match(/\d+\.\d{3,}/g) || []).slice(0, 4));
+  ok("...it is rounded instead", />9[67]</.test(floaty) && />41</.test(floaty));
 }
 
 /* ═══════════════════════ 5 · contrast, the real check ═══════════════════════ */
@@ -446,6 +467,87 @@ if (mod) {
     } catch (e) { /* already reported above */ }
   }
   ok("rendering a subtab never mutates the state it was handed",
+    JSON.stringify(probe) === before);
+}
+
+/* ═══════════════ 9 · the People screen ═══════════════
+   Eighteen tabs, two card kinds, and a set of people who move between
+   categories. The fixtures below include the states that are easy to forget:
+   nobody at all, a full life, and a person in each category at once. */
+sec("9 · the people subtabs");
+if (mod) {
+  const M2 = mod;
+  const base = () => {
+    const c = H.mkChar({ country: "Sweden", birthYear: 1985, cls: "Middle" });
+    c.ageDays = Math.round(40 * 365.25);
+    return c;
+  };
+  const populated = (() => {
+    const c = base();
+    c.romance = {
+      r1: { name: "Sam", role: "Partner", rel: 80, status: "married", g: "F", known: [], lastTime: -999, lastTalk: -999, lastGift: -999 },
+      r2: { name: "Ash", role: "Ex", rel: 40, status: "ex", g: "M", known: [], lastTime: -999, lastTalk: -999, lastGift: -999 },
+      r3: { name: "Robin", role: "Crush", rel: 55, status: "crush", g: null, known: [], lastTime: -999, lastTalk: -999, lastGift: -999 },
+    };
+    c.friends.dog = { name: "Bruno", role: "Dog 🐕", rel: 90, pet: true, known: [], lastTime: -999, lastTalk: -999, lastGift: -999 };
+    c.friends.faint = { name: "Kim", role: "Friend", rel: 15, known: [], lastTime: -999, lastTalk: -999, lastGift: -999 };
+    c.relatives = c.relatives || {};
+    c.relatives.il = { name: "Eva", role: "Mother-in-law", rel: 45, known: [], lastTime: -999, lastTalk: -999, lastGift: -999 };
+    c.children = { c1: { name: "Nils", role: "Son", rel: 90, known: [], lastTime: -999, lastTalk: -999, lastGift: -999, born: 5000 } };
+    c.family.mom.deceased = true;
+    c.ppl = {};
+    for (const cat of ["school", "work", "neighbors", "clubs", "government", "healthcare", "business", "rivals"]) {
+      c.ppl[cat + ":x"] = { name: "P " + cat, role: "Someone", cat: cat, rel: 50, g: "F", since: 1000 };
+    }
+    M2.pplToggleFav(c, M2.pplAddr("romance", "r1"));
+    return c;
+  })();
+  const FIX = { "a plain life": base(), "someone in every category": populated };
+
+  ok("the people registry is exported", !!M2.PPL_TABS && !!M2.PPL_EMPTY && !!M2.PeoplePanel);
+  ok("there are eighteen tabs", (M2.PPL_TABS || []).length === 18);
+
+  let broke = [];
+  for (const label of Object.keys(FIX)) {
+    let html = "";
+    try {
+      html = ReactDOMServer.renderToStaticMarkup(React.createElement(M2.PeoplePanel, {
+        state: FIX[label], apply: () => {}, accent: "#8899FF", confirm: () => {},
+        openRel: null, toggleRel: () => {},
+      }));
+    } catch (e) { broke.push(label + ": " + String(e.message).slice(0, 110)); continue; }
+    if (!html || html.length < 100) broke.push(label + " (empty)");
+    if (/undefined|\[object Object\]|NaN/.test(html)) broke.push(label + " (undefined in output)");
+    /* every tab label must be reachable from the bar */
+    for (const t of (M2.PPL_TABS || [])) {
+      if (html.indexOf(t.label) === -1) broke.push(label + " missing tab " + t.label);
+    }
+  }
+  ok("the People panel renders every fixture with all eighteen tabs present",
+    broke.length === 0, broke.slice(0, 6));
+
+  /* every category's own body, including the empty-state copy */
+  let bodyBroke = [];
+  for (const t of (M2.PPL_TABS || [])) {
+    for (const label of Object.keys(FIX)) {
+      try {
+        const msg = M2.PPL_EMPTY[t.id](FIX[label]);
+        if (typeof msg !== "string" || msg.length < 8) bodyBroke.push(t.id + " / " + label + " (empty-state copy)");
+        if (/undefined|NaN/.test(msg)) bodyBroke.push(t.id + " / " + label + " (undefined in copy)");
+      } catch (e) { bodyBroke.push(t.id + " / " + label + ": " + String(e.message).slice(0, 80)); }
+    }
+  }
+  ok("every empty-state message renders for every fixture", bodyBroke.length === 0, bodyBroke.slice(0, 6));
+
+  /* GOTCHA #2 — the panel is handed a clone that gets discarded */
+  const probe = populated;
+  const before = JSON.stringify(probe);
+  try {
+    ReactDOMServer.renderToStaticMarkup(React.createElement(M2.PeoplePanel, {
+      state: probe, apply: () => {}, accent: "#8899FF", confirm: () => {}, openRel: null, toggleRel: () => {},
+    }));
+  } catch (e) { /* reported above */ }
+  ok("rendering the People panel never mutates the state it was handed",
     JSON.stringify(probe) === before);
 }
 
