@@ -95,7 +95,7 @@ the whole file down in P6. Always run the harness import as part of a build chec
 
 Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activate` handler
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
-PWA on the old bundle for an extra launch. Currently `a-life-cache-v10`.
+PWA on the old bundle for an extra launch. Currently `a-life-cache-v11`.
 
 ### Subtab bars, Career and keybindings
 
@@ -210,13 +210,34 @@ Two things that make diagnosis harder here, so do not burn time on them:
 for t in test-edu-s01 test-edu-s02 test-edu-s09 test-edu-s04-s05 test-edu-s03-s06 \
          test-edu-s07 test-edu-s12 test-edu-s08 test-identity test-integration \
          test-render test-deploy test-hre-s11 test-hre-s10 test-hre-s06 \
-         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism test-health test-people test-ui; do
+         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism test-health test-people test-ui test-eventgen; do
   printf "%-24s " "$t"; node --max-old-space-size=4096 $t.js 2>&1 | grep -oE "[0-9]+ passed, [0-9]+ failed" | tail -1
 done
 ```
 
-**2013 assertions.** `test-hre-s09.js` fails 8 of 94 — a stale pre-Phase-7 fixture that predates
-current work. That is the known baseline, not a regression.
+**2110 assertions.** Two suites have known failures, both pre-existing, neither a regression:
+
+- `test-hre-s09.js` fails 8 of 94 — a stale pre-Phase-7 fixture that predates current work.
+- `test-edu-s07.js` fails 1 of 87 — "housing authorities never disagreed during schooling".
+
+**The edu-s07 one is a real HRE bug, and it is about STEP CADENCE, not about whatever change
+appears to have triggered it.** Measured with generated events fully suppressed:
+
+| step size | disagreements over 9,600 steps |
+|---|---|
+| 14 days | 0 |
+| 15 days | 0 |
+| 30 days | **806** |
+
+`hreTenureAgreesWithLegacy` breaks down at coarse time steps — the move-out window is short
+enough that a 30-day step can jump clean over it, leaving the legacy flags saying "still at
+parents" while HRE's own model has moved on. Anything that changes how often `advance()` is
+interrupted will surface it, which is why it appeared when generated events were added: a
+popup halts the loop and changes the effective cadence.
+
+Do not "fix" this by relaxing the assertion. It is the same unfinished HRE inversion that
+hre-s09's other 8 failures describe ("the shim is defined but not yet called by any call
+site"), and the fix belongs there.
 
 `edu-sample-review.js` is **not a test**: it renders generated institutions as prose for a human
 to read, asserts nothing, and cannot fail. It has caught three absurdities that were green on
