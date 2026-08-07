@@ -143,6 +143,36 @@ Two things measured the hard way: a per-life **cap on rivals** (uncapped reached
 person at war with their whole address book), and **name/role deduplication** at generation
 (two landlords and two identical strangers, which reads as a rendering fault).
 
+### Gender expression is a sixth axis, and it belongs to every life
+
+`exprStyleOf` derives one of four styles (`conforming` / `soft` / `sharp` / `andro`) from how far
+`presently()` has drifted from `presStart()` — which follows the sex a character was **assigned**,
+not the one they are and not the gender they turn out to be. `exprFriction` then prices that style
+against `localAcceptance`, so the same soft boy meets 100% friction in 1955 and 32% in 2015, and a
+sharp girl always meets less than a soft boy in the same year. That double standard is modelled on
+purpose, not smoothed away.
+
+**Gate content on the STAKE, not on the identity.** This is the rule that has already been broken
+twice in the same panel. `schoolPresentMenu` offered "Name at school — register name only" and
+"Uniform — as assigned" to cisgender pupils, which reads as though a name and a uniform they have
+no feelings about were compromises they had settled for. The fix is never `if (trans)`: it is
+
+- **name** → `if (chosen !== s.profile.first)` — there is nothing to ask for without a chosen name;
+- **uniform / PE** → `if (gnc)`, where `gnc` is trans **or** a non-conforming style **or** a target
+  more than 8 away from where you are. That third clause matters: someone who has not moved yet but
+  wants to is exactly the pupil who needs the option;
+- **who knows** → `if (hasNews)`;
+- **how you dress** → everybody, always.
+
+`EXPR_POOL` is gated on **neither `isQueerG` nor `isQueerO`**, and `test-identity.js` asserts that
+against the source text so a later edit cannot quietly re-couple them.
+
+**A same-sex partner is standing evidence of the orientation.** `comeOutNews(s, group, key)` returns
+`{orientation, gender, any, evidenced}`; when `evidenced` is true the orientation is not news to that
+person and `comeOutReact` cannot produce a bad outcome — the game was breaking up gay couples over a
+disclosure the partner had lived inside for years. Being **trans** is still news to that same
+partner, and is still allowed to go badly.
+
 ### Adding to the Health subsystem (HLT)
 
 Eleven subtabs, five content tables, one state blob. Everything is a registry, so the common

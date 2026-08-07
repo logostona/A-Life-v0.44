@@ -10907,14 +10907,69 @@ function comeOutStart(state, group, key) {
 }
 
 // step 2 — their reaction, and what you do with it
+/* WHAT THIS PERSON CAN ACTUALLY BE SURPRISED BY.
+   A relationship is evidence. A man whose partner is a man cannot be shocked
+   to learn that man is into men — he has been dating him. The first version
+   scored every partner off the same acceptance roll, so a gay character could
+   come out to his boyfriend and be dumped for being gay, which is not a
+   difficult conversation, it is an impossible one.
+
+   The axes come apart here. A same-sex partner already knows the ORIENTATION;
+   what they cannot know from the relationship alone is that you are TRANS, and
+   that genuinely can change what the relationship is for them. So orientation
+   stops being disclosable to a partner the relationship already evidences, and
+   gender remains disclosable to anyone. */
+function comeOutNews(s, group, key) {
+  const p = s[group] && s[group][key];
+  const outO = s.discovered.orientation && isQueerO(s);
+  const outG = s.discovered.gender && isQueerG(s);
+  if (!p) return { orientation: outO, gender: outG, any: outO || outG };
+  /* an active partner of the same sex is standing evidence of the orientation */
+  const partner = group === "romance" && ["dating", "serious", "engaged", "married"].indexOf(p.status) !== -1;
+  const evidenced = partner && sameSexCouple(s, p);
+  return { orientation: outO && !evidenced, gender: outG, any: (outO && !evidenced) || outG, evidenced: !!evidenced };
+}
+/* The label has to name only what is actually being disclosed, or a trans man
+   telling his boyfriend he is trans is described as telling him he is gay. */
+function outLabelFor(s, group, key) {
+  const news = comeOutNews(s, group, key);
+  const bits = [];
+  if (news.orientation) bits.push(s.hidden.orientation.toLowerCase());
+  if (news.gender) bits.push(s.hidden.gender.toLowerCase());
+  return bits.length ? bits.join(" and ") : outLabel(s);
+}
+
 function comeOutReact(state, group, key, bonus, style) {
   const s = pClone(state);
   const p = s[group][key];
   const era = localAcceptance(s);
   const eff = p.acceptance * (0.38 + era / 165);
-  const score = eff * 0.5 + era * 0.35 + p.rel * 0.15 + bonus;
-  const what = outLabel(s);
+  let score = eff * 0.5 + era * 0.35 + p.rel * 0.15 + bonus;
+  const what = outLabelFor(s, group, key);
   const isPartner = group === "romance";
+  const news = comeOutNews(s, group, key);
+  /* Nothing left to be surprised by: the relationship already says it. This
+     cannot go badly, because there is no news in it. */
+  if (isPartner && news.evidenced && !news.gender) {
+    s.outTo[key] = true;
+    if (!p.known.includes("acceptance")) p.known.push("acceptance");
+    s.pending = { emoji: "🏳️‍🌈", title: `${p.name} already knew`,
+      text: `You say it properly, out loud, for the first time — and ${p.name} waits for the rest of the sentence, and then realises that was the rest of the sentence. "Love, I have met me. I have met you. I did wonder when you'd say it."`,
+      options: [
+        { label: "Laugh, and feel about a stone lighter", fx: { run: (st) => {
+          const q = st[group][key]; q.rel = clamp(q.rel + 10); st.stats.happiness = clamp(st.stats.happiness + 12);
+          push(st, `🏳️‍🌈 You told ${q.name} you're ${what}. They pointed out, kindly, that this was not breaking news to a person you have been kissing for months. Saying it still mattered. Saying it is always the part that matters.`); } } },
+        { label: "Say it was never about them knowing", fx: { run: (st) => {
+          const q = st[group][key]; q.rel = clamp(q.rel + 8); st.stats.happiness = clamp(st.stats.happiness + 9);
+          st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 5);
+          push(st, `🏳️‍🌈 You told ${q.name} you're ${what} — not as information, but because you had never once said it in your own voice, to someone's face, without hedging. They understood that immediately.`); } } },
+      ] };
+    return s;
+  }
+  /* The partner knows the orientation but not that you are trans. That IS news,
+     and it is allowed to be hard — but it is not a referendum on the
+     orientation they already signed up for, so the floor is raised. */
+  if (isPartner && news.evidenced && news.gender) score += 12;
   s.outTo[key] = true;
   if (!p.known.includes("acceptance")) p.known.push("acceptance");
 
@@ -14227,6 +14282,109 @@ const LATER_FAMILY_POOL = [
 ];
 POOL.push(...LATER_FAMILY_POOL);
 
+/* ── EXPRESSION EVENTS ────────────────────────────────────────────────────
+   These read exprStyleOf and exprFriction, which means they fire for ANY life
+   whose presentation has drifted from what was expected — a soft boy, a sharp
+   girl, an androgynous anyone — and are gated on NEITHER gender identity nor
+   orientation. That is the point: the previous version of this game only ever
+   noticed how you looked if you were trans.
+
+   Every one of them is era-scaled through exprFriction, so the same character
+   gets a very different decade's worth of reaction. */
+const EXPR_POOL = [
+  { id: "x_readWrong", i: 1, w: 3, minAge: 11, maxAge: 70, cd: 900,
+    cond: (s) => exprStyleOf(s).id !== "conforming",
+    run: (s) => {
+      const f = exprFriction(s), style = exprStyleOf(s);
+      const era = localAcceptance(s);
+      return { event: { emoji: "👀", title: "Read wrong",
+        text: style.id === "andro"
+          ? `A stranger works very hard, in front of you, to decide what you are. You watch them do it. They settle on something and address you with a confidence they have not earned.`
+          : style.id === "soft"
+          ? `Someone clocks how you're dressed and their face does the thing — the small recalculation, the half-second where they decide what to make of you.`
+          : `Someone calls you the wrong thing across a car park, corrects themselves without apology, and looks briefly annoyed at you for the inconvenience.`,
+        options: [
+          { label: "Let it pass", fx: { stats: { happiness: -2 }, emergent: { prudence: +3 },
+            feed: `👀 You let it go. You have let a great many of these go, and they do add up somewhere.` } },
+          { label: "Correct them, evenly", fx: { run: (st) => {
+            const bad = Math.random() < f;
+            st.stats.happiness = clamp(st.stats.happiness + (bad ? -5 : 6));
+            st.emergent.courage = clamp((st.emergent.courage ?? 40) + 6);
+            push(st, bad
+              ? `👀 You corrected them and they took it badly, in the way people do when they have been shown something about themselves they did not ask to see.`
+              : `👀 You corrected them and they said sorry, properly, and moved on. It cost nothing. It does not always cost nothing.`);
+          } } },
+          { label: "Dress differently tomorrow", fx: { run: (st) => {
+            movePres(st, presStart(st) > presently(st) ? 6 : -6);
+            st.stats.happiness = clamp(st.stats.happiness - 6);
+            push(st, `👀 You put the safer clothes on the next morning. The day was easier and you were not in it.`);
+          } } },
+        ] } };
+    } },
+
+  { id: "x_foundYourPeople", i: 1, w: 2, minAge: 14, maxAge: 60, once: true, cd: 2000,
+    cond: (s) => exprStyleOf(s).id !== "conforming" && Object.keys(s.friends || {}).length > 0,
+    run: (s) => {
+      const y = yearOf(s), minor = ageYears(s) < 18;
+      /* A fourteen-year-old is not getting into the back room of a pub in 1958.
+         Same discovery, age-appropriate door. */
+      const where = y < 1980
+                    ? (minor ? "somebody's older cousin's flat on a Saturday, six people deep in it"
+                             : "a pub with a back room and no sign on it")
+                  : y < 2000
+                    ? (minor ? "the record shop after school, where the person behind the counter dresses like you do"
+                             : "a record shop where the person behind the counter dresses like you do")
+                  : y < 2012 ? "a forum thread that turns out to be four hundred pages long"
+                  : "a corner of the internet that assumed you already belonged";
+      return { event: { emoji: "🫂", title: "People who dress like you",
+        text: `Through somebody who knows somebody, you end up in ${where}. Nobody looks twice at what you are wearing. It takes you most of an hour to notice that, and then you cannot stop noticing it.`,
+        options: [
+          { label: "Stay all night", fx: { stats: { happiness: +12 }, emergent: { courage: +6, selfAwareness: +5 },
+            feed: `🫂 You stayed until they turned the lights on. Going home afterwards was strange — the same streets, a slightly different person walking them.` } },
+          { label: "Go home early, but go back", fx: { stats: { happiness: +7 }, emergent: { selfAwareness: +4 },
+            feed: `🫂 You left early, overwhelmed, and spent the whole week deciding you would go again. You did go again.` } },
+        ] } };
+    } },
+
+  { id: "x_toldToChange", i: 1, w: 3, minAge: 12, maxAge: 55, cd: 1300,
+    cond: (s) => exprFriction(s) > 0.45,
+    run: (s) => {
+      const f = exprFriction(s);
+      const atHome = hreAtParents(s);
+      /* Gotcha #2: the builder holds a clone that gets discarded, so carry the
+         KEY and dereference inside fx.run against the state it is handed. */
+      const whoKey = !atHome ? null
+        : (s.family.dad && !s.family.dad.deceased) ? "dad"
+        : (s.family.mom && !s.family.mom.deceased) ? "mom" : null;
+      const who = whoKey ? s.family[whoKey] : null;
+      return { event: { emoji: "🧥", title: atHome && who ? `${who.name} has a view` : "A word about your appearance",
+        text: atHome && who
+          ? `${who.name} looks at you on the way out and says it: not angry, which would be easier, but disappointed and practical. "People will think things. I'm saying it because nobody else will."`
+          : `It is put to you, in the careful language of somebody who believes they are being helpful, that you would have an easier time of it if you looked more like everybody else.`,
+        options: [
+          { label: "Agree, and change nothing", fx: { emergent: { prudence: +5 },
+            feed: `🧥 You said yes, of course, you'd think about it. You thought about it for the length of the hallway.` } },
+          { label: "Say it out loud: this is what you look like", fx: { run: (st) => {
+            const bad = Math.random() < f;
+            const p = whoKey && st.family[whoKey] ? st.family[whoKey] : null;
+            if (p) p.rel = clamp(p.rel - (bad ? 10 : 3));
+            st.stats.happiness = clamp(st.stats.happiness + (bad ? -6 : 5));
+            st.emergent.courage = clamp((st.emergent.courage ?? 40) + 9);
+            push(st, bad
+              ? `🧥 You said it plainly and did not dress it up. It did not go well and you would do it again, which is roughly how these go.`
+              : `🧥 You said it plainly and did not dress it up. ${p ? `${p.name} went quiet, then let it drop` : "It was let go of"} — not agreement, but the end of the conversation, which was all you wanted.`);
+          } } },
+          { label: "Give in", fx: { run: (st) => {
+            movePres(st, presStart(st) > presently(st) ? 10 : -10);
+            st.stats.happiness = clamp(st.stats.happiness - 9);
+            st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) - 3);
+            push(st, `🧥 You went back to looking like what was expected. It bought you quiet, at a price you paid in instalments.`);
+          } } },
+        ] } };
+    } },
+];
+POOL.push(...EXPR_POOL);
+
 function addStepsibs(st) {
   if (Math.random() >= 0.4) return; // most new partners don't bring kids along; some do
   const n = pick([1, 1, 2]);
@@ -14266,6 +14424,59 @@ function exprLabel(v) {
        : v <= 80 ? "feminine-leaning" : "very feminine";
 }
 function presently(s) { return s.emergent.pres ?? presStart(s); }
+
+/* ── HOW THE WORLD READS YOU ──────────────────────────────────────────────
+   Everyone has a presentation and a place they want it to sit. That was
+   already true — hidden.expr is seeded from gender at birth and free to land
+   anywhere, so a butch cis woman and a feminine cis man have always been
+   representable. What was missing is that only trans characters were ever
+   ASKED about it, so for everyone else the axis existed and never came up.
+
+   A style is DERIVED, never stored: it is the distance between how you present
+   and how someone raised as you was expected to present. That makes it a
+   social reading rather than an identity, which is what it actually is — the
+   same boy in eyeliner is "artistic" in one decade, "a phase" in another and a
+   problem to be corrected in a third. Deriving also means it follows you
+   automatically as presentation drifts, with nothing to migrate.
+
+   The ids are neutral on purpose. The words the WORLD uses — and they are not
+   always kind ones — belong in the prose, where era and place can pick them. */
+const EXPR_STYLES = {
+  conforming: { id: "conforming", label: "unremarkable", note: "You read the way people expected, and nobody thinks about it." },
+  soft:       { id: "soft",       label: "soft",        note: "Read as gentler, prettier, less of a boy than the room budgeted for." },
+  sharp:      { id: "sharp",      label: "sharp",       note: "Read as tougher, plainer, less of a girl than the room budgeted for." },
+  andro:      { id: "andro",      label: "androgynous", note: "People check twice, and some of them mind." },
+};
+/* + = further from the presentation expected of that upbringing */
+function exprDrift(s) {
+  const raisedFem = assignedSex(s) === "Female";
+  const d = presently(s) - presStart(s);
+  return raisedFem ? -d : d;                 /* positive = crossing outward */
+}
+function exprStyleOf(s) {
+  const now = presently(s);
+  const drift = exprDrift(s);
+  if (now > 40 && now < 60 && Math.abs(drift) > 14) return EXPR_STYLES.andro;
+  if (drift < 16) return EXPR_STYLES.conforming;
+  return assignedSex(s) === "Female" ? EXPR_STYLES.sharp : EXPR_STYLES.soft;
+}
+/* What it COSTS to be read that way, here, now. This is the part that has to
+   be historical rather than flat: a feminine boy in 1955 and a feminine boy in
+   2015 are the same boy meeting two different worlds. Returns 0..1, where 1 is
+   maximum friction. */
+function exprFriction(s) {
+  const style = exprStyleOf(s);
+  if (style.id === "conforming") return 0;
+  const era = localAcceptance(s);                     /* 0..100, already era+place */
+  let f = (100 - era) / 100;
+  /* the double standard is real and is worth modelling rather than smoothing:
+     a girl in trousers stopped being remarkable decades before a boy in a
+     skirt did, in most of the places this game covers */
+  if (style.id === "soft") f *= 1.35;
+  else if (style.id === "sharp") f *= 0.75;
+  if (inSchool(s)) f *= 1.2;                          /* school is the sharpest room for this */
+  return Math.max(0, Math.min(1, f));
+}
 
 // how far your presentation is from where you need it to be
 function presGap(s) { return Math.abs(presently(s) - presTarget(s)); }
@@ -15701,7 +15912,27 @@ function schoolPresentMenu(state) {
   const opts = [];
   // whether the school will even entertain it
   const permit = (base) => clamp(base + era * 0.75 - strict * 12 - (SCHOOL_TYPES[sc.type].faith || 0) * 14);
-  opts.push(opt({ emoji: "📛", name: "Name at school", sub: p.name === "chosen" ? `they call you ${chosen}` : p.name === "refused" ? "refused by the school" : "register name only", tag: p.name === "chosen" ? "out" : p.name === "refused" ? "blocked" : "safe" }, 0, (st) => {
+  /* Uniform and PE below are both written around a GENDERED choice — wearing
+     the other uniform, changing with the other group. That is live content for
+     a tomboy or a soft boy as much as for a trans child, so it is gated on the
+     stake rather than on the identity. What it must not do is offer a
+     conforming cisgender pupil "Uniform — as assigned", which reads as though
+     the uniform they have no feelings about were a compromise they settled
+     for. Same fault as "Name at school", same shape of fix.
+
+     Note the third clause: someone whose presentation has not moved yet still
+     has a stake if their TARGET is somewhere else. That is the pupil who most
+     needs the option. */
+  const gnc = trans
+    || exprStyleOf(s).id !== "conforming"
+    || Math.abs(presTarget(s) - presently(s)) > 8;
+  /* Only offered to someone who HAS a name they use that is not the register
+     one. It was shown to everybody, so a cisgender child was presented with
+     "Name at school — register name only" as though the register name were a
+     compromise they had settled for, which is nonsense for the overwhelming
+     majority of lives. A chosen name comes from the mirror scene, or from a
+     nickname; without one there is nothing here to ask for. */
+  if (chosen !== s.profile.first) opts.push(opt({ emoji: "📛", name: "Name at school", sub: p.name === "chosen" ? `they call you ${chosen}` : p.name === "refused" ? "refused by the school" : "register name only", tag: p.name === "chosen" ? "out" : p.name === "refused" ? "blocked" : "safe" }, 0, (st) => {
     const q = st.school.present;
     if (q.name === "chosen") { q.name = "birth"; push(st, `📛 You went back to the register name at school. Safer. Every roll call is a small paper cut.`); st.stats.happiness = clamp(st.stats.happiness - 5); }
     else if (chosen === st.profile.first) { push(st, `📛 You'd need a name you actually want first (🪞 the mirror, at home).`); }
@@ -15714,7 +15945,7 @@ function schoolPresentMenu(state) {
     else { q.name = "chosen"; st.stats.happiness = clamp(st.stats.happiness + 12);
       push(st, `📛 You asked to be called ${chosen}. ${era > 55 ? "Two teachers got it right immediately. One kept 'forgetting' in a way that felt like a position." : "One teacher agreed quietly and never made a thing of it. The rest carried on as before, and you took the one."}`); }
   }));
-  opts.push(opt({ emoji: "👔", name: "Uniform", sub: p.uniform === "other" ? "the one that fits you" : "as assigned", tag: p.uniform === "other" ? "visible" : "safe" }, 0, (st) => {
+  if (gnc) opts.push(opt({ emoji: "👔", name: "Uniform", sub: p.uniform === "other" ? "the one that fits you" : "as assigned", tag: p.uniform === "other" ? "visible" : "safe" }, 0, (st) => {
     const q = st.school.present;
     if (q.uniform === "other") { q.uniform = "assigned"; movePres(st, -5); push(st, `👔 Back to the assigned uniform. You get through the gate unremarked and feel like a costume all day.`); st.stats.happiness = clamp(st.stats.happiness - 6); }
     else {
@@ -15732,7 +15963,7 @@ function schoolPresentMenu(state) {
         push(st, `👔 You wore the other uniform and nobody stopped you. You spent the whole day braced for it, and it never came, and that was its own strange grief and joy.`); }
     }
   }));
-  opts.push(opt({ emoji: "🏃", name: "PE & changing rooms", sub: p.pe === "alone" ? "changing alone" : p.pe === "skip" ? "skipping PE" : "with the assigned group", tag: p.pe === "assigned" ? "hard" : "" }, 0, (st) => {
+  if (gnc) opts.push(opt({ emoji: "🏃", name: "PE & changing rooms", sub: p.pe === "alone" ? "changing alone" : p.pe === "skip" ? "skipping PE" : "with the assigned group", tag: p.pe === "assigned" ? "hard" : "" }, 0, (st) => {
     const q = st.school.present;
     q.pe = q.pe === "assigned" ? "alone" : q.pe === "alone" ? "skip" : "assigned";
     if (q.pe === "alone") {
@@ -15756,12 +15987,51 @@ function schoolPresentMenu(state) {
         : `🗣 You asked. ${era < 35 ? `The staff room heard about it within the hour. One teacher started using your surname only, which was somehow the kindest response available to him.` : `The head of year said the school "doesn't do that here" and the request went into a file rather than into practice.`}`);
     }
   }));
-  opts.push(opt({ emoji: "🏳️‍🌈", name: "Who knows at school", sub: `${(p.outTo || []).length} classmates`, tag: "" }, 0, (st) => { st.pending = schoolOutMenu(st).pending; }));
+  /* and only when there is something to tell */
+  const hasNews = (s.discovered.orientation && isQueerO(s)) || (s.discovered.gender && isQueerG(s));
+  if (hasNews) opts.push(opt({ emoji: "🏳️‍🌈", name: "Who knows at school", sub: `${(p.outTo || []).length} classmates`, tag: "" }, 0, (st) => { st.pending = schoolOutMenu(st).pending; }));
+  /* THE ONE EVERY LIFE GETS. Presentation is not a trans mechanic — a butch
+     girl and a soft boy are both making this choice every morning, and school
+     is the sharpest room in which to make it. Before this, the axis existed in
+     state and was only ever ASKED about if you were trans. */
+  {
+    const style = exprStyleOf(s);
+    const gap = presTarget(s) - presently(s);
+    const want = Math.abs(gap) > 8;
+    opts.push(opt({ emoji: "🪞", name: "How you dress here",
+      sub: exprLabel(presently(s)) + (want ? " · not quite you" : ""),
+      tag: style.id === "conforming" ? "" : "noticed" }, 0, (st) => {
+      const f = exprFriction(st);
+      if (!want) {
+        push(st, `🪞 You look at what you put on this morning and find you have no argument with it. Not everybody gets that, and not on every morning.`);
+        st.stats.happiness = clamp(st.stats.happiness + 2);
+        return;
+      }
+      movePres(st, gap > 0 ? 7 : -7);
+      const era2 = localAcceptance(st);
+      if (Math.random() < f * 0.7) {
+        st.school.trouble = (st.school.trouble || 0) + 1;
+        st.stats.happiness = clamp(st.stats.happiness - 5);
+        push(st, `🪞 You went in looking more like yourself and it was noticed by exactly the wrong people. ${era2 < 35
+          ? `A teacher used the word "inappropriate" and did not explain which rule it broke, because there wasn't one.`
+          : `Nothing official happened. Somebody made a joke in the corridor and four people laughed, which was the point of the joke.`}`);
+      } else {
+        st.stats.happiness = clamp(st.stats.happiness + 8);
+        push(st, `🪞 You went in looking more like yourself. ${era2 > 55
+          ? `Somebody said it suited you, in passing, without making it a whole thing — which is the version everybody wants and few decades supply.`
+          : `Nobody said anything at all, and you spent the day braced for a thing that never came.`}`);
+      }
+    }));
+  }
+
   opts.push(CANCEL);
 
+  const style = exprStyleOf(s);
   s.pending = { emoji: "🎒", title: `You at ${sc.name}`, layout: "grid",
     text: trans
       ? `Six hours a day, five days a week, in a building with rules about who you are. ${strict >= 2 ? "This one is strict." : ""} ${era < 30 ? "And this is not a decade that will help you." : ""}`
+      : style.id !== "conforming"
+      ? `Six hours a day, five days a week, in a building with opinions about how you ought to look. ${style.note}`
       : `How you show up here.`,
     options: opts };
   return s;

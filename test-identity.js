@@ -20,6 +20,7 @@
  */
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const H = require(path.join(__dirname, "harness.js"));
 const M = H.M;
@@ -354,6 +355,176 @@ sec("8. full lives across every axis");
   ok("era acceptance rises over time",
     M.eraAcceptance(1955) < M.eraAcceptance(1985) && M.eraAcceptance(1985) < M.eraAcceptance(2015),
     [M.eraAcceptance(1955), M.eraAcceptance(1985), M.eraAcceptance(2015)]);
+}
+
+
+/* ═══════════ EXPRESSION IS EVERYONE'S AXIS, AND COMING OUT IS NEWS ═══════════
+   Four reported bugs, each pinned so it cannot come back.  */
+sec("expression, and what counts as news");
+
+{
+  /* 1 · A GAY MAN CANNOT BE DUMPED BY HIS BOYFRIEND FOR BEING GAY.
+     comeOutReact scored every partner off the same acceptance roll, so a
+     relationship that is itself evidence of the orientation could still
+     produce a rejection scene. That is not a hard conversation, it is an
+     impossible one. */
+  const gay = () => {
+    const c = H.mkChar({ country: "United Kingdom", birthYear: 1990, sex: "Male", gid: "cis", orient: "Gay" });
+    c.ageDays = Math.round(24 * 365.25);
+    c.hidden.orientation = "Gay"; c.discovered.orientation = true;
+    c.romance = { r1: { name: "Tom", role: "Partner", rel: 70, status: "dating", g: "M",
+                        acceptance: 5, warmth: 60, kindness: 50, known: [],
+                        lastTime: -999, lastTalk: -999, lastGift: -999 } };
+    return c;
+  };
+  const news = M.comeOutNews(gay(), "romance", "r1");
+  ok("a same-sex partner is standing evidence of the orientation", news.evidenced === true);
+  ok("...so the orientation is not news to them", news.orientation === false);
+  ok("...and there is nothing left to disclose", news.any === false);
+
+  /* the hostile case: worst possible acceptance, worst possible bonus */
+  let badly = 0;
+  for (let i = 0; i < 150; i++) {
+    H.seed(400 + i);
+    const out = M.comeOutReact(gay(), "romance", "r1", -14, "confronted");
+    if (/badly/i.test(out.pending.title)) badly++;
+  }
+  ok("coming out to him never goes badly, at any roll", badly === 0, badly);
+  ok("...and the scene says he already knew",
+    /already knew/i.test(M.comeOutReact(gay(), "romance", "r1", -14, "confronted").pending.title));
+  ok("...and it is still worth having said", (() => {
+    const c = gay();
+    const out = M.comeOutReact(c, "romance", "r1", -14, "confronted");
+    const d = JSON.parse(JSON.stringify(c));
+    M.applyFx(d, out.pending.options[0].fx);
+    return d.stats.happiness > c.stats.happiness && d.romance.r1.status === "dating";
+  })());
+
+  /* BEING TRANS IS still news to that same partner, and is allowed to be hard */
+  const transToo = gay();
+  transToo.hidden.gender = "Trans man"; transToo.discovered.gender = true;
+  const tn = M.comeOutNews(transToo, "romance", "r1");
+  ok("being trans IS news to a same-sex partner", tn.gender === true && tn.any === true);
+  ok("...and is described as that, not as the orientation",
+    M.outLabelFor(transToo, "romance", "r1").indexOf("gay") === -1,
+    M.outLabelFor(transToo, "romance", "r1"));
+
+  /* an opposite-sex partner is evidence of nothing */
+  const straightPassing = gay();
+  straightPassing.romance.r1.g = "F";
+  ok("an opposite-sex partner is not evidence", M.comeOutNews(straightPassing, "romance", "r1").evidenced === false);
+  ok("...so it is still news to them", M.comeOutNews(straightPassing, "romance", "r1").orientation === true);
+}
+{
+  /* 2 · THE SCHOOL PANEL MUST NOT OFFER TRANS-ONLY OPTIONS TO A CIS CHILD.
+     It gated only pronouns, so a cisgender life was shown "Name at school —
+     register name only" and "Who knows at school", neither of which means
+     anything for them. */
+  const pupil = (o, expr) => {
+    H.seed(9);
+    const c = H.mkChar(Object.assign({ country: "United Kingdom", birthYear: 1995, cls: "Middle" }, o));
+    c.ageDays = Math.round(15 * 365.25);
+    c.education.stage = "high";
+    c.school = { stage: "high", type: Object.keys(M.SCHOOL_TYPES)[0], name: "Kestrel Hall",
+                 skips: 0, trouble: 0, classmates: {}, faculty: {} };
+    if (expr != null) { c.hidden.expr = expr; c.emergent.pres = M.presStart(c); }
+    return c;
+  };
+  const names = (c) => M.schoolPresentMenu(c).pending.options.filter((o) => o.card).map((o) => o.card.name);
+
+  const cis = names(pupil({ sex: "Male", gid: "cis", orient: "Straight" }, 22));
+  ok("a cisgender pupil is not asked about a name at school", cis.indexOf("Name at school") === -1, cis);
+  ok("...nor about who knows", cis.indexOf("Who knows at school") === -1, cis);
+  ok("...nor about pronouns with teachers", cis.indexOf("Pronouns with teachers") === -1, cis);
+  /* Uniform and PE are both a GENDERED choice — the other uniform, the other
+     changing room. "Uniform · as assigned" shown to a boy with no feelings
+     about it reads as a compromise he settled for, which is the same fault as
+     the name option. Gated on the stake, not on the identity. */
+  ok("...nor offered the other uniform", cis.indexOf("Uniform") === -1, cis);
+  ok("...nor the other changing room", cis.indexOf("PE & changing rooms") === -1, cis);
+
+  /* 3 · EVERY LIFE GETS THE PRESENTATION AXIS */
+  ok("...and is asked how they dress, like everyone else", cis.indexOf("How you dress here") > -1, cis);
+  for (const [label, o, e] of [["a cis girl", { sex: "Female", gid: "cis" }, 78],
+                               ["a soft boy", { sex: "Male", gid: "cis" }, 70],
+                               ["a sharp girl", { sex: "Female", gid: "cis" }, 30]]) {
+    ok(label + " is asked how they dress", names(pupil(o, e)).indexOf("How you dress here") > -1);
+  }
+  /* ...and a gender-nonconforming CIS pupil gets the gendered options back,
+     because for them they mean something. This is the femboy/tomboy content. */
+  for (const [label, o, e] of [["a soft boy", { sex: "Male", gid: "cis" }, 74],
+                               ["a sharp girl", { sex: "Female", gid: "cis" }, 24]]) {
+    const n = names(pupil(o, e));
+    ok(label + " IS offered the other uniform", n.indexOf("Uniform") > -1, n);
+    ok(label + " IS offered PE & changing rooms", n.indexOf("PE & changing rooms") > -1, n);
+    ok(label + " is still not asked about pronouns", n.indexOf("Pronouns with teachers") === -1, n);
+  }
+  /* the pupil who has not moved yet but wants to is the one who most needs it */
+  ok("wanting to dress differently is enough, before anything has changed", (() => {
+    const c = pupil({ sex: "Male", gid: "cis" }, 22);
+    c.hidden.expr = 74;          /* where he wants to be */
+    c.emergent.pres = 22;        /* where he still actually is */
+    return M.exprStyleOf(c).id === "conforming"   /* nothing visible has changed */
+        && names(c).indexOf("Uniform") > -1;      /* ...and he is still asked */
+  })());
+
+  /* a trans pupil keeps everything they had, and gains the axis */
+  const tp = pupil({ sex: "Male", gid: "Trans woman" }, null);
+  tp.discovered.gender = true; tp.hidden.gender = "Trans woman"; tp.profile.usedName = "Elin";
+  const tn = names(tp);
+  for (const want of ["Name at school", "Uniform", "PE & changing rooms", "Pronouns with teachers", "Who knows at school", "How you dress here"]) {
+    ok("a trans pupil still has: " + want, tn.indexOf(want) > -1, tn);
+  }
+}
+{
+  /* 4 · A HIDDEN STYLE, DERIVED, THAT THE WORLD REACTS TO */
+  const at = (sex, expr, year) => {
+    const c = H.mkChar({ country: "United Kingdom", birthYear: year - 15, sex: sex, gid: "cis" });
+    c.ageDays = Math.round(15 * 365.25);
+    c.hidden.expr = expr; c.emergent.pres = expr;
+    return c;
+  };
+  ok("presenting as expected reads as unremarkable",
+    M.exprStyleOf(at("Male", 22, 2015)).id === "conforming");
+  ok("a feminine boy reads as soft", M.exprStyleOf(at("Male", 72, 2015)).id === "soft");
+  ok("a masculine girl reads as sharp", M.exprStyleOf(at("Female", 25, 2015)).id === "sharp");
+  ok("the middle reads as androgynous", M.exprStyleOf(at("Male", 50, 2015)).id === "andro");
+  /* identity-independent: the SAME reading for a trans character */
+  ok("style does not depend on gender identity", (() => {
+    const t = at("Male", 72, 2015);
+    t.hidden.gender = "Trans woman"; t.discovered.gender = true;
+    return M.exprStyleOf(t).id === M.exprStyleOf(at("Male", 72, 2015)).id;
+  })());
+
+  /* friction is HISTORICAL, which is the whole point of modelling it */
+  ok("conforming costs nothing, ever",
+    [1935, 1975, 2015].every((y) => M.exprFriction(at("Male", 22, y)) === 0));
+  const soft = (y) => M.exprFriction(at("Male", 72, y));
+  ok("a feminine boy meets far less friction in 2015 than in 1955", soft(2015) < soft(1955) * 0.5,
+    [soft(1955), soft(2015)]);
+  ok("...and it eases monotonically", soft(1955) >= soft(1985) && soft(1985) >= soft(2015));
+  const sharp = (y) => M.exprFriction(at("Female", 25, y));
+  /* the double standard, modelled rather than smoothed away */
+  ok("a masculine girl meets less friction than a feminine boy in the same year",
+    sharp(1955) < soft(1955) && sharp(2015) < soft(2015), [sharp(1955), soft(1955)]);
+  ok("friction stays a share", [1935, 1975, 2015].every((y) =>
+    M.exprFriction(at("Male", 72, y)) >= 0 && M.exprFriction(at("Male", 72, y)) <= 1));
+
+  /* the events read it, and are gated on NEITHER identity nor orientation */
+  ok("there are expression events", M.EXPR_POOL.length >= 3);
+  ok("...all registered in POOL", M.EXPR_POOL.every((e) => M.POOL.indexOf(e) !== -1));
+  ok("...none fires for a conforming life",
+    M.EXPR_POOL.filter((e) => e.id !== "x_toldToChange")
+      .every((e) => !e.cond(at("Male", 22, 2015))));
+  ok("...and they do fire for a soft boy", (() => {
+    const c = at("Male", 72, 1975);
+    c.friends = { f1: { name: "A", role: "Friend", rel: 60 } };
+    return M.EXPR_POOL.some((e) => e.cond(c));
+  })());
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const block = SRC.slice(SRC.indexOf("const EXPR_POOL"), SRC.indexOf("POOL.push(...EXPR_POOL)"));
+  ok("no expression event gates on gender identity", !/isQueerG\(/.test(block));
+  ok("...nor on orientation", !/isQueerO\(/.test(block));
 }
 
 console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
