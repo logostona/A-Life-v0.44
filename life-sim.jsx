@@ -860,6 +860,11 @@ function newCharacter(form) {
   s.ppl = {};
   s.pplFav = {};
   s.pplSeed = hreHash("ppl:" + s.hre.seed) >>> 0;
+  /* CR — the working-life record. No seed and no RNG at all: history is
+     captured by diffing the job, so there is nothing to draw. */
+  s.cr = crInit();
+  /* CFG — settings, including keybindings. Pure defaults, no RNG. */
+  s.cfg = cfgInit();
   return s;
 }
 
@@ -883,6 +888,10 @@ function migrate(s) {
     s.pplSeed = hreHash("ppl:" + (s.hre && s.hre.seed != null ? s.hre.seed : 0)) >>> 0;
   }
   pplPruneFavs(s);
+  /* CR — the working-life record, and the backfill for saves that already
+     have a job but no history behind it. */
+  crMigrate(s);
+  cfgMigrate(s);
   if (!s.stx) s.stx = { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] };
   if (!s.stx.req) s.stx.req = {};
   if (!s.stx.staff) s.stx.staff = {};
@@ -9114,6 +9123,10 @@ function advance(state, totalDays) {
     /* PPL S02 — the people your life has produced. Same position and the same
        reasoning as the two ticks above; never sets s.pending. */
     pplOnTick(s, step);
+    /* CR — diffs the job against the last one seen, so every one of the seven
+       places that assigns or clears s.career.job is recorded without any of
+       them knowing this exists. */
+    crOnTick(s);
     if (milestoneFired) continue;
 
     if (Math.random() < Math.min(0.72, step * 0.09)) {
@@ -12904,6 +12917,278 @@ function pplRivalTick(s, days, rng) {
     : was === "school" ? "School got noticeably longer."
     : was === "neighbors" ? "You time your comings and goings around them."
     : "You stopped going on the nights they go."}`);
+}
+
+/* ═══════════════ CR · WORKING LIFE ═══════════════
+
+   Eight subtabs over the career the game already models, plus the one thing it
+   never kept: a record of where you have worked.
+
+   HISTORY IS CAPTURED BY DIFFING, NOT BY SEVEN CALL SITES.
+   `s.career.job` is assigned or cleared in seven places — hired, laid off,
+   retired, quit for the side hustle, lost to a conviction, lost to a move, and
+   the reset. Appending to a history list at each of those would work today and
+   silently miss the eighth the moment somebody adds one, which is exactly how
+   the `flags.homeless` / `hreSetTenure` desync happened.
+
+   So nothing writes history directly. The tick compares the current job to a
+   fingerprint of the last one it saw, and any difference — however it was
+   caused — closes the old entry and opens a new one. A future write site is
+   picked up for free. */
+
+const CR_STATE_V = 1;
+const CR_HIST_CAP = 24;                 /* a working life, not a log file */
+
+function crInit() { return { v: CR_STATE_V, hist: [], cur: null }; }
+/* The fingerprint. Title and tier both matter: a promotion inside the same
+   industry is a new row, because "Sales Associate" and "Regional Manager" are
+   not the same job even at the same employer. */
+function crFingerprint(job) {
+  return job ? job.industry + "|" + job.title + "|" + (job.tier || 0) : null;
+}
+function crOnTick(s) {
+  if (!s || !s.cr) return;
+  const job = s.career && s.career.job;
+  const fp = crFingerprint(job);
+  if (fp === s.cr.cur) return;                       // nothing changed
+
+  /* close whatever was open */
+  const open = s.cr.hist.length ? s.cr.hist[s.cr.hist.length - 1] : null;
+  if (open && open.to == null) open.to = s.ageDays | 0;
+
+  if (job) {
+    s.cr.hist.push({
+      ind: job.industry, title: job.title, tier: job.tier || 1,
+      pay: job.salary | 0, from: s.ageDays | 0, to: null,
+    });
+    if (s.cr.hist.length > CR_HIST_CAP) s.cr.hist.splice(0, s.cr.hist.length - CR_HIST_CAP);
+  }
+  s.cr.cur = fp;
+}
+function crMigrate(s) {
+  if (!s) return s;
+  if (!s.cr || typeof s.cr !== "object" || Array.isArray(s.cr)) s.cr = crInit();
+  if (!Array.isArray(s.cr.hist)) s.cr.hist = [];
+  if (s.cr.hist.length > CR_HIST_CAP) s.cr.hist.splice(0, s.cr.hist.length - CR_HIST_CAP);
+  if (s.cr.cur === undefined) s.cr.cur = null;
+  if (s.cr.v !== CR_STATE_V) s.cr.v = CR_STATE_V;
+  /* An existing save has a job but no history for it. Seed one open entry so
+     the tab is not blank for a character who has been working for twenty
+     years — the start date is unknown, so it uses the job's own `since`. */
+  if (s.career && s.career.job && !s.cr.hist.length) {
+    const j = s.career.job;
+    s.cr.hist.push({ ind: j.industry, title: j.title, tier: j.tier || 1,
+                     pay: j.salary | 0, from: j.since != null ? j.since | 0 : (s.ageDays | 0), to: null });
+    s.cr.cur = crFingerprint(j);
+  }
+  return s;
+}
+/* Years spent working, from the history rather than from a counter that could
+   drift out of step with it. */
+function crYearsWorked(s) {
+  let days = 0;
+  for (const h of ((s.cr && s.cr.hist) || [])) days += Math.max(0, (h.to == null ? (s.ageDays | 0) : h.to) - h.from);
+  return days / 365.25;
+}
+function crPeakPay(s) {
+  let m = 0;
+  for (const h of ((s.cr && s.cr.hist) || [])) m = Math.max(m, h.pay || 0);
+  if (s.career && s.career.job) m = Math.max(m, s.career.job.salary || 0);
+  return m;
+}
+
+/* Credential ids read as code — "lowerSecCert", "profDoctorate" — and the
+   Qualifications tab was printing them raw. DERIVED from EDU_STAGES rather
+   than hand-written, because a second list of the same facts is a second
+   thing to keep in step, and this one would silently stop matching the moment
+   EDU added a stage. What a certificate is called is what its stage is called. */
+const EDU_CRED_LABEL = (() => {
+  const out = {};
+  for (const k in EDU_STAGES) {
+    const st = EDU_STAGES[k];
+    if (st && st.exitCredential) out[st.exitCredential] = st.label;
+  }
+  /* Two stages are named after the INSTITUTION rather than the award, so
+     deriving blindly printed "University · 2007" for what a person actually
+     holds, which is a bachelor's degree. A degree is not the same noun as the
+     place that granted it. */
+  out.associate = "Associate degree";
+  out.bachelor = "Bachelor's degree";
+  return out;
+})();
+/* Stage ids in the schooling record have the same problem. */
+const EDU_STAGE_LABEL = (() => {
+  const out = {};
+  for (const k in EDU_STAGES) out[k] = (EDU_STAGES[k] && EDU_STAGES[k].label) || k;
+  return out;
+})();
+
+const CR_TABS = [
+  { id: "job",     emoji: "💼", label: "Job" },
+  { id: "ladder",  emoji: "🪜", label: "Ladder" },
+  { id: "edu",     emoji: "🎓", label: "Education" },
+  { id: "quals",   emoji: "📜", label: "Qualifications" },
+  { id: "skills",  emoji: "📈", label: "Skills" },
+  { id: "money",   emoji: "💰", label: "Money" },
+  { id: "hustle",  emoji: "🚀", label: "Side hustle" },
+  { id: "history", emoji: "🗂", label: "History" },
+];
+
+/* ═══════════════ KB · KEYBINDINGS ═══════════════
+
+   The game had no keyboard handling at all. This adds it, and makes every
+   binding rebindable from Settings, because a fixed scheme is wrong for
+   somebody: a laptop without a numpad, a left-handed mouse, a screen reader
+   already using the arrow keys, a keyboard whose layout puts `[` somewhere
+   this scheme never imagined.
+
+   A BINDING IS DATA, NOT A SWITCH STATEMENT.
+   Each action is a row here with a default combo; the handler resolves a
+   keystroke to an action id by lookup. That is what makes rebinding possible
+   at all, and it means adding an action is a row plus a case in the runner.
+
+   THE CHORD FORMAT is "ctrl+alt+shift+key", parts always in that order, key
+   lower-cased. Building and parsing both go through kbChord/kbFormat so the
+   stored string and the matched string cannot drift apart. */
+
+/* Which subtab list belongs to which main tab. Used by the key handler to
+   move through subtabs, and by Game to remember one selection per tab. */
+const TAB_SUBS = { people: PPL_TABS, career: CR_TABS, health: HLT_TABS };
+const MAIN_TABS = ["life", "people", "career", "home", "health"];
+
+const KB_GROUPS = [
+  { id: "nav",    label: "Getting around" },
+  { id: "time",   label: "Time" },
+  { id: "choice", label: "Actions & choices" },
+  { id: "sys",    label: "System" },
+];
+
+/* `repeatable` marks the ones it is reasonable to hold down. Everything else
+   is ignored while the key is held, so leaning on Space cannot advance eight
+   years by accident. */
+const KB_ACTIONS = [
+  { id: "tabLife",    group: "nav",    label: "Go to Life",      def: "1" },
+  { id: "tabPeople",  group: "nav",    label: "Go to People",    def: "2" },
+  { id: "tabCareer",  group: "nav",    label: "Go to Career",    def: "3" },
+  { id: "tabHome",    group: "nav",    label: "Go to Home",      def: "4" },
+  { id: "tabHealth",  group: "nav",    label: "Go to Health",    def: "5" },
+  { id: "tabNext",    group: "nav",    label: "Next tab",        def: "ctrl+arrowright" },
+  { id: "tabPrev",    group: "nav",    label: "Previous tab",    def: "ctrl+arrowleft" },
+  { id: "subNext",    group: "nav",    label: "Next subtab",     def: "]",  repeatable: 1 },
+  { id: "subPrev",    group: "nav",    label: "Previous subtab", def: "[",  repeatable: 1 },
+  { id: "subFirst",   group: "nav",    label: "First subtab",    def: "alt+arrowleft" },
+  { id: "subLast",    group: "nav",    label: "Last subtab",     def: "alt+arrowright" },
+
+  { id: "advance",    group: "time",   label: "Live on",         def: " " },
+  { id: "advanceAlt", group: "time",   label: "Live on (alt)",   def: "enter" },
+  { id: "stepNext",   group: "time",   label: "Longer step",     def: "alt+arrowup" },
+  { id: "stepPrev",   group: "time",   label: "Shorter step",    def: "alt+arrowdown" },
+
+  { id: "act",        group: "choice", label: "Open Act",        def: "a" },
+  { id: "choose1",    group: "choice", label: "Choose option 1", def: "1", inPopup: 1 },
+  { id: "choose2",    group: "choice", label: "Choose option 2", def: "2", inPopup: 1 },
+  { id: "choose3",    group: "choice", label: "Choose option 3", def: "3", inPopup: 1 },
+  { id: "choose4",    group: "choice", label: "Choose option 4", def: "4", inPopup: 1 },
+  { id: "choose5",    group: "choice", label: "Choose option 5", def: "5", inPopup: 1 },
+  { id: "choose6",    group: "choice", label: "Choose option 6", def: "6", inPopup: 1 },
+  { id: "choose7",    group: "choice", label: "Choose option 7", def: "7", inPopup: 1 },
+  { id: "choose8",    group: "choice", label: "Choose option 8", def: "8", inPopup: 1 },
+  { id: "choose9",    group: "choice", label: "Choose option 9", def: "9", inPopup: 1 },
+  { id: "dismiss",    group: "choice", label: "Close / cancel",  def: "escape" },
+
+  { id: "settings",   group: "sys",    label: "Keyboard settings", def: "ctrl+," },
+  { id: "help",       group: "sys",    label: "Keyboard help (same screen)", def: "?" },
+];
+const KB_BY_ID = (() => { const o = {}; for (const a of KB_ACTIONS) o[a.id] = a; return o; })();
+
+/* THE ONE-TO-ONE RULE THAT ISN'T.
+   `1`-`9` are deliberately bound twice — to a main tab and to a popup choice.
+   That is not a conflict: a popup is modal, so exactly one of the two contexts
+   is live at any moment. kbResolve takes the context and never has to guess.
+   Conflict detection below therefore compares within a context, not globally,
+   or it would report five false conflicts on a default install. */
+function kbChord(e) {
+  let k = String(e.key || "").toLowerCase();
+  if (k === "spacebar") k = " ";
+  return (e.ctrlKey || e.metaKey ? "ctrl+" : "") + (e.altKey ? "alt+" : "") + (e.shiftKey ? "shift+" : "") + k;
+}
+/* What a chord looks like to a human. */
+function kbFormat(chord) {
+  if (!chord) return "—";
+  const parts = String(chord).split("+");
+  const key = parts.pop();
+  const pretty = { " ": "Space", arrowleft: "←", arrowright: "→", arrowup: "↑", arrowdown: "↓",
+                   escape: "Esc", enter: "Enter", ",": "," };
+  const nice = pretty[key] || (key.length === 1 ? key.toUpperCase() : key);
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).concat(nice).join(" + ");
+}
+/* The effective map: defaults with the player's overrides on top. */
+function kbMap(s) {
+  const out = {};
+  for (const a of KB_ACTIONS) out[a.id] = a.def;
+  const over = (s && s.cfg && s.cfg.keys) || {};
+  for (const id in over) if (KB_BY_ID[id]) out[id] = over[id];
+  return out;
+}
+/* Resolve a keystroke to an action id, given the context it happened in.
+   `ctx` is "popup" while a modal is up and "game" otherwise. */
+function kbResolve(s, chord, ctx) {
+  const map = kbMap(s);
+  for (const a of KB_ACTIONS) {
+    if (map[a.id] !== chord) continue;
+    if (ctx === "popup" && !a.inPopup && a.id !== "dismiss") continue;
+    if (ctx !== "popup" && a.inPopup) continue;
+    return a.id;
+  }
+  return null;
+}
+/* Conflicts, per context — see the note above about 1-9. */
+function kbConflicts(s) {
+  const map = kbMap(s), out = [];
+  for (const ctx of ["game", "popup"]) {
+    const seen = {};
+    for (const a of KB_ACTIONS) {
+      const live = ctx === "popup" ? (a.inPopup || a.id === "dismiss") : !a.inPopup;
+      if (!live) continue;
+      const c = map[a.id];
+      if (!c) continue;
+      if (seen[c]) out.push({ ctx, chord: c, a: seen[c], b: a.id });
+      else seen[c] = a.id;
+    }
+  }
+  return out;
+}
+function kbSet(s, id, chord) {
+  if (!KB_BY_ID[id]) return s;
+  if (!s.cfg) s.cfg = {};
+  if (!s.cfg.keys) s.cfg.keys = {};
+  if (!chord || chord === KB_BY_ID[id].def) delete s.cfg.keys[id];
+  else s.cfg.keys[id] = chord;
+  return s;
+}
+function kbReset(s) { if (s.cfg) s.cfg.keys = {}; return s; }
+
+/* Keys must never fire while the player is typing. The Creation screen has
+   text inputs and selects; without this guard, typing a character's name
+   would advance time and switch tabs on every keystroke. */
+function kbIsTyping(el) {
+  if (!el || !el.tagName) return false;
+  const t = String(el.tagName).toUpperCase();
+  return t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || el.isContentEditable === true;
+}
+
+const CFG_STATE_V = 1;
+function cfgInit() { return { v: CFG_STATE_V, keys: {}, kbEnabled: true }; }
+function cfgMigrate(s) {
+  if (!s) return s;
+  if (!s.cfg || typeof s.cfg !== "object" || Array.isArray(s.cfg)) s.cfg = cfgInit();
+  if (!s.cfg.keys || typeof s.cfg.keys !== "object" || Array.isArray(s.cfg.keys)) s.cfg.keys = {};
+  /* drop overrides for actions this build no longer has, so a save from a
+     later version cannot leave dead rows in the settings screen */
+  for (const id in s.cfg.keys) if (!KB_BY_ID[id]) delete s.cfg.keys[id];
+  if (typeof s.cfg.kbEnabled !== "boolean") s.cfg.kbEnabled = true;
+  if (s.cfg.v !== CFG_STATE_V) s.cfg.v = CFG_STATE_V;
+  return s;
 }
 
 /* ═══════════════ EXES ═══════════════ */
@@ -17762,159 +18047,132 @@ function panelCard(accent) {
   return { background: CARD, borderRadius: 14, padding: 15, marginBottom: 12, border: `1px solid ${TH.line}` };
 }
 
-function CareerPanel({ state, apply, accent, confirm }) {
-  const s = state;
-  const cur = s.profile.curSym;
-  const ed = s.education;
-  const col = ed.college;
-  const job = s.career.job;
-  const hustle = s.career.sideHustle;
-  const age = ageYears(s);
-  const hdr = { fontFamily: FONT_STORY, fontSize: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 };
-  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
-  const act = { flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 12.5, cursor: "pointer" };
-  const raiseReady = job && (!s.flags.raiseDay || s.ageDays - s.flags.raiseDay > 300);
+/* ── the Career screen ───────────────────────────────────────────────────
+   Eight subtabs over the working life, on the same registry pattern as Health
+   and People: a row in CR_TABS plus a renderer in CR_SUBPANELS, and this
+   component never changes.
 
-  return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-      {/* ——— EDUCATION ——— */}
-      <div style={panelCard(accent)}>
-        <div style={hdr}>🎓 Education</div>
-        {col ? (
-          <>
-            <div style={row}><span style={{ opacity: 0.6 }}>Studying</span><b>{col.major}</b></div>
-            <div style={row}><span style={{ opacity: 0.6 }}>Institution</span><span>{COLLEGE_TIERS[col.tier].name}</span></div>
-            <div style={row}><span style={{ opacity: 0.6 }}>Year</span><span>{Math.min(Math.floor((s.ageDays - col.startDay) / 365) + 1, col.major === "Medicine" ? 6 : 4)} of {col.major === "Medicine" ? 6 : 4}</span></div>
-            <div style={{ ...row, borderBottom: "none", marginBottom: 8 }}><span style={{ opacity: 0.6 }}>Tuition help</span><span>{col.help > 0 ? `family covers ${Math.round(col.help * 100)}%` : "you're on your own"}</span></div>
-            {(() => {
-              const need = col.major === "Medicine" ? 2190 : 1460;
-              const done = Math.min(need, s.ageDays - col.startDay);
-              const pct = (done / need) * 100;
-              const left = Math.max(0, need - done);
-              return <MiniBar label="Degree progress" value={pct} accent={accent} note={left > 0 ? `${Math.round(pct)}% · ${(left / 365).toFixed(1)} yrs left` : "finals!"} />;
-            })()}
-            <MiniBar label="GPA" value={col.gpa} accent={accent} note={(Math.round(col.gpa / 2.5) / 10).toFixed(1) + " / 4.0"} />
-            {s.education.debt > 0 && <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 10 }}>Student debt: {cur}{Math.round(s.education.debt).toLocaleString()} — repaid automatically at 15% of salary once you're working.</div>}
-            <div style={{ display: "flex", gap: 7 }}>
-              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study</button>
-              <button className="btn" style={{ ...act, borderColor: TH.coral + A25, color: TH.coral }} onClick={() => confirm({ title: "Drop out of college?", body: "Your debt stays; the degree doesn't. This can't be undone.", yes: "Drop out", danger: true }, () => apply(dropOutNow))}>Drop out</button>
-            </div>
-          </>
-        ) : ed.stage === "done" ? (
-          <>
-            <div style={row}><span style={{ opacity: 0.6 }}>Highest qualification</span><b>{ed.degree || "High school"}</b></div>
-            <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Student debt</span><span>{ed.debt > 0 ? `${cur}${Math.round(ed.debt).toLocaleString()}` : "none 🎉"}</span></div>
-          </>
-        ) : (
-          <>
-            <div style={row}><span style={{ opacity: 0.6 }}>Currently</span><b>{ed.stage === "primary" ? "Primary school" : ed.stage === "middle" ? "Middle school" : ed.stage === "high" ? "High school" : "Not in school yet"}</b></div>
-            {ed.extra && <div style={row}><span style={{ opacity: 0.6 }}>Extracurricular</span><span>{ed.extra}</span></div>}
-            <div style={{ margin: "12px 0 4px", fontSize: 12, opacity: 0.6 }}>Subjects</div>
-            {Object.entries(SUBJECTS).map(([k, n]) => <MiniBar key={k} label={n} value={ed.subjects[k]} accent={accent} />)}
-            {age >= 6 && <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study a subject</button>}
-          </>
-        )}
-      </div>
+   Every card below already existed as one long scroll. Splitting it up was the
+   whole point — the old panel put a child's school report, a mid-career salary
+   negotiation and a transition timeline in one column, so the thing you wanted
+   was always four screens away from the thing above it. */
+const CR_SUBPANELS = {
 
-      {/* ——— WORK ——— */}
-      <div style={panelCard(accent)}>
-        <div style={hdr}>💼 Work</div>
-        {job ? (
-          <>
-            <div style={row}><span style={{ opacity: 0.6 }}>Position</span><b>{job.title}</b></div>
-            <div style={row}><span style={{ opacity: 0.6 }}>Industry</span><span>{job.industry}</span></div>
-            <div style={row}><span style={{ opacity: 0.6 }}>Salary</span><b>{cur}{job.salary.toLocaleString()}/mo</b></div>
-            <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Manager</span><span>{job.boss}</span></div>
-            <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Career ladder</div>
-            <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>
-              {[1, 2, 3, 4].map((t) => (
-                <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= job.tier ? accent : TH.surface2 }} />
-              ))}
-            </div>
-            <div style={{ fontSize: 11.5, opacity: 0.6, marginBottom: 12 }}>
-              {job.tier >= 4 ? "You're at the top of this ladder." : `Rung ${job.tier} of 4 — strong performance opens the next one.`}
-            </div>
-            <MiniBar label="Performance" value={job.perf} accent={accent} />
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
-              <button className="btn" style={act} onClick={() => apply(workHarder)}>🔥 Extra hours</button>
-              <button className="btn" disabled={!raiseReady} style={{ ...act, opacity: raiseReady ? 1 : 0.45, cursor: raiseReady ? "pointer" : "default" }} onClick={() => raiseReady && apply(askRaise)}>💰 Ask for a raise</button>
-              <button className="btn" style={{ ...act, flexBasis: "100%", borderColor: TH.coral + A25, color: TH.coral }} onClick={() => confirm({ title: `Quit your job?`, body: `Walking away from ${job.title}. No income until you find something new.`, yes: "Quit", danger: true }, () => apply(quitJob))}>🚪 Quit</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.5, marginBottom: 12 }}>
-              {s.flags.retired ? "Retired. The week is yours to shape." : col ? "Studying full-time. Work can wait." : inSchool(s) ? "Still in school — a first job may come knocking." : "Not currently employed."}
-            </div>
-            {!col && !inSchool(s) && !s.flags.retired && age >= 16 && (
-              <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doActivity(st, { cost: 4, special: "jobs" }))}>💼 Look for work</button>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ——— SKILLS ——— */}
-      {(() => {
-        const SK = { voiceTraining: "Voice", music: "Music", martial: "Martial arts", gaming: "Gaming", cooking: "Cooking", courage: "Courage", discipline: "Discipline", kindness: "Kindness", prudence: "Prudence", selfAwareness: "Self-awareness" };
-        const have = Object.keys(SK).filter((k) => (s.emergent[k] ?? 0) > 0);
-        if (!have.length) return null;
-        return (
-          <div style={panelCard(accent)}>
-            <div style={hdr}>📈 Skills & character</div>
-            {have.map((k) => <MiniBar key={k} label={SK[k]} value={s.emergent[k]} accent={accent} />)}
-          </div>
-        );
-      })()}
-
-      {/* ——— WORK IN DEPTH ——— */}
-      {s.career.job && (() => {
-        const j = s.career.job;
-        const yrs = ((s.ageDays - (j.since || s.ageDays)) / 365).toFixed(1);
-        const perf = j.perf ?? 60;
-        return (
-          <div style={panelCard(accent)}>
-            <div style={hdr}>🏢 {j.title}</div>
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Field</span><span>{INDUSTRIES[j.industry] ? INDUSTRIES[j.industry].name : j.industry}</span></div>
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Salary</span><b>{cur}{j.salary}/mo</b></div>
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Manager</span><span>{j.boss}</span></div>
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Time in role</span><span>{yrs} yrs</span></div>
-            <div style={{ marginTop: 10 }}>
-              <MiniBar label="Performance" value={perf} accent={perf > 70 ? accent : perf > 40 ? TH.amber : TH.coral}
-                note={perf > 80 ? "they'd fight to keep you" : perf > 55 ? "solid" : perf > 30 ? "on the radar" : "at risk"} />
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 5, special: "workhard" }))}>💪 Put the hours in</button>
-              <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 3, special: "coast" }))}>😌 Coast</button>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ——— SIDE HUSTLE ——— */}
-      {hustle && (
+  job: ({ s, accent, apply, confirm, act, row, cur }) => {
+    const job = s.career.job, age = ageYears(s), col = s.education.college;
+    const raiseReady = job && (!s.flags.raiseDay || s.ageDays - s.flags.raiseDay > 300);
+    if (!job) {
+      return (
         <div style={panelCard(accent)}>
-          <div style={hdr}>🚀 Side hustle</div>
-          <div style={row}><span style={{ opacity: 0.6 }}>Venture</span><b>{hustle.type[0].toUpperCase() + hustle.type.slice(1)}</b></div>
-          <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Roughly earning</span><span>{cur}{(hustle.level * 220).toLocaleString()}/mo</span></div>
-          <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Scale</div>
-          <div style={{ display: "flex", gap: 5 }}>
-            {[1, 2, 3, 4].map((t) => <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= hustle.level ? accent : TH.surface2 }} />)}
+          <div style={hltHdr}>💼 Work</div>
+          <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.55, marginBottom: 12 }}>
+            {s.flags.retired ? "Retired. The week is yours to shape."
+              : col ? "Studying full-time. Work can wait."
+              : inSchool(s) ? "Still in school — a first job may come knocking."
+              : "Not currently employed."}
           </div>
+          {!col && !inSchool(s) && !s.flags.retired && age >= 16 && (
+            <button className="btn" style={{ ...act, width: "100%" }} onClick={() => apply((st) => doActivity(st, { cost: 4, special: "jobs" }))}>💼 Look for work</button>
+          )}
+        </div>
+      );
+    }
+    const yrs = ((s.ageDays - (job.since || s.ageDays)) / 365).toFixed(1);
+    const perf = job.perf ?? 60;
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🏢 {job.title}</div>
+        <div style={row}><span style={{ opacity: 0.6 }}>Field</span><span>{INDUSTRIES[job.industry] ? INDUSTRIES[job.industry].name : job.industry}</span></div>
+        <div style={row}><span style={{ opacity: 0.6 }}>Salary</span><b>{cur}{job.salary.toLocaleString()}/mo</b></div>
+        <div style={row}><span style={{ opacity: 0.6 }}>Manager</span><span>{job.boss}</span></div>
+        <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Time in role</span><span>{yrs} yrs</span></div>
+        <div style={{ marginTop: 10 }}>
+          <MiniBar label="Performance" value={perf} accent={perf > 70 ? accent : perf > 40 ? TH.amber : TH.coral}
+            note={perf > 80 ? "they'd fight to keep you" : perf > 55 ? "solid" : perf > 30 ? "on the radar" : "at risk"} />
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 5, special: "workhard" }))}>💪 Put the hours in</button>
+          <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 3, special: "coast" }))}>😌 Coast</button>
+          <button className="btn" style={act} onClick={() => apply(workHarder)}>🔥 Extra hours</button>
+          <button className="btn" disabled={!raiseReady} style={{ ...act, opacity: raiseReady ? 1 : 0.45, cursor: raiseReady ? "pointer" : "default" }} onClick={() => raiseReady && apply(askRaise)}>💰 Ask for a raise</button>
+          <button className="btn" style={{ ...act, flexBasis: "100%", borderColor: TH.coral + A25, color: TH.coral }} onClick={() => confirm({ title: "Quit your job?", body: `Walking away from ${job.title}. No income until you find something new.`, yes: "Quit", danger: true }, () => apply(quitJob))}>🚪 Quit</button>
+        </div>
+      </div>
+    </>);
+  },
+
+  ladder: ({ s, accent, row }) => {
+    const job = s.career.job;
+    if (!job) return <HltEmpty>No ladder to climb yet. It appears with a job, and it is always four rungs — the titles change with the industry, the shape does not.</HltEmpty>;
+    const ind = INDUSTRIES[job.industry];
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🪜 Where you stand</div>
+        <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
+          {[1, 2, 3, 4].map((t) => <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= job.tier ? accent : TH.surface2 }} />)}
+        </div>
+        <div style={{ fontSize: 11.5, opacity: 0.62, marginBottom: 12 }}>
+          {job.tier >= 4 ? "You're at the top of this ladder." : `Rung ${job.tier} of 4 — strong performance opens the next one.`}
+        </div>
+        <MiniBar label="Performance" value={job.perf ?? 55} accent={accent} />
+      </div>
+      {ind && ind.titles && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>📋 The rungs</div>
+          {ind.titles.map((t, i) => (
+            <HltItem key={t} emoji={i + 1 < job.tier ? "✅" : i + 1 === job.tier ? "📍" : "⬜"} name={t}
+              sub={i + 1 < job.tier ? "behind you" : i + 1 === job.tier ? "you are here" : "ahead"}
+              right={i + 1 === job.tier ? <HltChip tone="ok" accent={accent}>current</HltChip> : null} />
+          ))}
         </div>
       )}
+    </>);
+  },
 
-      {/* ——— SCHOOL ——— */}
+  edu: ({ s, accent, apply, confirm, act, row, cur }) => {
+    const ed = s.education, col = ed.college, age = ageYears(s);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🎓 Education</div>
+        {col ? (<>
+          <div style={row}><span style={{ opacity: 0.6 }}>Studying</span><b>{col.major}</b></div>
+          {/* keyed by name ("uni"), never by index — and guarded, because a
+              save carrying a tier this build does not know must not take the
+              whole screen down over a label */}
+          <div style={row}><span style={{ opacity: 0.6 }}>Institution</span><span>{(COLLEGE_TIERS[col.tier] || { name: "College" }).name}</span></div>
+          <div style={row}><span style={{ opacity: 0.6 }}>Year</span><span>{Math.min(Math.floor((s.ageDays - col.startDay) / 365) + 1, col.major === "Medicine" ? 6 : 4)} of {col.major === "Medicine" ? 6 : 4}</span></div>
+          <div style={{ ...row, borderBottom: "none", marginBottom: 8 }}><span style={{ opacity: 0.6 }}>Tuition help</span><span>{col.help > 0 ? `family covers ${Math.round(col.help * 100)}%` : "you're on your own"}</span></div>
+          {(() => {
+            const need = col.major === "Medicine" ? 2190 : 1460;
+            const done = Math.min(need, s.ageDays - col.startDay);
+            const pct = (done / need) * 100;
+            const left = Math.max(0, need - done);
+            return <MiniBar label="Degree progress" value={pct} accent={accent} note={left > 0 ? `${Math.round(pct)}% · ${(left / 365).toFixed(1)} yrs left` : "finals!"} />;
+          })()}
+          <MiniBar label="GPA" value={col.gpa} accent={accent} note={(Math.round(col.gpa / 2.5) / 10).toFixed(1) + " / 4.0"} />
+          <div style={{ display: "flex", gap: 7, marginTop: 6 }}>
+            <button className="btn" style={act} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study</button>
+            <button className="btn" style={{ ...act, borderColor: TH.coral + A25, color: TH.coral }} onClick={() => confirm({ title: "Drop out of college?", body: "Your debt stays; the degree doesn't. This can't be undone.", yes: "Drop out", danger: true }, () => apply(dropOutNow))}>Drop out</button>
+          </div>
+        </>) : ed.stage === "done" ? (<>
+          <div style={row}><span style={{ opacity: 0.6 }}>Highest qualification</span><b>{ed.degree || "High school"}</b></div>
+          <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Student debt</span><span>{ed.debt > 0 ? `${cur}${Math.round(ed.debt).toLocaleString()}` : "none 🎉"}</span></div>
+        </>) : (<>
+          <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Currently</span><b>{ed.stage === "primary" ? "Primary school" : ed.stage === "middle" ? "Middle school" : ed.stage === "high" ? "High school" : "Not in school yet"}</b></div>
+          {ed.extra && <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Extracurricular</span><span>{ed.extra}</span></div>}
+          {age >= 6 && <button className="btn" style={{ ...act, width: "100%", marginTop: 10 }} onClick={() => apply((st) => doActivity(st, { cost: 2, special: "study" }))}>📚 Study a subject</button>}
+        </>)}
+      </div>
       {inSchool(s) && s.school && (() => {
         const cfg = SCHOOL_TYPES[s.school.type];
         const fee = schoolFee(s);
-        const cms = Object.keys(s.school.classmates || {}).length;
         return (
           <div style={panelCard(accent)}>
-            <div style={hdr}>{cfg.emoji} {s.school.name}</div>
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Type</span><b>{cfg.name}</b></div>
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Year</span><span>{s.school.stage === "primary" ? "Primary" : s.school.stage === "middle" ? "Middle school" : "High school"}</span></div>
-            {fee > 0 && <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Fees</span><span>{cur}{fee}/term</span></div>}
-            <div style={{ ...row }}><span style={{ opacity: 0.6 }}>Classmates you know</span><span>{cms}</span></div>
+            <div style={hltHdr}>{cfg.emoji} {s.school.name}</div>
+            <div style={row}><span style={{ opacity: 0.6 }}>Type</span><b>{cfg.name}</b></div>
+            <div style={row}><span style={{ opacity: 0.6 }}>Year</span><span>{s.school.stage === "primary" ? "Primary" : s.school.stage === "middle" ? "Middle school" : "High school"}</span></div>
+            {fee > 0 && <div style={row}><span style={{ opacity: 0.6 }}>Fees</span><span>{cur}{fee}/term</span></div>}
+            <div style={row}><span style={{ opacity: 0.6 }}>Classmates you know</span><span>{Object.keys(s.school.classmates || {}).length}</span></div>
             <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Standing</span>
               <span style={{ color: (s.school.trouble || 0) >= 2 ? TH.coral : INK }}>
                 {(s.school.trouble || 0) >= 2 ? "in trouble" : (s.school.skips || 0) > 2 ? "spotty attendance" : "no concerns"}
@@ -17927,43 +18185,173 @@ function CareerPanel({ state, apply, accent, confirm }) {
           </div>
         );
       })()}
+    </>);
+  },
 
-      {/* ——— TRANSITION ——— */}
-      {s.discovered.gender && isQueerG(s) && (() => {
-        const steps = [
-          { k: "social", label: "Living as yourself", done: usedName(s) !== s.profile.first },
-          { k: "voice", label: "Voice work", done: (s.emergent.voiceTraining ?? 0) > 15 },
-          { k: "hrt", label: "Hormone therapy", done: !!s.flags.hrt },
-          { k: "top", label: "Top surgery", done: !!s.flags.srg_top },
-          { k: "gcs", label: "Gender-affirming surgery", done: !!s.flags.srg_gcs },
-          { k: "face", label: "Facial surgery", done: !!s.flags.srg_face },
-          { k: "name", label: "Legal name", done: !!s.flags.legalName },
-          { k: "marker", label: "Gender marker", done: !!s.flags.marker },
-        ];
-        const doneN = steps.filter((x) => x.done).length;
-        const months = s.flags.hrt ? Math.floor((s.ageDays - s.flags.hrt) / 30) : 0;
-        return (
-          <div style={panelCard(accent)}>
-            <div style={hdr}>🦋 Your transition</div>
-            <MiniBar label="Journey so far" value={(doneN / steps.length) * 100} accent={accent} note={`${doneN} of ${steps.length} steps`} />
-            {s.flags.hrt && <MiniBar label="Time on HRT" value={Math.min(100, (months / 36) * 100)} accent={accent} note={months < 24 ? `${months} months` : `${(months / 12).toFixed(1)} years`} />}
-            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {steps.map((x) => (
-                <span key={x.k} style={{ fontSize: 11.5, padding: "3px 9px", borderRadius: 20, border: `1px solid ${x.done ? accent + "66" : TH.line}`, background: x.done ? accent + "14" : "transparent", color: x.done ? accent : INK, opacity: x.done ? 1 : 0.45 }}>
-                  {x.done ? "✓ " : ""}{x.label}
-                </span>
-              ))}
-            </div>
-            <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 10, lineHeight: 1.5 }}>There's no finish line here and no required order — this is a map of what you've chosen, not a checklist you owe anyone.</div>
-          </div>
-        );
-      })()}
-
-      {/* ——— MONEY ——— */}
+  quals: ({ s, accent }) => {
+    /* EDU already keeps every credential with the year it was awarded, and
+       nothing has ever shown it to the player. */
+    const cred = (s.edu && s.edu.cred) || [];
+    const seen = {};
+    const rows = cred.filter((c) => {
+      const k = c.id + ":" + c.year;
+      if (seen[k]) return false;         // the ledger can hold a duplicate row
+      seen[k] = 1;
+      return true;
+    });
+    return (<>
       <div style={panelCard(accent)}>
-        <div style={hdr}>💵 Money</div>
+        <div style={hltHdr}>📜 What you hold</div>
+        {rows.length === 0
+          ? <HltEmpty>Nothing awarded yet. Certificates arrive as you finish each stage.</HltEmpty>
+          : rows.map((c, i) => {
+            const label = EDU_CRED_LABEL[c.id] || c.id;
+            return <HltItem key={i} emoji="📜" name={label}
+              sub={(c.field ? c.field + " · " : "") + c.year}
+              right={<HltChip tone="ok" accent={accent}>{c.year}</HltChip>} />;
+          })}
+      </div>
+      {s.education.degree && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>🎓 Highest</div>
+          <HltEmpty>{s.education.degree}</HltEmpty>
+        </div>
+      )}
+    </>);
+  },
+
+  skills: ({ s, accent }) => {
+    const SK = { voiceTraining: "Voice", music: "Music", martial: "Martial arts", gaming: "Gaming",
+                 cooking: "Cooking", courage: "Courage", discipline: "Discipline", kindness: "Kindness",
+                 prudence: "Prudence", selfAwareness: "Self-awareness", art: "Art", athletics: "Athletics",
+                 loyalty: "Loyalty", pres: "Presence" };
+    const have = Object.keys(SK).filter((k) => (s.emergent[k] ?? 0) > 0);
+    const ed = s.education;
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>📈 Character & skill</div>
+        {have.length === 0
+          ? <HltEmpty>Nothing developed yet. These grow from what you spend time on.</HltEmpty>
+          : have.map((k) => <MiniBar key={k} label={SK[k]} value={s.emergent[k]} accent={accent} />)}
+      </div>
+      {ed.subjects && ed.stage !== "done" && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>📚 Subjects</div>
+          {Object.entries(SUBJECTS).map(([k, n]) => <MiniBar key={k} label={n} value={ed.subjects[k]} accent={accent} />)}
+        </div>
+      )}
+    </>);
+  },
+
+  money: ({ s, accent, row, cur }) => {
+    const job = s.career.job, hustle = s.career.sideHustle;
+    const income = (job ? job.salary : 0) + (hustle ? hustle.level * 220 : 0);
+    const peak = crPeakPay(s);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>💰 Money</div>
         <div style={row}><span style={{ opacity: 0.6 }}>In the bank</span><b>{cur}{Math.round(s.money).toLocaleString()}</b></div>
-        <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Monthly income</span><span>{cur}{((job ? job.salary : 0) + (hustle ? hustle.level * 220 : 0)).toLocaleString()}</span></div>
+        <div style={row}><span style={{ opacity: 0.6 }}>Monthly income</span><span>{cur}{income.toLocaleString()}</span></div>
+        <div style={row}><span style={{ opacity: 0.6 }}>Best you have earned</span><span>{peak ? cur + peak.toLocaleString() + "/mo" : "—"}</span></div>
+        <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Years worked</span><span>{crYearsWorked(s).toFixed(1)}</span></div>
+      </div>
+      {s.education.debt > 0 && (
+        <div style={panelCard(accent)}>
+          <div style={hltHdr}>🎓 Student debt</div>
+          <div style={{ ...row, borderBottom: "none" }}><span style={{ opacity: 0.6 }}>Outstanding</span><b>{cur}{Math.round(s.education.debt).toLocaleString()}</b></div>
+          <HltEmpty>Repaid automatically at 15% of salary once you are working.</HltEmpty>
+        </div>
+      )}
+    </>);
+  },
+
+  hustle: ({ s, accent, row, cur }) => {
+    const hustle = s.career.sideHustle;
+    if (!hustle) return <HltEmpty>Nothing on the side. A side hustle starts from the Act menu and grows with what you put into it.</HltEmpty>;
+    return (
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🚀 {hustle.type[0].toUpperCase() + hustle.type.slice(1)}</div>
+        <div style={row}><span style={{ opacity: 0.6 }}>Roughly earning</span><b>{cur}{(hustle.level * 220).toLocaleString()}/mo</b></div>
+        <div style={{ margin: "12px 0 6px", fontSize: 12, opacity: 0.6 }}>Scale</div>
+        <div style={{ display: "flex", gap: 5 }}>
+          {[1, 2, 3, 4].map((t) => <div key={t} style={{ flex: 1, height: 7, borderRadius: 4, background: t <= hustle.level ? accent : TH.surface2 }} />)}
+        </div>
+      </div>
+    );
+  },
+
+  history: ({ s, accent, cur }) => {
+    const hist = ((s.cr && s.cr.hist) || []).slice().reverse();
+    const rec = ((s.edu && s.edu.record) || []).slice().reverse();
+    const yrOf = (d) => Math.floor((d || 0) / 365.25);
+    return (<>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🗂 Where you have worked</div>
+        {hist.length === 0
+          ? <HltEmpty>No jobs yet. This fills itself as a working life happens.</HltEmpty>
+          : hist.map((h, i) => (
+            <HltItem key={i} emoji={h.to == null ? "📍" : "💼"} name={h.title}
+              sub={`${INDUSTRIES[h.ind] ? INDUSTRIES[h.ind].name : h.ind} · age ${yrOf(h.from)}${h.to == null ? " to now" : "–" + yrOf(h.to)} · ${cur}${(h.pay || 0).toLocaleString()}/mo`}
+              right={h.to == null ? <HltChip tone="ok" accent={accent}>current</HltChip> : null} />
+          ))}
+      </div>
+      <div style={panelCard(accent)}>
+        <div style={hltHdr}>🎓 Where you studied</div>
+        {rec.length === 0
+          ? <HltEmpty>Nothing recorded.</HltEmpty>
+          : rec.map((r, i) => (
+            <HltItem key={i} emoji="🏫" name={EDU_STAGE_LABEL[r.stage] || r.stage}
+              sub={`age ${yrOf(r.from)}–${yrOf(r.to)} · ${r.outcome || "attended"}`} />
+          ))}
+      </div>
+    </>);
+  },
+};
+
+function CareerPanel({ state, apply, accent, confirm, sub, setSub }) {
+  const s = state;
+  const cur = s.profile.curSym;
+  const row = { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0", borderBottom: `1px dashed ${TH.line}` };
+  const act = { padding: "10px 8px", borderRadius: 10, border: `1px solid ${accent}55`, background: PAPER, color: INK, fontSize: 12.5, cursor: "pointer" };
+  const body = CR_SUBPANELS[sub] ? CR_SUBPANELS[sub]({ s, accent, apply, confirm, act, row, cur }) : null;
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <SubtabBar tabs={CR_TABS} value={sub} onPick={setSub} accent={accent} />
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 16px", minHeight: 0 }}>
+        {body}
+        {/* the transition timeline stays reachable from the working-life screen
+            because that is where it has always been, but it is no longer wedged
+            between a salary negotiation and a school report */}
+        {sub === "skills" && s.discovered.gender && isQueerG(s) && (() => {
+          const steps = [
+            { k: "social", label: "Living as yourself", done: usedName(s) !== s.profile.first },
+            { k: "voice", label: "Voice work", done: (s.emergent.voiceTraining ?? 0) > 15 },
+            { k: "hrt", label: "Hormone therapy", done: !!s.flags.hrt },
+            { k: "top", label: "Top surgery", done: !!s.flags.srg_top },
+            { k: "gcs", label: "Gender-affirming surgery", done: !!s.flags.srg_gcs },
+            { k: "face", label: "Facial surgery", done: !!s.flags.srg_face },
+            { k: "name", label: "Legal name", done: !!s.flags.legalName },
+            { k: "marker", label: "Gender marker", done: !!s.flags.marker },
+          ];
+          const doneN = steps.filter((x) => x.done).length;
+          const months = s.flags.hrt ? Math.floor((s.ageDays - s.flags.hrt) / 30) : 0;
+          return (
+            <div style={panelCard(accent)}>
+              <div style={hltHdr}>🦋 Your transition</div>
+              <MiniBar label="Journey so far" value={(doneN / steps.length) * 100} accent={accent} note={`${doneN} of ${steps.length} steps`} />
+              {s.flags.hrt && <MiniBar label="Time on HRT" value={Math.min(100, (months / 36) * 100)} accent={accent} note={months < 24 ? `${months} months` : `${(months / 12).toFixed(1)} years`} />}
+              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {steps.map((x) => (
+                  <span key={x.k} style={{ fontSize: 11.5, padding: "3px 9px", borderRadius: 20, border: `1px solid ${x.done ? accent + "66" : TH.line}`, background: x.done ? accent + "14" : "transparent", color: x.done ? accent : INK, opacity: x.done ? 1 : 0.45 }}>
+                    {x.done ? "✓ " : ""}{x.label}
+                  </span>
+                ))}
+              </div>
+              <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 10, lineHeight: 1.5 }}>There's no finish line here and no required order — this is a map of what you've chosen, not a checklist you owe anyone.</div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -18130,6 +18518,94 @@ function HltWhy({ terms }) {
 }
 const hltYears = (s, since) => Math.max(0, Math.floor((s.ageDays - (since || 0)) / 365));
 
+/* ── the shared subtab bar ───────────────────────────────────────────────
+   Health has eleven tabs, People eighteen, Career eight. None of those fit a
+   360px row, so the row scrolls — and the first version scrolled with NO
+   AFFORDANCE AT ALL. The bar simply ended mid-word at the right edge and
+   nothing said there was more, which reads as a clipping bug rather than as
+   an invitation. That is the whole reason this component exists.
+
+   Three signals, because one is not enough on a phone:
+     · a fade at each end, shown only on the side that has more to reveal —
+       so the edge looks soft and continuing rather than chopped;
+     · arrow buttons on that same condition, for anyone who will not think to
+       swipe a row of chips and for anyone using a mouse;
+     · the active chip scrolls itself into view when it changes, so keyboard
+       navigation never leaves the selection off-screen.
+
+   Kept as ONE component rather than three copies deliberately: three bars
+   that started identical would not stay identical, and the affordance is
+   exactly the kind of detail that would get fixed in one of them. */
+function SubtabBar({ tabs, value, onPick, accent, badge }) {
+  const ref = useRef(null);
+  const [edge, setEdge] = useState({ l: false, r: false });
+
+  const measure = () => {
+    const el = ref.current;
+    if (!el) return;
+    const l = el.scrollLeft > 4;
+    const r = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setEdge((prev) => (prev.l === l && prev.r === r ? prev : { l, r }));
+  };
+  /* measure after paint, and again whenever the tab set or selection changes */
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    if (!el || typeof window === "undefined") return undefined;
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [tabs.length, value]);
+  /* keep the selected chip visible — without this, moving through tabs with
+     the keyboard silently scrolls the selection out of the viewport */
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !el.querySelector) return;
+    const on = el.querySelector('[data-on="1"]');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [value]);
+
+  const nudge = (dir) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(120, el.clientWidth * 0.7), behavior: "smooth" });
+    setTimeout(measure, 320);
+  };
+  const arrow = (side) => ({
+    position: "absolute", top: 0, bottom: 8, [side]: 0, width: 26, zIndex: 2,
+    display: "flex", alignItems: "center", justifyContent: side === "left" ? "flex-start" : "flex-end",
+    background: `linear-gradient(to ${side === "left" ? "right" : "left"}, ${TH.bg} 38%, ${TH.bg}00)`,
+    border: "none", cursor: "pointer", color: TH.muted, fontSize: 15, padding: 0,
+  });
+
+  return (
+    <div style={{ position: "relative", borderBottom: `1px solid ${TH.line}` }}>
+      <div ref={ref} onScroll={measure}
+        style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 12px 8px",
+          WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+        {tabs.map((t) => {
+          const on = value === t.id;
+          const n = badge ? badge(t.id) : 0;
+          return (
+            <button key={t.id} className="btn" data-on={on ? "1" : "0"}
+              onClick={() => onPick(t.id)} aria-pressed={on}
+              style={{ flex: "0 0 auto", padding: "6px 11px", borderRadius: 20, cursor: "pointer",
+                border: `1px solid ${on ? accent : TH.line}`, background: on ? accent + "18" : "transparent",
+                color: on ? accent : TH.muted, fontSize: 12, fontWeight: on ? 700 : 500, whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", gap: 5,
+                transition: "color .2s, background .2s, border-color .2s" }}>
+              <span style={{ fontSize: 13, filter: on ? "none" : "grayscale(.5)" }}>{t.emoji}</span>
+              {t.label}
+              {n ? <span style={{ fontFamily: FONT_LEDGER, fontSize: 10.5, opacity: 0.75 }}>{n}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      {edge.l && <button className="btn" aria-label="Scroll tabs left" onClick={() => nudge(-1)} style={arrow("left")}>‹</button>}
+      {edge.r && <button className="btn" aria-label="Scroll tabs right" onClick={() => nudge(1)} style={arrow("right")}>›</button>}
+    </div>
+  );
+}
+
 /* ── the People screen ───────────────────────────────────────────────────
    Eighteen tabs over one derived taxonomy. The bar and the empty states are
    the whole of the panel's own logic; everything about WHO someone is comes
@@ -18196,33 +18672,15 @@ const PPL_EMPTY = {
   deceased:     () => "Nobody yet.",
 };
 
-function PeoplePanel({ state, apply, accent, confirm, openRel, toggleRel }) {
+function PeoplePanel({ state, apply, accent, confirm, openRel, toggleRel, sub, setSub }) {
   const s = state;
-  const [sub, setSub] = useState("family");
   const entries = pplIn(s, sub);
   const deep = { family: 1, friends: 1, romance: 1, relatives: 1, children: 1 };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* eighteen labels cannot fit a phone row, so the bar scrolls rather
-          than truncating — same decision as the Health screen */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 12px 8px", borderBottom: `1px solid ${TH.line}`, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
-        {PPL_TABS.map((t) => {
-          const on = sub === t.id;
-          const n = pplIn(s, t.id).length;
-          return (
-            <button key={t.id} className="btn" onClick={() => setSub(t.id)} aria-pressed={on}
-              style={{ flex: "0 0 auto", padding: "6px 11px", borderRadius: 20, cursor: "pointer",
-                border: `1px solid ${on ? accent : TH.line}`, background: on ? accent + "18" : "transparent",
-                color: on ? accent : TH.muted, fontSize: 12, fontWeight: on ? 700 : 500, whiteSpace: "nowrap",
-                display: "flex", alignItems: "center", gap: 5, transition: "color .2s, background .2s, border-color .2s" }}>
-              <span style={{ fontSize: 13, filter: on ? "none" : "grayscale(.5)" }}>{t.emoji}</span>
-              {t.label}
-              {n ? <span style={{ fontFamily: FONT_LEDGER, fontSize: 10.5, opacity: 0.7 }}>{n}</span> : null}
-            </button>
-          );
-        })}
-      </div>
+      <SubtabBar tabs={PPL_TABS} value={sub} onPick={setSub} accent={accent}
+        badge={(id) => pplIn(s, id).length} />
 
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 16px", minHeight: 0 }}>
         {entries.length === 0 ? (
@@ -18255,9 +18713,8 @@ function PeoplePanel({ state, apply, accent, confirm, openRel, toggleRel }) {
   );
 }
 
-function HealthPanel({ state, apply, accent }) {
+function HealthPanel({ state, apply, accent, sub, setSub }) {
   const s = state;
-  const [sub, setSub] = useState("physical");
   /* Every panel below READS. Nothing here writes to state — a panel is handed
      a clone that gets discarded, so a write is silent data loss with nothing
      to report it (Gotcha #2). All mutation goes through `apply`. */
@@ -18268,26 +18725,8 @@ function HealthPanel({ state, apply, accent }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* Subtab bar. Eleven labels cannot fit a 360px row, so it scrolls
-          horizontally rather than truncating or wrapping to a second line that
-          would eat the panel below it. */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 12px 8px", borderBottom: `1px solid ${TH.line}`, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
-        {HLT_TABS.map((t) => {
-          const on = sub === t.id;
-          const badge = HLT_BADGE[t.id] ? HLT_BADGE[t.id](s, h) : 0;
-          return (
-            <button key={t.id} className="btn" onClick={() => setSub(t.id)} aria-pressed={on}
-              style={{ flex: "0 0 auto", padding: "6px 11px", borderRadius: 20, cursor: "pointer",
-                border: `1px solid ${on ? accent : TH.line}`, background: on ? accent + "18" : "transparent",
-                color: on ? accent : TH.muted, fontSize: 12, fontWeight: on ? 700 : 500, whiteSpace: "nowrap",
-                display: "flex", alignItems: "center", gap: 5, transition: "color .2s, background .2s, border-color .2s" }}>
-              <span style={{ fontSize: 13, filter: on ? "none" : "grayscale(.5)" }}>{t.emoji}</span>
-              {t.label}
-              {badge ? <span style={{ fontFamily: FONT_LEDGER, fontSize: 10.5, padding: "0 5px", borderRadius: 9, background: TH.coral + "22", color: TH.coral }}>{badge}</span> : null}
-            </button>
-          );
-        })}
-      </div>
+      <SubtabBar tabs={HLT_TABS} value={sub} onPick={setSub} accent={accent}
+        badge={(id) => (HLT_BADGE[id] ? HLT_BADGE[id](s, h) : 0)} />
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 16px", minHeight: 0 }}>{body}</div>
     </div>
   );
@@ -18630,6 +19069,98 @@ const HLT_SUBPANELS = {
   },
 };
 
+/* ── the keybinding settings screen ──────────────────────────────────────
+   Rebinding works by LISTENING rather than by asking the player to type a
+   name: press the row, press the combination you want, and it is captured
+   exactly as the handler will later see it — same kbChord on both sides, so
+   what you press and what gets matched cannot disagree.
+
+   Escape cancels the capture rather than binding Escape, because otherwise
+   the first thing anybody does by reflex is rebind their own way out. */
+function KeybindSettings({ state, apply, accent, onClose }) {
+  const [capturing, setCapturing] = useState(null);
+  const map = kbMap(state);
+  const conflicts = kbConflicts(state);
+  const conflicted = {};
+  for (const c of conflicts) { conflicted[c.a] = 1; conflicted[c.b] = 1; }
+
+  useEffect(() => {
+    if (!capturing || typeof window === "undefined") return undefined;
+    const grab = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const k = String(e.key || "").toLowerCase();
+      if (k === "escape") { setCapturing(null); return; }
+      /* a bare modifier is not a binding — wait for the real key */
+      if (k === "control" || k === "alt" || k === "shift" || k === "meta") return;
+      const chord = kbChord(e);
+      const id = capturing;
+      setCapturing(null);
+      apply((st) => kbSet(st, id, chord));
+    };
+    window.addEventListener("keydown", grab, true);
+    return () => window.removeEventListener("keydown", grab, true);
+  }, [capturing]);
+
+  const rowStyle = { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${TH.line}` };
+  return (
+    <Modal accent={accent}>
+      <div style={{ fontFamily: FONT_UI, fontWeight: 700, fontSize: 17, marginBottom: 4, color: TH.text }}>⌨ Keyboard</div>
+      <div style={{ fontSize: 12.5, opacity: 0.65, lineHeight: 1.55, marginBottom: 12 }}>
+        Press a row, then press the keys you want. Esc cancels. Modifiers work — Ctrl, Alt and Shift can all be part of a binding.
+      </div>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 12, cursor: "pointer" }}>
+        <input type="checkbox" checked={state.cfg.kbEnabled !== false}
+          onChange={() => apply((st) => { const n = JSON.parse(JSON.stringify(st)); n.cfg.kbEnabled = !(n.cfg.kbEnabled !== false); return n; })} />
+        Keyboard shortcuts enabled
+      </label>
+
+      {conflicts.length > 0 && (
+        <div style={{ fontSize: 12, color: TH.coral, lineHeight: 1.5, marginBottom: 10 }}>
+          {conflicts.length} binding{conflicts.length > 1 ? "s" : ""} clash in the same context — the first one listed wins.
+        </div>
+      )}
+
+      <div style={{ maxHeight: "46vh", overflowY: "auto", paddingRight: 2 }}>
+        {KB_GROUPS.map((g) => (
+          <div key={g.id} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", opacity: 0.55, margin: "10px 0 4px" }}>{g.label}</div>
+            {KB_ACTIONS.filter((a) => a.group === g.id).map((a) => (
+              <div key={a.id} style={rowStyle}>
+                <span style={{ flex: 1, fontSize: 13 }}>{a.label}</span>
+                {map[a.id] !== a.def && (
+                  <button className="btn" onClick={() => apply((st) => kbSet(st, a.id, null))}
+                    style={{ background: "none", border: "none", color: TH.faint, cursor: "pointer", fontSize: 11 }}>reset</button>
+                )}
+                <button className="btn" onClick={() => setCapturing(a.id)}
+                  style={{ minWidth: 92, padding: "5px 10px", borderRadius: 8, cursor: "pointer",
+                    border: `1px solid ${capturing === a.id ? accent : conflicted[a.id] ? TH.coral : TH.line}`,
+                    background: capturing === a.id ? accent + "18" : "transparent",
+                    color: capturing === a.id ? accent : conflicted[a.id] ? TH.coral : TH.text,
+                    fontFamily: FONT_LEDGER, fontSize: 12 }}>
+                  {capturing === a.id ? "press keys…" : kbFormat(map[a.id])}
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button className="btn" onClick={() => apply((st) => kbReset(st))}
+          style={{ flex: 1, padding: 11, borderRadius: 10, border: `1px solid ${TH.line}`, background: "transparent", color: TH.muted, cursor: "pointer", fontSize: 13 }}>
+          Restore defaults
+        </button>
+        <button className="btn" onClick={onClose}
+          style={{ flex: 1, padding: 11, borderRadius: 10, border: `1.5px solid ${accent}`, background: accent + "14", color: accent, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+          Done
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ═══════════════ GAME ═══════════════ */
 
 function Game({ state, setState, onReset }) {
@@ -18643,6 +19174,14 @@ function Game({ state, setState, onReset }) {
   const confirm = (cfg, onYes) => setAsk({ ...cfg, onYes });
   const toggleRel = (k) => setOpenRel((cur) => (cur === k ? null : k));
   const [tab, setTab] = useState("life");
+  /* Subtab selection lives HERE rather than inside each panel, for two
+     reasons: a global key handler cannot reach state held inside a child, and
+     keeping it per-tab means switching away and back returns you to the
+     subtab you were on instead of resetting to the first one. */
+  const [subs, setSubs] = useState({});
+  const subOf = (t) => subs[t] || (TAB_SUBS[t] ? TAB_SUBS[t][0].id : null);
+  const setSubOf = (t) => (id) => setSubs((prev) => ({ ...prev, [t]: id }));
+  const [showKeys, setShowKeys] = useState(false);
   const feedRef = useRef(null);
   const rootRef = useRef(null);
   const year = yearOf(state);
@@ -18678,6 +19217,81 @@ function Game({ state, setState, onReset }) {
   };
   const doChoose = (opt) => apply((st) => chooseOption(st, opt));
   const setStep = (d) => apply((st) => ({ ...JSON.parse(JSON.stringify(st)), timeStep: d }));
+
+  /* ── the keyboard ──────────────────────────────────────────────────────
+     One listener, resolving a chord to an action id and running it. The
+     handler is rebuilt whenever anything it closes over changes, or it would
+     act on a stale tab and a stale popup.
+
+     Three guards, each for a real failure:
+       · typing — the Creation screen has text inputs, and without this,
+         naming a character would advance time on every keystroke;
+       · repeat — holding Space would otherwise advance years at the OS key
+         repeat rate, which is not a decision anybody made;
+       · preventDefault only on a chord we actually consume, so Ctrl+L and
+         every other browser shortcut keeps working. */
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onKey = (e) => {
+      if (!state.cfg || state.cfg.kbEnabled === false) return;
+      if (kbIsTyping(e.target)) return;
+      const chord = kbChord(e);
+      const ctx = state.pending ? "popup" : (ask || showActs || showKeys) ? "popup" : "game";
+      const id = kbResolve(state, chord, ctx);
+      if (!id) return;
+      if (e.repeat && !(KB_BY_ID[id] && KB_BY_ID[id].repeatable)) { e.preventDefault(); return; }
+
+      /* a modal is up: only choosing and dismissing are live */
+      if (state.pending) {
+        if (id === "dismiss") return;                    // a popup is a decision, not a dialog to escape
+        /* computed here rather than closed over: the `visibleOptions` const
+           is declared further down the component body, so naming it in this
+           effect's dependency array would read it before initialisation */
+        const opts = state.pending.options.filter((o) => !o.cond || o.cond(state));
+        const n = parseInt(id.replace("choose", ""), 10);
+        if (n >= 1 && n <= opts.length) { e.preventDefault(); doChoose(opts[n - 1]); }
+        return;
+      }
+      if (ask) {
+        if (id === "dismiss") { e.preventDefault(); setAsk(null); }
+        else if (id === "choose1") { e.preventDefault(); const f = ask.onYes; setAsk(null); f && f(); }
+        return;
+      }
+      if (showActs || showKeys) {
+        if (id === "dismiss") { e.preventDefault(); setShowActs(false); setShowKeys(false); }
+        return;
+      }
+
+      const subList = TAB_SUBS[tab];
+      const subIdx = subList ? Math.max(0, subList.findIndex((x) => x.id === subOf(tab))) : -1;
+      const goSub = (i) => { if (subList) setSubOf(tab)(subList[(i + subList.length) % subList.length].id); };
+      const stepIdx = Math.max(0, TIME_STEPS.findIndex((t) => t.d === state.timeStep));
+
+      switch (id) {
+        case "tabLife": setTab("life"); break;
+        case "tabPeople": setTab("people"); break;
+        case "tabCareer": setTab("career"); break;
+        case "tabHome": setTab("home"); break;
+        case "tabHealth": setTab("health"); break;
+        case "tabNext": setTab(MAIN_TABS[(MAIN_TABS.indexOf(tab) + 1) % MAIN_TABS.length]); break;
+        case "tabPrev": setTab(MAIN_TABS[(MAIN_TABS.indexOf(tab) - 1 + MAIN_TABS.length) % MAIN_TABS.length]); break;
+        case "subNext": goSub(subIdx + 1); break;
+        case "subPrev": goSub(subIdx - 1); break;
+        case "subFirst": goSub(0); break;
+        case "subLast": if (subList) goSub(subList.length - 1); break;
+        case "advance": case "advanceAlt": if (!sweeping) doAdvance(); break;
+        case "stepNext": setStep(TIME_STEPS[Math.min(TIME_STEPS.length - 1, stepIdx + 1)].d); break;
+        case "stepPrev": setStep(TIME_STEPS[Math.max(0, stepIdx - 1)].d); break;
+        case "act": setShowActs(true); break;
+        case "settings": case "help": setShowKeys(true); break;
+        case "dismiss": setShowStats(false); setShowProfile(false); break;
+        default: return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state, tab, subs, ask, showActs, showKeys, sweeping]);
 
   if (!state.alive) return <Obituary state={state} onReset={onReset} accent={accent} />;
 
@@ -18716,6 +19330,8 @@ function Game({ state, setState, onReset }) {
   return (
     <div ref={rootRef} style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column", background: PAPER, position: "relative" }}>
       <ConfirmBox ask={ask} accent={accent} onYes={() => { const f = ask.onYes; setAsk(null); f && f(); }} onNo={() => setAsk(null)} />
+
+      {showKeys && <KeybindSettings state={state} apply={apply} accent={accent} onClose={() => setShowKeys(false)} />}
 
       {state.pending && (
         <Modal accent={accent}>
@@ -18912,13 +19528,15 @@ function Game({ state, setState, onReset }) {
         </div>
       ) : tab === "people" ? (
         <PeoplePanel state={state} apply={apply} accent={accent} confirm={confirm}
-          openRel={openRel} toggleRel={toggleRel} />
+          openRel={openRel} toggleRel={toggleRel} sub={subOf("people")} setSub={setSubOf("people")} />
       ) : tab === "career" ? (
-        <CareerPanel state={state} apply={apply} accent={accent} confirm={confirm} />
+        <CareerPanel state={state} apply={apply} accent={accent} confirm={confirm}
+          sub={subOf("career")} setSub={setSubOf("career")} />
       ) : tab === "home" ? (
         <HomePanel state={state} apply={apply} accent={accent} />
       ) : (
-        <HealthPanel state={state} apply={apply} accent={accent} />
+        <HealthPanel state={state} apply={apply} accent={accent}
+          sub={subOf("health")} setSub={setSubOf("health")} />
       )}
 
       {/* action area — the Compass Advance replaces the old pill row + Live-on
@@ -18933,10 +19551,18 @@ function Game({ state, setState, onReset }) {
           busy={sweeping}
           label={(TIME_STEPS.find((t) => t.d === state.timeStep) || TIME_STEPS[0]).label}
         />
-        <button className="btn" onClick={() => setShowActs(true)}
-          style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: `1.5px solid ${accent}`, background: `${accent}14`, color: accent, fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: ".01em" }}>
-          🎯 Act
-        </button>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button className="btn" onClick={() => setShowActs(true)}
+            style={{ flex: 1, padding: 12, borderRadius: 12, border: `1.5px solid ${accent}`, background: `${accent}14`, color: accent, fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: ".01em" }}>
+            🎯 Act
+          </button>
+          {/* the settings door. A keybind you cannot discover is a keybind
+              nobody uses, so there is a visible way in as well as Ctrl+, */}
+          <button className="btn" onClick={() => setShowKeys(true)} aria-label="Keyboard settings"
+            style={{ flex: "0 0 auto", padding: "12px 14px", borderRadius: 12, border: `1px solid ${TH.line}`, background: "transparent", color: TH.muted, fontSize: 15, cursor: "pointer" }}>
+            ⌨
+          </button>
+        </div>
       </div>
     </div>
   );

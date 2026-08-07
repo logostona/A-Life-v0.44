@@ -551,5 +551,111 @@ if (mod) {
     JSON.stringify(probe) === before);
 }
 
+/* ═══════════════ 10 · Career subtabs and the keyboard settings ═══════════════ */
+sec("10 · career + keyboard");
+if (mod) {
+  const M2 = mod;
+  const base = (age, fill) => {
+    const c = H.mkChar({ country: "Sweden", birthYear: 2010 - age, cls: "Middle" });
+    c.ageDays = Math.round(age * 365.25);
+    if (fill) fill(c);
+    return c;
+  };
+  const FIX = {
+    "a child, nothing yet": base(9),
+    "a student": base(20, (c) => {
+      c.education.college = { major: "Arts", tier: "uni", startDay: c.ageDays - 400, gpa: 72, help: 0.5 };
+      c.education.debt = 4000;
+    }),
+    "mid-career": base(44, (c) => {
+      c.career.job = { industry: "tech", title: "Engineer", tier: 3, salary: 620, boss: "Robin", perf: 74, since: c.ageDays - 2000 };
+      c.career.sideHustle = { type: "baking", level: 2 };
+      c.money = 24000;
+      c.cr = { v: 1, cur: null, hist: [
+        { ind: "retail", title: "Sales Associate", tier: 1, pay: 120, from: 6000, to: 9000 },
+        { ind: "tech", title: "Engineer", tier: 3, pay: 620, from: 14000, to: null },
+      ] };
+    }),
+    "retired": base(70, (c) => { c.flags.retired = true; c.education.degree = "Bachelor's"; }),
+  };
+
+  ok("the career registry is exported", !!M2.CR_TABS && !!M2.CR_SUBPANELS);
+  let broke = [];
+  for (const t of (M2.CR_TABS || [])) {
+    for (const label of Object.keys(FIX)) {
+      const s = FIX[label];
+      try {
+        const el = M2.CR_SUBPANELS[t.id]({
+          s: s, accent: "#8899FF", apply: () => {}, confirm: () => {},
+          act: { padding: 4 },
+          row: { display: "flex" },
+          cur: s.profile.curSym,
+        });
+        const out = ReactDOMServer.renderToStaticMarkup(React.createElement("div", null, el));
+        if (/undefined|\[object Object\]|NaN/.test(out)) broke.push(t.id + " / " + label + " (undefined in output)");
+      } catch (e) {
+        broke.push(t.id + " / " + label + ": " + String(e.message).slice(0, 90));
+      }
+    }
+  }
+  ok("all eight career subtabs render against every fixture", broke.length === 0, broke.slice(0, 6));
+
+  /* the whole panel, which is what the tab mounts */
+  let perr = null, phtml = "";
+  try {
+    phtml = ReactDOMServer.renderToStaticMarkup(React.createElement(M2.CareerPanel, {
+      state: FIX["mid-career"], apply: () => {}, accent: "#8899FF", confirm: () => {},
+      sub: "job", setSub: () => {},
+    }));
+  } catch (e) { perr = e; }
+  ok("the Career panel mounts", !perr && phtml.length > 200, perr && String(perr).slice(0, 200));
+  ok("...showing every subtab", (M2.CR_TABS || []).every((t) => phtml.indexOf(t.label) > -1),
+    (M2.CR_TABS || []).filter((t) => phtml.indexOf(t.label) === -1).map((t) => t.label));
+
+  /* Qualifications must never print a raw credential id at the player */
+  const grad = base(30, (c) => {
+    c.edu = c.edu || {};
+    c.edu.cred = [{ id: "bachelor", year: 2002, field: "Arts" }, { id: "lowerSecCert", year: 1994 }];
+  });
+  const qhtml = ReactDOMServer.renderToStaticMarkup(React.createElement("div", null,
+    M2.CR_SUBPANELS.quals({ s: grad, accent: "#8899FF", apply: () => {}, confirm: () => {}, act: {}, row: {}, cur: "kr" })));
+  /* static markup escapes: ' becomes &#x27; and & becomes &amp;, so the
+     comparison has to be against decoded text or it fails on punctuation */
+  const unesc = (x) => String(x).replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+  ok("a credential renders as its name, not its id",
+    unesc(qhtml).indexOf("Bachelor's degree") > -1 && qhtml.indexOf("lowerSecCert") === -1,
+    (qhtml.match(/>[^<>]{4,32}</g) || []).slice(0, 6));
+
+  /* the keyboard settings modal */
+  let kerr = null, khtml = "";
+  try {
+    khtml = ReactDOMServer.renderToStaticMarkup(React.createElement(M2.KeybindSettings, {
+      state: FIX["mid-career"], apply: () => {}, accent: "#8899FF", onClose: () => {},
+    }));
+  } catch (e) { kerr = e; }
+  ok("the keyboard settings render", !kerr && khtml.length > 200, kerr && String(kerr).slice(0, 200));
+  ok("...listing every bindable action",
+    (M2.KB_ACTIONS || []).every((a) => khtml.indexOf(a.label) > -1),
+    (M2.KB_ACTIONS || []).filter((a) => khtml.indexOf(a.label) === -1).map((a) => a.id));
+  ok("...and every group heading",
+    (M2.KB_GROUPS || []).every((g) => unesc(khtml).indexOf(g.label) > -1),
+    (M2.KB_GROUPS || []).filter((g) => unesc(khtml).indexOf(g.label) === -1).map((g) => g.label));
+  ok("...with no raw key names shown to the player",
+    khtml.indexOf("arrowright") === -1 && khtml.indexOf("escape") === -1);
+  ok("...and no undefined", !/undefined|NaN/.test(khtml));
+
+  /* GOTCHA #2 */
+  const probe = FIX["mid-career"];
+  const before = JSON.stringify(probe);
+  for (const t of (M2.CR_TABS || [])) {
+    try {
+      ReactDOMServer.renderToStaticMarkup(React.createElement("div", null,
+        M2.CR_SUBPANELS[t.id]({ s: probe, accent: "#8899FF", apply: () => {}, confirm: () => {}, act: {}, row: {}, cur: "kr" })));
+    } catch (e) { /* reported above */ }
+  }
+  ok("rendering a career subtab never mutates the state it was handed",
+    JSON.stringify(probe) === before);
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

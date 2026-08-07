@@ -22,8 +22,10 @@
  *      vaccination, addiction, disability, allergies, medical history.
  * v9 — People subsystem (PPL): eighteen categories over a derived taxonomy,
  *      favourites, generated colleagues/neighbours/rivals. Stat rounding fix.
+ * v10 — Career subtabs, one shared scrollable subtab bar with an affordance,
+ *      and rebindable keyboard shortcuts with a settings screen.
  */
-const CACHE_NAME = "a-life-cache-v9";
+const CACHE_NAME = "a-life-cache-v10";
 const ASSETS = [
   "./",
   "./index.html",

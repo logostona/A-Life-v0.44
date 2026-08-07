@@ -95,7 +95,32 @@ the whole file down in P6. Always run the harness import as part of a build chec
 
 Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activate` handler
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
-PWA on the old bundle for an extra launch. Currently `a-life-cache-v9`.
+PWA on the old bundle for an extra launch. Currently `a-life-cache-v10`.
+
+### Subtab bars, Career and keybindings
+
+**One `SubtabBar` serves all three screens.** Health (11), People (18) and Career (8) all feed
+it a `{id, emoji, label}` list. It fades and shows an arrow only on the side that has more to
+reveal — the first version just ended mid-word at the screen edge, which reads as a clipping
+bug rather than as an invitation to scroll.
+
+**Subtab selection lives in `Game`, not in the panels.** A global key handler cannot reach
+state held inside a child, and keeping one selection per tab means switching away and back
+returns you where you were.
+
+**Career history is captured by DIFFING, not at the seven call sites.** `s.career.job` is
+assigned or cleared in seven places; `crOnTick` compares it to a fingerprint and records any
+change, so an eighth write site is covered for free.
+
+**Keybindings are data.** `KB_ACTIONS` rows carry a default chord; `kbChord` builds the same
+string from an event that `kbResolve` matches against, so what Settings captures is what the
+handler fires. `1`-`9` are bound twice on purpose — a tab in game context, an option in popup
+context — which is why `kbConflicts` compares within a context and not globally.
+
+Three guards in the handler, each for a real failure: `kbIsTyping` (naming a character would
+otherwise advance time on every keystroke), `e.repeat` (holding Space would advance years at
+the OS repeat rate), and `preventDefault` only on a chord actually consumed, so browser
+shortcuts keep working.
 
 ### Adding to the People subsystem (PPL)
 
@@ -185,12 +210,12 @@ Two things that make diagnosis harder here, so do not burn time on them:
 for t in test-edu-s01 test-edu-s02 test-edu-s09 test-edu-s04-s05 test-edu-s03-s06 \
          test-edu-s07 test-edu-s12 test-edu-s08 test-identity test-integration \
          test-render test-deploy test-hre-s11 test-hre-s10 test-hre-s06 \
-         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism test-health test-people; do
+         test-hre-s08b test-hre-phase7-gate test-hre-s09 test-realism test-health test-people test-ui; do
   printf "%-24s " "$t"; node --max-old-space-size=4096 $t.js 2>&1 | grep -oE "[0-9]+ passed, [0-9]+ failed" | tail -1
 done
 ```
 
-**1914 assertions.** `test-hre-s09.js` fails 8 of 94 — a stale pre-Phase-7 fixture that predates
+**2013 assertions.** `test-hre-s09.js` fails 8 of 94 — a stale pre-Phase-7 fixture that predates
 current work. That is the known baseline, not a regression.
 
 `edu-sample-review.js` is **not a test**: it renders generated institutions as prose for a human
