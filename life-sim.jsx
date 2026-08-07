@@ -852,6 +852,14 @@ function newCharacter(form) {
      still applies: this initializer's migrate() backfill is in the same patch,
      because newCharacter never calls migrate() itself. */
   s.hlt = hltInit(hreHash("hlt:" + s.hre.seed + ":" + form.birthYear));
+  /* PPL S02. Same rule as s.hlt directly above, and for the same measured
+     reason: derived from s.hre.seed rather than drawing a fresh Math.random(),
+     because every seeded suite depends on the ORDER of newCharacter's draws
+     and one extra call silently rebuilds every fixture in the repo. Its
+     migrate() backfill is in this same patch (Gotcha #4). */
+  s.ppl = {};
+  s.pplFav = {};
+  s.pplSeed = hreHash("ppl:" + s.hre.seed) >>> 0;
   return s;
 }
 
@@ -865,6 +873,16 @@ function migrate(s) {
   /* HLT S03 — same ordering rule as EDU: after hreMigrate, because the health
      record's seed falls back to s.hre.seed when it has none of its own. */
   hltMigrate(s);
+  /* PPL S02 — the People stores. Categories themselves are DERIVED, so there
+     is nothing to migrate for the eighteen tabs; only the three fields that
+     hold state need backfilling. An old save simply starts with no generated
+     people and fills as the life continues. */
+  if (!s.ppl || typeof s.ppl !== "object" || Array.isArray(s.ppl)) s.ppl = {};
+  if (!s.pplFav || typeof s.pplFav !== "object" || Array.isArray(s.pplFav)) s.pplFav = {};
+  if (typeof s.pplSeed !== "number" || !isFinite(s.pplSeed)) {
+    s.pplSeed = hreHash("ppl:" + (s.hre && s.hre.seed != null ? s.hre.seed : 0)) >>> 0;
+  }
+  pplPruneFavs(s);
   if (!s.stx) s.stx = { v: 1, req: {}, staff: {}, inst: 0, cred: 100, lies: [], caught: 0, complaints: 0, log: [] };
   if (!s.stx.req) s.stx.req = {};
   if (!s.stx.staff) s.stx.staff = {};
@@ -9093,6 +9111,9 @@ function advance(state, totalDays) {
        every step rather than only on steps where no milestone fired. Never
        sets s.pending, so health can never depend on a popup being dismissed. */
     hltOnTick(s, step);
+    /* PPL S02 — the people your life has produced. Same position and the same
+       reasoning as the two ticks above; never sets s.pending. */
+    pplOnTick(s, step);
     if (milestoneFired) continue;
 
     if (Math.random() < Math.min(0.72, step * 0.09)) {
@@ -11665,7 +11686,12 @@ function hltReasons(terms, max) {
    a year or two. */
 function hltDrift(cur, target, days, rate) {
   const k = 1 - Math.pow(1 - (rate || 0.02), days / 7);
-  return clamp(cur + (target - cur) * k);
+  /* Quantised to two decimals. The fraction has to survive — drift this slow
+     moves well under a point per step, and rounding to integers would stall it
+     completely — but full float precision writes seventeen significant digits
+     into every save for every axis. Two decimals preserves every step this
+     function can produce. */
+  return Math.round(clamp(cur + (target - cur) * k) * 100) / 100;
 }
 
 /* ═══════════════ HLT · S05 · ILLNESS, ADDICTION & ACQUISITION ═══════════════ */
@@ -11942,7 +11968,7 @@ function hltOnTick(s, days) {
 
   /* sleep debt accumulates below 45 and pays back above 60 */
   const v = s.hlt.vitals;
-  s.hlt.debt = Math.max(0, Math.min(100, s.hlt.debt + (v.slp < 45 ? (45 - v.slp) * 0.03 : v.slp > 60 ? -(v.slp - 60) * 0.05 : -0.2) * (step / 7)));
+  s.hlt.debt = Math.round(Math.max(0, Math.min(100, s.hlt.debt + (v.slp < 45 ? (45 - v.slp) * 0.03 : v.slp > 60 ? -(v.slp - 60) * 0.05 : -0.2) * (step / 7))) * 100) / 100;
 
   /* 2 · mind */
   const mind = hltMindTarget(s);
@@ -11978,11 +12004,17 @@ function hltOnTick(s, days) {
     const a = s.hlt.addict[id];
     if (a.st > 0) addictDrain += ((HLT_ADDICTIONS[id] || {}).harm || {}).health * 0.014 * a.st * (step / 7) || 0;
   }
-  s.stats.health = clamp(s.stats.health + pull + addictDrain);
+  /* Quantised to two decimals on write. The fraction has to survive — a pull
+     of 0.1 per step is the whole mechanism by which a life lived badly ends
+     earlier — but full float precision put 17 significant digits into the save
+     for every stat, and into the header for the player to read. Two decimals
+     keeps every accumulation this tick can produce and costs four characters. */
+  const q = (n) => Math.round(clamp(n) * 100) / 100;
+  s.stats.health = q(s.stats.health + pull + addictDrain);
   /* mental health feeds happiness the same way, and only gently — happiness is
      still the game's own account of how life is going */
   if (Math.abs(s.hlt.mind.mood - 55) > 12) {
-    s.stats.happiness = clamp(s.stats.happiness + (s.hlt.mind.mood > 55 ? 0.045 : -0.055) * (step / 7));
+    s.stats.happiness = q(s.stats.happiness + (s.hlt.mind.mood > 55 ? 0.045 : -0.055) * (step / 7));
   }
 }
 
@@ -12524,6 +12556,355 @@ const FAMILY_POOL = [
     ] } }; } },
 ];
 POOL.push(...FAMILY_POOL);
+
+/* ═══════════════ PPL · S01 · WHO PEOPLE ARE TO YOU ═══════════════
+
+   Eighteen categories over the people this game already has, plus the ones it
+   did not.
+
+   THE LOAD-BEARING DECISION: CATEGORY IS DERIVED, NEVER STORED.
+   A person's category is computed from what they ARE — which store holds them,
+   their role, their romance status, whether they are alive — and never written
+   down beside them. That is not tidiness. A stored category is a second
+   authority on the same fact, and this project has already paid for one of
+   those: "Swallow it and go home" cleared flags.homeless without telling
+   hreSetTenure, and the two housing authorities disagreed for the rest of the
+   character's life while every suite stayed green.
+
+   People move between categories constantly — a crush becomes a partner
+   becomes a spouse becomes an ex, a friend becomes deceased, a colleague
+   becomes a friend. Deriving means those transitions are free and cannot
+   desync. It also means the eighteen tabs are a VIEW, so adding a nineteenth
+   is a row in PPL_TABS plus a predicate, and no migration at all.
+
+   The one thing that IS stored is the favourite pin, because "I care about
+   this person" is not derivable from anything. It is keyed by a stable
+   address (store + key) so a person keeps their pin across every category
+   change above. */
+
+/* Every store that holds people, and whether its members are addressable. */
+const PPL_STORES = ["family", "friends", "romance", "relatives", "children", "ppl"];
+
+/* A stable address for a person, whatever store they live in. Survives every
+   category change, which is exactly what a favourite pin needs. */
+function pplAddr(store, key) { return store + ":" + key; }
+function pplSplit(addr) {
+  const i = String(addr).indexOf(":");
+  return i < 0 ? null : { store: String(addr).slice(0, i), key: String(addr).slice(i + 1) };
+}
+function pplGet(s, addr) {
+  const a = pplSplit(addr);
+  if (!a || !s[a.store]) return null;
+  return s[a.store][a.key] || null;
+}
+
+/* Role matching. Roles are free text written at a hundred call sites ("Older
+   brother", "Dog 🐕", "Grandma"), so matching is by pattern rather than by an
+   enum nobody maintained. Anything unmatched falls through to a sensible
+   default rather than vanishing from every tab, because a person who appears
+   in no category is a person the player cannot find. */
+const PPL_ROLE = {
+  parent:      /^(mom|dad|mother|father|step-?mum|step-?mom|step-?dad|stepmother|stepfather)/i,
+  sibling:     /(brother|sister|sibling|twin)/i,
+  grandparent: /(grandm|grandf|grandpa|grandma|granny|grandad)/i,
+  auncle:      /(aunt|uncle)/i,
+  cousin:      /cousin/i,
+  nibling:     /(niece|nephew)/i,
+  inlaw:       /(in-law|inlaw|mother-in|father-in)/i,
+  step:        /^step/i,
+};
+const pplRoleIs = (p, kind) => !!(p && p.role && PPL_ROLE[kind] && PPL_ROLE[kind].test(p.role));
+
+function pplIsPet(p) { return !!(p && (p.pet === true || p.kind === "pet")); }
+function pplIsDead(p) { return !!(p && p.deceased); }
+
+/* Romance status buckets. `status` is the authority the rest of the game
+   already uses, so this reads it rather than inventing a parallel one. */
+const PPL_PARTNER_STATUS = ["dating", "serious", "engaged", "married"];
+const PPL_INTEREST_STATUS = ["crush", "talking", "seeing"];
+
+/* THE RESOLVER. Returns the single category a person belongs in, in priority
+   order — deceased and pets win over everything, because a dead grandmother
+   belongs under Deceased and a dog is not a friend even though the engine
+   stores it in s.friends. */
+function pplCategoryOf(s, store, key, p) {
+  if (!p) return null;
+  if (pplIsDead(p)) return "deceased";
+  if (pplIsPet(p)) return "pets";
+
+  if (store === "children") return "children";
+
+  if (store === "romance") {
+    const st = p.status;
+    if (PPL_PARTNER_STATUS.indexOf(st) !== -1) return "partner";
+    if (PPL_INTEREST_STATUS.indexOf(st) !== -1) return "interests";
+    return "partner";                       // exes belong with the partner history
+  }
+
+  if (store === "family") {
+    /* step-relations and in-laws are family by law rather than by blood, and
+       putting them under Extended is what makes that tab mean something once
+       Family already contains cousins */
+    if (pplRoleIs(p, "inlaw") || pplRoleIs(p, "step")) return "extended";
+    return "family";
+  }
+
+  if (store === "relatives") {
+    if (pplRoleIs(p, "inlaw")) return "extended";
+    /* the user's own list puts aunts, uncles, cousins, nieces and nephews
+       under Family, so that is where they go */
+    if (pplRoleIs(p, "auncle") || pplRoleIs(p, "cousin") || pplRoleIs(p, "nibling")
+        || pplRoleIs(p, "grandparent") || pplRoleIs(p, "sibling") || pplRoleIs(p, "parent")) return "family";
+    return "extended";
+  }
+
+  if (store === "friends") {
+    /* an acquaintance is someone you know rather than someone you have; the
+       line is drawn on closeness, which is the only honest signal available */
+    if ((p.rel || 0) < 35) return "acquaintances";
+    return "friends";
+  }
+
+  /* s.ppl — the store for the categories the game had no home for. These DO
+     carry an explicit kind, because nothing about a neighbour's shape
+     distinguishes them from a colleague's. */
+  if (store === "ppl") return p.cat || "acquaintances";
+  return "acquaintances";
+}
+
+/* Everyone, once, with their address and derived category. The single place
+   the panel and every count read from — so a person can never appear twice,
+   nor be missing from the tab they belong to. */
+function pplAll(s) {
+  const out = [];
+  for (const store of PPL_STORES) {
+    const bag = s[store];
+    if (!bag || typeof bag !== "object") continue;
+    for (const key in bag) {
+      const p = bag[key];
+      if (!p || typeof p !== "object" || !p.name) continue;
+      out.push({ addr: pplAddr(store, key), store, key, p, cat: pplCategoryOf(s, store, key, p) });
+    }
+  }
+  return out;
+}
+function pplIn(s, cat) {
+  if (cat === "favorites") return pplAll(s).filter((x) => pplIsFav(s, x.addr));
+  return pplAll(s).filter((x) => x.cat === cat);
+}
+function pplIsFav(s, addr) { return !!(s.pplFav && s.pplFav[addr]); }
+function pplToggleFav(s, addr) {
+  if (!s.pplFav) s.pplFav = {};
+  if (s.pplFav[addr]) delete s.pplFav[addr];
+  else s.pplFav[addr] = 1;
+}
+/* A pin whose person has gone must not linger — otherwise Favourites grows a
+   tail of ghosts nobody can unpin. */
+function pplPruneFavs(s) {
+  if (!s.pplFav) return;
+  for (const addr in s.pplFav) if (!pplGet(s, addr)) delete s.pplFav[addr];
+}
+
+/* The eighteen. Order is the user's; `id` is what pplCategoryOf returns. */
+const PPL_TABS = [
+  { id: "favorites",    emoji: "⭐", label: "Favourites" },
+  { id: "family",       emoji: "👪", label: "Family" },
+  { id: "partner",      emoji: "💞", label: "Partner" },
+  { id: "children",     emoji: "🧒", label: "Children" },
+  { id: "extended",     emoji: "🌳", label: "Extended" },
+  { id: "school",       emoji: "🎓", label: "School" },
+  { id: "work",         emoji: "💼", label: "Work" },
+  { id: "friends",      emoji: "🫂", label: "Friends" },
+  { id: "acquaintances",emoji: "👋", label: "Acquaintances" },
+  { id: "neighbors",    emoji: "🏘", label: "Neighbours" },
+  { id: "clubs",        emoji: "🎭", label: "Clubs" },
+  { id: "government",   emoji: "🏛", label: "Government" },
+  { id: "healthcare",   emoji: "🩺", label: "Healthcare" },
+  { id: "business",     emoji: "🏦", label: "Business" },
+  { id: "interests",    emoji: "💘", label: "Interests" },
+  { id: "rivals",       emoji: "⚔", label: "Rivals" },
+  { id: "pets",         emoji: "🐾", label: "Pets" },
+  { id: "deceased",     emoji: "🕊", label: "Remembered" },
+];
+/* Categories whose members live in s.ppl and must carry an explicit `cat`. */
+const PPL_GENERATED = ["school", "work", "neighbors", "clubs", "government", "healthcare", "business", "rivals"];
+
+/* ═══════════════ PPL · S02 · THE PEOPLE THE GAME HAD NO HOME FOR ═══════════════
+
+   Eight of the eighteen categories had no state at all. They are populated
+   from things that have ALREADY HAPPENED to the character rather than spawned
+   to fill a tab:
+
+     school      · you are enrolled somewhere
+     work        · you have a job
+     neighbours  · you have somewhere to live that is not your parents'
+     clubs       · you joined something
+     government  · you dealt with the state — a passport, a benefit, a court
+     healthcare  · you saw a doctor
+     business    · a landlord, a bank, a shopkeeper you actually deal with
+     rivals      · someone you are in real conflict with
+
+   That ordering matters: a tab that is empty because your life has not
+   produced anyone yet is honest. A tab populated with strangers so it looks
+   busy is not, and would make every life read the same.
+
+   Generation is seeded off the character, so the same life produces the same
+   people. No Math.random in here — the same invariant as HRE, EDU and HLT. */
+
+const PPL_ROLES = {
+  school:     [["Classmate", 6], ["Deskmate", 3], ["Teacher", 3], ["Form tutor", 1], ["Coach", 1], ["Head of year", 1]],
+  work:       [["Colleague", 7], ["Manager", 2], ["Mentor", 1], ["The one everyone asks", 1], ["Someone from another team", 2]],
+  neighbors:  [["Neighbour", 6], ["The one downstairs", 2], ["The one with the garden", 2], ["Building caretaker", 1]],
+  clubs:      [["Fellow member", 5], ["Club organiser", 2], ["The one who runs the raffle", 1], ["Team-mate", 3]],
+  government: [["Caseworker", 3], ["Clerk", 3], ["Housing officer", 2], ["Duty solicitor", 1], ["Registrar", 1]],
+  healthcare: [["GP", 4], ["Nurse", 3], ["Specialist", 2], ["Pharmacist", 2], ["Dentist", 2], ["Therapist", 1]],
+  business:   [["Landlord", 3], ["Bank adviser", 2], ["The shopkeeper", 3], ["Accountant", 1], ["Barber", 2], ["Mechanic", 1]],
+  rivals:     [["Rival", 4], ["The one who got the promotion", 2], ["An old adversary", 2], ["Someone with a long memory", 1]],
+};
+/* Rivals are the only category with a negative default, because a rival with
+   warm regard is just a colleague. The rest start where a stranger starts. */
+const PPL_REL_BAND = {
+  school: [35, 70], work: [35, 70], neighbors: [30, 65], clubs: [40, 75],
+  government: [20, 55], healthcare: [40, 75], business: [30, 65], rivals: [5, 30],
+};
+
+/* Roles you only have one of at a time. Without this a life accumulated two
+   landlords and two dentists, which reads as a bug because it is one — you do
+   not acquire a second GP while keeping the first. */
+const PPL_SINGULAR = { Landlord: 1, GP: 1, Dentist: 1, "Bank adviser": 1, Accountant: 1,
+                       "Form tutor": 1, "Head of year": 1, Manager: 1, Mentor: 1,
+                       "Building caretaker": 1, "Club organiser": 1, Registrar: 1, Therapist: 1 };
+
+function pplMakeSeeded(s, cat, n, rng) {
+  const roles = PPL_ROLES[cat] || [["Someone", 1]];
+  const band = PPL_REL_BAND[cat] || [30, 70];
+  const made = [];
+  /* what already exists, so generation does not duplicate a person or hand out
+     a second of a role there can only be one of */
+  const takenNames = {}, takenRoles = {};
+  for (const k in (s.ppl || {})) {
+    const q = s.ppl[k];
+    if (!q || q.deceased) continue;
+    takenNames[q.name] = 1;
+    if (q.cat === cat) takenRoles[q.role] = 1;
+  }
+  for (const store of ["family", "friends", "relatives", "children", "romance"]) {
+    for (const k in (s[store] || {})) if (s[store][k] && s[store][k].name) takenNames[s[store][k].name] = 1;
+  }
+  for (let i = 0; i < n; i++) {
+    /* drop any singular role already filled, rather than rolling and
+       discarding — an all-singular category would otherwise loop forever */
+    const open = roles.filter((r) => !(PPL_SINGULAR[r[0]] && takenRoles[r[0]]));
+    if (!open.length) break;
+    const role = rng.weighted(open.map((r) => [r[0], r[1]]));
+    if (!role) break;
+    takenRoles[role] = 1;
+    const male = rng.chance(0.5);
+    let name = "";
+    /* a handful of attempts, then give up on this person entirely: two people
+       with the same first AND last name in one small life reads as a rendering
+       fault, and the name pools are small enough that collisions happen */
+    for (let tries = 0; tries < 6; tries++) {
+      name = rng.pick(nameList(s.profile.country, male ? "m" : "f")) + " "
+           + rng.pick(nameList(s.profile.country, "last"));
+      if (!takenNames[name]) break;
+      name = "";
+    }
+    if (!name) continue;
+    takenNames[name] = 1;
+    /* one key per person, stable and collision-free within the store */
+    const key = cat + ":" + (s.ageDays | 0) + ":" + i + ":" + rng.int(100, 999);
+    /* DELIBERATELY LEAN. The five personality traits on makePerson exist for
+       the deep relationship mechanics — talks, gifts, coming out, loyalty
+       under pressure — and none of those apply to the pharmacist. Carrying
+       them anyway cost about 200 bytes each and pushed s.ppl past 3 KB on an
+       ordinary life. A background person is a name, a role, how you know them,
+       how close you are and since when; anything that later earns a real
+       relationship can be promoted with makePerson at that point. */
+    made.push([key, {
+      name, role, cat,
+      rel: rng.int(band[0], band[1]),
+      g: male ? "M" : "F",
+      since: s.ageDays | 0,
+    }]);
+  }
+  return made;
+}
+
+/* What the character's life currently justifies, per category. Returns the
+   number of people that SHOULD exist — the tick tops up toward it and never
+   trims, because people you have met do not un-happen. */
+function pplQuotaFor(s, cat) {
+  const age = ageYears(s);
+  switch (cat) {
+    case "school":     return (s.school && s.school.name) || (s.edu && s.edu.stage && s.edu.stage !== "none") ? 4 : 0;
+    case "work":       return s.career && s.career.job ? 4 : 0;
+    case "neighbors":  return (s.hre && s.hre.tenure && s.hre.tenure !== "withParents" && !s.flags.homeless) ? 3 : 0;
+    case "clubs":      return s.flags && (s.flags.club || s.flags.joinedClub) ? 3 : 0;
+    case "government": return s.flags && (s.flags.everClaimed || s.flags.everCourt || s.flags.everPassport) ? 2 : (age >= 18 ? 1 : 0);
+    case "healthcare": return (s.hlt && (Object.keys(s.hlt.vax || {}).length || Object.keys(s.conditions || {}).length)) ? 2 : (age >= 5 ? 1 : 0);
+    case "business":   return (s.hre && s.hre.tenure === "renting" ? 1 : 0) + (age >= 20 ? 1 : 0) + (s.money > 5000 ? 1 : 0);
+    case "rivals":     return 0;      // rivals are earned, never quota'd — see pplRivalTick
+    default:           return 0;
+  }
+}
+function pplCountIn(s, cat) {
+  let n = 0;
+  for (const k in (s.ppl || {})) if (s.ppl[k] && s.ppl[k].cat === cat && !s.ppl[k].deceased) n++;
+  return n;
+}
+
+/* The tick. Tops each category up to what the life justifies, one person at a
+   time so a category fills over months rather than appearing complete. */
+function pplOnTick(s, days) {
+  if (!s || !s.ppl) return;
+  const rng = hreRng(s.pplSeed || 1, s.ageDays, "ppl:tick");
+  for (const cat of PPL_GENERATED) {
+    if (cat === "rivals") continue;
+    const want = pplQuotaFor(s, cat), have = pplCountIn(s, cat);
+    if (have >= want) continue;
+    if (!rng.chance(0.35 * (days / 7))) continue;             // people arrive gradually
+    for (const [key, person] of pplMakeSeeded(s, cat, 1, rng)) s.ppl[key] = person;
+  }
+  /* A rival is earned: someone already in your life whose regard has curdled.
+     Generating strangers to be your enemies would be the cheapest possible
+     version of this. */
+  pplRivalTick(s, days, rng);
+  pplPruneFavs(s);
+}
+
+/* Conflict promotes an existing person rather than inventing one. The
+   candidates are people you actually see — school, work, neighbours, clubs —
+   because those are the relationships with enough friction to sour. */
+const PPL_RIVAL_CAP = 3;
+function pplRivalTick(s, days, rng) {
+  /* CAPPED, and the cap is the realism. Uncapped, a long life accumulated
+     thirteen rivals — a person at war with their entire address book, which is
+     not a life, it is a bug that reads as characterisation. Three is already
+     more enemies than most people manage. */
+  if (pplCountIn(s, "rivals") >= PPL_RIVAL_CAP) return;
+  if (!rng.chance(0.012 * (days / 7))) return;
+  const pool = [];
+  for (const k in (s.ppl || {})) {
+    const p = s.ppl[k];
+    if (!p || p.deceased || p.cat === "rivals") continue;
+    if (["school", "work", "neighbors", "clubs"].indexOf(p.cat) === -1) continue;
+    if ((p.rel || 50) > 45) continue;                          // only a relationship already going wrong
+    pool.push(k);
+  }
+  if (!pool.length) return;
+  const k = rng.pick(pool);
+  const p = s.ppl[k];
+  const was = p.cat;
+  p.cat = "rivals";
+  p.wasCat = was;
+  p.rel = Math.max(0, Math.min(30, (p.rel || 30) - rng.int(5, 20)));
+  push(s, `⚔ Whatever was wrong between you and ${p.name} stopped being small. ${
+    was === "work" ? "You are careful what you say near them now."
+    : was === "school" ? "School got noticeably longer."
+    : was === "neighbors" ? "You time your comings and goings around them."
+    : "You stopped going on the nights they go."}`);
+}
 
 /* ═══════════════ EXES ═══════════════ */
 
@@ -16811,8 +17192,16 @@ function StatBar({ label, emoji, value, accent, compact, display }) {
   const col = (STAT_COLOR[label] ? STAT_COLOR[label](value) : accent) || accent;
   /* `value` drives the bar (0-100); `display` overrides the printed number when
      the stat is shown on a different scale — IQ is a percentile rendered on a
-     mean-100 scale, so the bar and the number are two views of one value. */
-  const shown = display != null ? display : value;
+     mean-100 scale, so the bar and the number are two views of one value.
+
+     ROUNDED, always. Stats were integers everywhere until the health tick
+     began adding fractional amounts each step, at which point the header
+     rendered "96.58660014915087" — a number no player wants and no stat
+     should ever show. The value keeps its precision; only the display is
+     rounded, because sub-integer accumulation is exactly how slow drift is
+     meant to work. */
+  const raw = display != null ? display : value;
+  const shown = typeof raw === "number" ? Math.round(raw) : raw;
   return (
     <div style={{ marginBottom: compact ? 5 : 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 10.5 : 12, marginBottom: 2, color: TH.muted }}>
@@ -16820,7 +17209,9 @@ function StatBar({ label, emoji, value, accent, compact, display }) {
         <span style={{ fontFamily: FONT_LEDGER, fontVariantNumeric: "tabular-nums", color: col, fontWeight: 600 }}>{shown}</span>
       </div>
       <div style={{ height: compact ? 4 : 6, background: TH.lineSoft, borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${value}%`, height: "100%", background: col, borderRadius: 3, transition: "width .5s ease, background .4s ease" }} />
+        {/* one decimal is finer than any screen can render; the raw float put
+            seventeen digits into the style attribute of every bar */}
+        <div style={{ width: `${Math.round(clamp(value) * 10) / 10}%`, height: "100%", background: col, borderRadius: 3, transition: "width .5s ease, background .4s ease" }} />
       </div>
     </div>
   );
@@ -17361,7 +17752,7 @@ function MiniBar({ label, value, accent, note }) {
         <span style={{ opacity: 0.55 }}>{note !== undefined ? note : Math.round(value)}</span>
       </div>
       <div style={{ height: 6, background: TH.surface2, borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${clamp(value)}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .5s" }} />
+        <div style={{ width: `${Math.round(clamp(value) * 10) / 10}%`, height: "100%", background: accent, borderRadius: 3, transition: "width .5s" }} />
       </div>
     </div>
   );
@@ -17738,6 +18129,131 @@ function HltWhy({ terms }) {
   );
 }
 const hltYears = (s, since) => Math.max(0, Math.floor((s.ageDays - (since || 0)) / 365));
+
+/* ── the People screen ───────────────────────────────────────────────────
+   Eighteen tabs over one derived taxonomy. The bar and the empty states are
+   the whole of the panel's own logic; everything about WHO someone is comes
+   from pplAll/pplCategoryOf, so a nineteenth category is a row in PPL_TABS
+   plus a predicate and this component does not change.
+
+   Two card kinds, deliberately:
+     · people in the deep stores keep RelCard, with every existing interaction
+       — talking, gifts, coming out, the lot — because those relationships are
+       already modelled and rewriting them would be a regression wearing a
+       feature's clothes;
+     · people in s.ppl get PplCard, because a pharmacist has a name, a role
+       and a closeness and no business carrying a coming-out slot. */
+function PplCard({ entry, state, accent, apply }) {
+  const p = entry.p;
+  const fav = pplIsFav(state, entry.addr);
+  const yrs = Math.max(0, Math.floor((state.ageDays - (p.since || 0)) / 365));
+  const heart = (p.rel || 0) > 75 ? "💖" : (p.rel || 0) > 50 ? "💙" : (p.rel || 0) > 25 ? "🤍" : "💔";
+  return (
+    <div className="rise" style={{ background: CARD, borderRadius: 14, marginBottom: 10, border: `1px solid ${TH.line}`, padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: FONT_STORY, fontSize: 16 }}>{p.name}</div>
+          <div style={{ fontSize: 11.5, opacity: 0.55, marginTop: 2 }}>
+            {p.role}{yrs >= 1 ? ` · ${yrs} year${yrs > 1 ? "s" : ""}` : " · recently"}
+            {p.wasCat ? ` · once ${p.wasCat === "neighbors" ? "a neighbour" : "from " + p.wasCat}` : ""}
+          </div>
+        </div>
+        <span style={{ fontSize: 13, opacity: 0.85 }}>{heart}</span>
+        <button className="btn" aria-label={fav ? "Unpin" : "Pin to favourites"}
+          onClick={() => apply((st) => { pplToggleFav(st, entry.addr); return st; })}
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "2px 4px", color: fav ? TH.gold : TH.faint, filter: fav ? "none" : "grayscale(1)" }}>
+          {fav ? "⭐" : "☆"}
+        </button>
+      </div>
+      <div style={{ height: 4, background: TH.lineSoft, borderRadius: 3, overflow: "hidden", marginTop: 9 }}>
+        <div style={{ width: `${Math.round(clamp(p.rel || 0) * 10) / 10}%`, height: "100%", background: accent, borderRadius: 3 }} />
+      </div>
+    </div>
+  );
+}
+
+/* What an empty tab should say. An empty category is usually the honest
+   answer — you have no colleagues because you have no job — so each one says
+   WHY rather than showing a blank, which reads as a broken screen. */
+const PPL_EMPTY = {
+  favorites:    () => "Nobody pinned yet. The ☆ on any person keeps them here, whatever else changes about them.",
+  family:       () => "No family on record.",
+  partner:      () => "Nobody, currently. This fills with everyone who has been — including the ones it ended with.",
+  children:     () => "No children.",
+  extended:     () => "Nothing here yet. Step-relations and in-laws land in this tab when they arrive.",
+  school:       (s) => ageYears(s) < 5 ? "Not old enough for school yet." : "Nobody from school — you are not enrolled anywhere at the moment.",
+  work:         (s) => (s.career && s.career.job) ? "Nobody from work yet. Colleagues take a while to become people." : "No colleagues, because no job.",
+  friends:      () => "No friends yet.",
+  acquaintances:() => "Nobody in the middle distance. People you know slightly land here — the ones you would nod to.",
+  neighbors:    (s) => (s.hre && s.hre.tenure === "withParents") ? "You live with your parents; their neighbours are not yours yet." : "Nobody yet. Neighbours arrive with an address of your own.",
+  clubs:        () => "You have not joined anything.",
+  government:   () => "Nobody. The state has not needed to know you personally yet.",
+  healthcare:   () => "Nobody yet. A doctor becomes a person once you have seen one a few times.",
+  business:     () => "Nobody yet — no landlord, no bank, nobody who knows your order.",
+  interests:    () => "Nobody you are circling. Crushes and early days land here before they are anything.",
+  rivals:       () => "No rivals. Not everyone collects them, and it is not a lack.",
+  pets:         () => "No animals.",
+  deceased:     () => "Nobody yet.",
+};
+
+function PeoplePanel({ state, apply, accent, confirm, openRel, toggleRel }) {
+  const s = state;
+  const [sub, setSub] = useState("family");
+  const entries = pplIn(s, sub);
+  const deep = { family: 1, friends: 1, romance: 1, relatives: 1, children: 1 };
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* eighteen labels cannot fit a phone row, so the bar scrolls rather
+          than truncating — same decision as the Health screen */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 12px 8px", borderBottom: `1px solid ${TH.line}`, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
+        {PPL_TABS.map((t) => {
+          const on = sub === t.id;
+          const n = pplIn(s, t.id).length;
+          return (
+            <button key={t.id} className="btn" onClick={() => setSub(t.id)} aria-pressed={on}
+              style={{ flex: "0 0 auto", padding: "6px 11px", borderRadius: 20, cursor: "pointer",
+                border: `1px solid ${on ? accent : TH.line}`, background: on ? accent + "18" : "transparent",
+                color: on ? accent : TH.muted, fontSize: 12, fontWeight: on ? 700 : 500, whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", gap: 5, transition: "color .2s, background .2s, border-color .2s" }}>
+              <span style={{ fontSize: 13, filter: on ? "none" : "grayscale(.5)" }}>{t.emoji}</span>
+              {t.label}
+              {n ? <span style={{ fontFamily: FONT_LEDGER, fontSize: 10.5, opacity: 0.7 }}>{n}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 16px", minHeight: 0 }}>
+        {entries.length === 0 ? (
+          <div style={{ fontSize: 13, opacity: 0.62, lineHeight: 1.6, padding: "6px 2px" }}>
+            {(PPL_EMPTY[sub] || (() => "Nobody here."))(s)}
+          </div>
+        ) : entries.map((e) => deep[e.store]
+          ? (
+            <div key={e.addr} style={{ position: "relative" }}>
+              <RelCard p={e.p} group={e.store} pkey={e.key} accent={accent} state={s} apply={apply}
+                openKey={openRel} onToggle={toggleRel} confirm={confirm} />
+              {/* the pin sits over RelCard rather than inside it, so the
+                  existing card keeps working untouched everywhere else */}
+              <button className="btn" aria-label={pplIsFav(s, e.addr) ? "Unpin" : "Pin to favourites"}
+                onClick={() => apply((st) => { pplToggleFav(st, e.addr); return st; })}
+                style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "2px 4px", color: pplIsFav(s, e.addr) ? TH.gold : TH.faint, filter: pplIsFav(s, e.addr) ? "none" : "grayscale(1)" }}>
+                {pplIsFav(s, e.addr) ? "⭐" : "☆"}
+              </button>
+            </div>
+          )
+          : <PplCard key={e.addr} entry={e} state={s} accent={accent} apply={apply} />
+        )}
+        {sub === "family" && entries.length > 0 && (
+          <div style={{ fontSize: 12, opacity: 0.5, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+            Time deepens bonds · talks reveal who people are · coming out is always your choice and your pace.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function HealthPanel({ state, apply, accent }) {
   const s = state;
@@ -18166,10 +18682,12 @@ function Game({ state, setState, onReset }) {
   if (!state.alive) return <Obituary state={state} onReset={onReset} accent={accent} />;
 
   const visibleOptions = state.pending ? state.pending.options.filter((o) => !o.cond || o.cond(state)) : [];
-  const rom = Object.entries(state.romance);
-  const activeRom = rom.filter(([, p]) => p.status !== "ex");
-  const exes = rom.filter(([, p]) => p.status === "ex");
-  const peopleCount = 2 + Object.keys(state.friends).length + activeRom.length;
+  /* The People tab badge counts everyone currently in the character's life,
+     from the same taxonomy the panel renders — so the number on the tab and
+     the number of cards behind it can never disagree. The old arithmetic
+     ("2 + friends + partners") predated most of the categories and undercounted
+     by roughly half once relatives, colleagues and neighbours existed. */
+  const peopleCount = pplAll(state).filter((x) => x.cat !== "deceased").length;
   const outEligible = isOutQueer(state);
   const gpa = Math.round(Object.values(state.education.subjects).reduce((a, b) => a + b, 0) / Object.keys(SUBJECTS).length);
   const feedView = state.feed.slice(-150);
@@ -18393,41 +18911,8 @@ function Game({ state, setState, onReset }) {
           </div>
         </div>
       ) : tab === "people" ? (
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-          {activeRom.length > 0 && (<>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.55, marginBottom: 10 }}>💘 Romance</div>
-            {activeRom.map(([k, p]) => <RelCard key={k} p={p} group="romance" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
-          </>)}
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.55, margin: "6px 0 10px" }}>Family</div>
-          <RelCard p={state.family.mom} group="family" pkey="mom" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
-          <RelCard p={state.family.dad} group="family" pkey="dad" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
-          {state.family.stepmom && <RelCard p={state.family.stepmom} group="family" pkey="stepmom" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />}
-          {state.family.stepdad && <RelCard p={state.family.stepdad} group="family" pkey="stepdad" accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />}
-          {Object.entries(state.family).filter(([k]) => k.startsWith("sib") || k.startsWith("stepsib")).map(([k, p]) => (
-            <RelCard key={k} p={{ ...p, role: sibAgeLabel(state, p) }} group="family" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
-          ))}
-          {Object.keys(state.relatives || {}).length > 0 && (<>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>🌳 Relatives</div>
-            {Object.entries(state.relatives).map(([k, p]) => (
-              <RelCard key={k} p={p} group="relatives" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />
-            ))}
-          </>)}
-          {Object.keys(state.children || {}).length > 0 && (<>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>👶 Children</div>
-            {Object.entries(state.children).map(([k, c]) => <RelCard key={k} p={{ ...c, role: childAgeLabel(state, c) }} group="children" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
-          </>)}
-          {Object.keys(state.friends).length > 0 && (<>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>Friends & companions</div>
-            {Object.entries(state.friends).map(([k, p]) => <RelCard key={k} p={p} group="friends" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
-          </>)}
-          {exes.length > 0 && (<>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", margin: "16px 0 10px", opacity: 0.55 }}>Past chapters</div>
-            {exes.map(([k, p]) => <RelCard key={k} p={p} group="romance" pkey={k} accent={accent} state={state} apply={apply} openKey={openRel} onToggle={toggleRel} confirm={confirm} />)}
-          </>)}
-          <div style={{ fontSize: 12, opacity: 0.5, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
-            Time deepens bonds · talks reveal who people are · coming out is always your choice and your pace.
-          </div>
-        </div>
+        <PeoplePanel state={state} apply={apply} accent={accent} confirm={confirm}
+          openRel={openRel} toggleRel={toggleRel} />
       ) : tab === "career" ? (
         <CareerPanel state={state} apply={apply} accent={accent} confirm={confirm} />
       ) : tab === "home" ? (
