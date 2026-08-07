@@ -26,8 +26,13 @@
  *      and rebindable keyboard shortcuts with a settings screen.
  * v11 — EVT P1: procedurally proposed events with a validator. Favourite-star
  *      re-render fix. IQ range widened to 75-180.
+ * v12 — Gender expression as its own axis for EVERY life: a derived style, an
+ *      era-scaled friction, three events, and a school panel that no longer
+ *      offers trans-only options to cisgender pupils. A same-sex partner is
+ *      standing evidence of the orientation, so coming out to them cannot
+ *      go badly.
  */
-const CACHE_NAME = "a-life-cache-v11";
+const CACHE_NAME = "a-life-cache-v12";
 const ASSETS = [
   "./",
   "./index.html",
