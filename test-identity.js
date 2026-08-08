@@ -30,6 +30,7 @@ function ok(name, cond, extra) {
   if (cond) { pass++; }
   else { fail++; console.log("  FAIL: " + name + (extra !== undefined ? "  " + JSON.stringify(extra).slice(0, 400) : "")); }
 }
+function l0(x) { return String(x || "").toLowerCase(); }
 function sec(t) { console.log("\n=== " + t + " ==="); }
 
 /* ───────────────────────── 1. vocabulary integrity ───────────────────────── */
@@ -525,6 +526,353 @@ sec("expression, and what counts as news");
   const block = SRC.slice(SRC.indexOf("const EXPR_POOL"), SRC.indexOf("POOL.push(...EXPR_POOL)"));
   ok("no expression event gates on gender identity", !/isQueerG\(/.test(block));
   ok("...nor on orientation", !/isQueerO\(/.test(block));
+}
+{
+  /* 5 · "X ALREADY KNOWS" MUST ASK ABOUT THE AXIS THEY KNOW ABOUT.
+     It offered "Ask them to use your name" to everybody, so a cisgender gay
+     man who had come out about his ORIENTATION was invited to ask his friend
+     to call him something else. Third instance of the same fault, which is why
+     it is asserted rather than merely fixed. */
+  const withFriend = (o, known) => {
+    H.seed(11);
+    const c = H.mkChar(Object.assign({ country: "United Kingdom", birthYear: 1995 }, o));
+    c.ageDays = Math.round(22 * 365.25);
+    c.friends = { f1: { name: "Julia", role: "Friend", rel: 70, acceptance: 70,
+                        known: [known], outDay: c.ageDays - 2000, g: "F" } };
+    return c;
+  };
+  const labels = (c, axis) => M.stxAlreadyOutMenu(c, "friends", "f1", axis).options.map((o) => o.label);
+
+  const gay = withFriend({ sex: "Male", gid: "cis", orient: "Gay" }, "outO");
+  gay.hidden.orientation = "Gay"; gay.discovered.orientation = true;
+  const gl = labels(gay, "orientation");
+  ok("a cis gay man is not asked to request a different name", gl.every((l) => !/call you|use your name/i.test(l)), gl);
+  ok("...nor to request pronouns", gl.every((l) => !/pronoun/i.test(l)), gl);
+  ok("...but the slot is still worth opening", gl.length >= 3, gl);
+  ok("...with something that follows from what he told her",
+    gl.some((l) => /wrong people/i.test(l)), gl);
+  ok("...and he can still ask how she feels", gl.some((l) => /how they actually feel/i.test(l)));
+
+  /* a partner he is actually seeing is the other thing that changes */
+  const seeing = withFriend({ sex: "Male", gid: "cis", orient: "Gay" }, "outO");
+  seeing.romance = { r1: { name: "Tom", role: "Partner", status: "dating", rel: 72, g: "M" } };
+  ok("...and can offer to introduce someone he is seeing",
+    labels(seeing, "orientation").some((l) => l.indexOf("Tom") > -1));
+  ok("...which is not offered when there is nobody",
+    labels(gay, "orientation").every((l) => !/like to meet/i.test(l)));
+
+  /* the trans case keeps everything it had */
+  const trans = withFriend({ sex: "Male", gid: "Trans woman" }, "outG");
+  trans.hidden.gender = "Trans woman"; trans.discovered.gender = true; trans.profile.usedName = "Elin";
+  const tl = labels(trans, "gender");
+  ok("a trans woman is asked about her name", tl.some((l) => l.indexOf("Elin") > -1), tl);
+  ok("...and her pronouns", tl.some((l) => /pronoun/i.test(l)), tl);
+  ok("...and being called it is worth something", (() => {
+    const d = JSON.parse(JSON.stringify(trans));
+    const opt = M.stxAlreadyOutMenu(trans, "friends", "f1", "gender").options.find((o) => l0(o.label).indexOf("elin") > -1);
+    H.seed(3); M.applyFx(d, opt.fx);
+    return d.stats.happiness > trans.stats.happiness;
+  })());
+  /* ...and, as at school, a name to ask for is a precondition for asking */
+  const noName = withFriend({ sex: "Male", gid: "Trans woman" }, "outG");
+  noName.hidden.gender = "Trans woman"; noName.discovered.gender = true;
+  ok("no chosen name, no name to ask for",
+    labels(noName, "gender").every((l) => !/call you/i.test(l)), labels(noName, "gender"));
+}
+{
+  /* 6 · A FIFTEEN-YEAR-OLD DOES NOT BUY THEIR OWN CLOTHES.
+     The presentation axis let a minor decide to dress differently and simply
+     do it. The game gives a teenager exactly zero money, so the only honest
+     routes are asking, improvising, or going without. */
+  const kid = (year, cls, o) => {
+    H.seed(7);
+    const c = H.mkChar(Object.assign({ country: "United Kingdom", birthYear: year - 15, cls: cls,
+                                       sex: "Male", gid: "cis" }, o || {}));
+    c.ageDays = Math.round(15 * 365.25);
+    c.hidden.expr = 74; c.emergent.pres = 22;      /* wants to move, has not */
+    return c;
+  };
+  const c = kid(2015, "Middle");
+  ok("a teenager has no money of their own", c.money === 0, c.money);
+  ok("...so they have to ask", M.exprMustAsk(c) === true);
+  ok("...and own nothing that goes that way yet", M.exprHasClothes(c) === false);
+
+  const names = M.exprClothesMenu(c).pending.options.map((o) => (o.card && o.card.name) || o.label);
+  ok("both parents can be asked, separately",
+    names.filter((n) => n.indexOf("Ask ") === 0).length === 2, names);
+  ok("improvising is always available", names.some((n) => /Piece it together/i.test(n)), names);
+  ok("buying is not offered to somebody with no money",
+    names.every((n) => !/Buy them yourself/i.test(n)), names);
+  ok("...but is offered to somebody who has it", (() => {
+    const rich = kid(2015, "Middle"); rich.money = M.EXPR_CLOTHES_COST * 3;
+    return M.exprClothesMenu(rich).pending.options
+      .some((o) => o.card && /Buy them yourself/i.test(o.card.name));
+  })());
+  ok("an adult who has left home is not asking anyone", (() => {
+    const a = kid(2015, "Middle"); a.ageDays = Math.round(31 * 365.25);
+    return M.exprMustAsk(a) === false;
+  })());
+
+  /* the ask has THREE outcomes. A flat yes/no made it dead in every decade
+     before about 2000, and "in the house, not out of it" is what happened. */
+  const spread = (ch) => {
+    const opt = M.exprClothesMenu(ch).pending.options.find((o) => o.card && o.card.name.indexOf("Ask ") === 0);
+    let yes = 0, half = 0, no = 0;
+    for (let i = 0; i < 400; i++) {
+      const d = JSON.parse(JSON.stringify(ch));
+      H.seed(3000 + i); M.applyFx(d, opt.fx);
+      if (d.flags.exprClothes) yes++; else if (d.flags.exprClothesDIY) half++; else no++;
+    }
+    return { yes: yes / 400, half: half / 400, no: no / 400 };
+  };
+  const now = spread(kid(2015, "Middle")), then = spread(kid(1958, "Middle"));
+  ok("asking in 2015 usually works", now.yes > 0.5, now);
+  ok("asking in 1958 usually does not", then.yes < 0.15, then);
+  ok("...but is never simply hopeless — a compromise is always on the table", then.half > 0.15, then);
+  ok("every ask resolves to exactly one of the three", (() => {
+    const t = now.yes + now.half + now.no;
+    return Math.abs(t - 1) < 1e-9;
+  })());
+  /* money is a real constraint, not only a line of prose */
+  const poor = spread(kid(2015, "Poor")), mid = spread(kid(2015, "Middle"));
+  ok("a poorer household says yes less often", poor.yes < mid.yes, [poor.yes, mid.yes]);
+
+  /* improvised presentation reads as improvised, so it costs something.
+     Measured on someone who has ACTUALLY MOVED — friction short-circuits to
+     zero for a conforming life, correctly, before any of this is reached. */
+  const moved = (f) => { const d = kid(2015, "Middle"); d.emergent.pres = 74; Object.assign(d.flags, f); return d; };
+  const diy = moved({ exprClothesDIY: 1 }), bought = moved({ exprClothes: 1 });
+  ok("clothes you own carry no penalty", M.exprClothesPenalty(bought) === 0);
+  ok("...improvised ones do", M.exprClothesPenalty(diy) > 0);
+  ok("...and that shows up as friction", M.exprFriction(diy) > M.exprFriction(bought),
+    [M.exprFriction(diy), M.exprFriction(bought)]);
+  ok("...but a conforming life is charged nothing either way",
+    M.exprFriction(kid(2015, "Middle")) === 0);
+
+  /* the school panel routes there instead of conjuring a wardrobe */
+  const pupil = kid(2015, "Middle");
+  pupil.education.stage = "high";
+  pupil.school = { stage: "high", type: Object.keys(M.SCHOOL_TYPES)[0], name: "Kestrel Hall",
+                   skips: 0, trouble: 0, classmates: {}, faculty: {} };
+  const dress = M.schoolPresentMenu(pupil).pending.options.find((o) => o.card && o.card.name === "How you dress here");
+  ok("the school panel says what is actually stopping you", /nothing to wear/i.test(dress.card.sub), dress.card.sub);
+  ok("...and choosing it opens the ask rather than moving anything", (() => {
+    const d = JSON.parse(JSON.stringify(pupil));
+    const before = M.presently(d);
+    H.seed(5); M.applyFx(d, dress.fx);
+    return d.pending && /clothes first/i.test(d.pending.title) && M.presently(d) === before;
+  })());
+  ok("...and once you have them, it moves you", (() => {
+    const d = JSON.parse(JSON.stringify(pupil));
+    d.flags.exprClothes = 1;
+    const before = M.presently(d);
+    H.seed(5); M.applyFx(d, M.schoolPresentMenu(d).pending.options
+      .find((o) => o.card && o.card.name === "How you dress here").fx);
+    return M.presently(d) > before;
+  })());
+
+  /* Gotcha #2 — the builder is handed a clone that gets discarded */
+  ok("the menu builder mutates nothing", (() => {
+    const d = kid(2015, "Middle");
+    const snap = JSON.stringify(d);
+    M.exprClothesMenu(d);
+    return JSON.stringify(d) === snap;
+  })());
+}
+sec("school accommodations actually happen");
+{
+  /* 7 · THE INVERSE OF GOTCHA #2, AND MUCH WORSE.
+     resolveRequest opened with pClone() like the builders around it, but every
+     call site reads `st.pending = resolveRequest(st, …).pending` — so the
+     popup survived and the GRANT did not. The head said yes, the scene said
+     yes, and nothing changed. A resolver is not a builder. */
+  const pupil = (year, o) => {
+    H.seed(21);
+    const c = H.mkChar(Object.assign({ country: "United Kingdom", birthYear: year - 15,
+                                       sex: "Male", gid: "Trans woman", cls: "Middle" }, o || {}));
+    c.ageDays = Math.round(15 * 365.25);
+    c.hidden.gender = "Trans woman"; c.discovered.gender = true; c.profile.usedName = "Elin";
+    c.education.stage = "high";
+    c.school = { stage: "high", type: Object.keys(M.SCHOOL_TYPES)[0], name: "Kestrel Hall",
+      skips: 0, trouble: 0, classmates: {}, faculty: {
+        head: { name: "Dr Vance", beliefs: 92, professionalism: 95, empathy: 88, rel: 82,
+                ruleRespect: 70, legalFear: 70, religious: 5 },
+        t1:   { name: "Mr Doyle", subject: "eng", style: "warm", beliefs: 88, professionalism: 82,
+                empathy: 90, rel: 78, ruleRespect: 60, legalFear: 50, religious: 5 },
+      } };
+    return c;
+  };
+
+  const c = pupil(2015);
+  const out = M.resolveRequest(c, "name", "formal", null);
+  ok("the resolver works on the live state, not a copy", out === c);
+  ok("a granted request is recorded", c.school.trans && c.school.trans.granted.name === true,
+    c.school.trans && c.school.trans.granted);
+  ok("...and actually changes the register", c.school.present && c.school.present.name === "chosen",
+    c.school.present);
+  ok("...and the school panel now agrees with the scene", (() => {
+    const opt = M.schoolPresentMenu(c).pending.options.find((o) => o.card && o.card.name === "Name at school");
+    return opt && /they call you Elin/i.test(opt.card.sub);
+  })());
+  ok("...and it survives a save round-trip", (() => {
+    const round = JSON.parse(JSON.stringify(c));
+    return round.school.trans.granted.name === true && round.school.present.name === "chosen";
+  })());
+  ok("escalation is a resolver too", (() => {
+    const d = pupil(2015);
+    return M.escalateRequest(d, "restroom") === d;
+  })());
+
+  /* 8 · A TEACHER DOES NOT ISSUE STUDENT ID CARDS.
+     ...and is still worth asking, which is the other half of it. */
+  ok("a teacher can decide what they call you in their own room", M.stxTeacherCanGrant("pronouns"));
+  ok("...and where you sit in it", M.stxTeacherCanGrant("lists"));
+  for (const k of ["name", "id", "email", "documents", "uniform", "restroom", "changing"]) {
+    ok("a teacher cannot grant " + k, M.stxTeacherCanGrant(k) === false);
+  }
+  {
+    const d = pupil(2015);
+    const scene = M.resolveRequest(d, "documents", "teacher", "t1");
+    ok("asking a teacher for the exam certificate is not a refusal",
+      !(d.school.trans && d.school.trans.refused && d.school.trans.refused.documents),
+      d.school.trans && d.school.trans.refused);
+    ok("...nor a grant", !(d.school.trans.granted && d.school.trans.granted.documents));
+    ok("...it says whose it is to give", /not mine to give/i.test(scene.pending.text), scene.pending.text);
+    const labels = scene.pending.options.map((o) => o.label);
+    ok("...and they can be asked to back you", labels.some((l) => /back you/i.test(l)), labels);
+    ok("...and asked what they would do", labels.some((l) => /what they'd do/i.test(l)), labels);
+
+    /* backing is the mechanically interesting part: it is how these were won */
+    ok("nobody is behind you yet", M.stxBacking(d, "documents") === 0);
+    H.seed(3); M.applyFx(d, scene.pending.options.find((o) => /back you/i.test(o.label)).fx);
+    ok("backing persists", M.stxBacking(d, "documents") === 1, d.school.trans.backing);
+    ok("...and improves the odds with somebody who can decide", M.stxBackingBonus(d, "documents") > 0);
+    H.seed(3); M.applyFx(d, M.resolveRequest(d, "documents", "teacher", "t1")
+      .pending.options.find((o) => /already backed/i.test(o.label) || /back you/i.test(o.label)).fx);
+    ok("...and the same teacher cannot sign twice", M.stxBacking(d, "documents") === 1, d.school.trans.backing);
+    /* and the menu says so up front rather than letting the player find out */
+    const chans = M.channelMenu(d, "documents").pending.options
+      .filter((o) => o.card).map((o) => o.card.sub);
+    ok("the channel menu warns that a teacher can't decide this",
+      chans.some((x) => /can't decide/i.test(x)), chans);
+  }
+}
+sec("asexuality is about attraction, not capability");
+{
+  const partner = (orient, disc, status, rel) => {
+    H.seed(14);
+    const c = H.mkChar({ country: "United Kingdom", birthYear: 1995, sex: "Female",
+                         gid: "cis", orient: orient });
+    c.ageDays = Math.round(27 * 365.25);
+    c.hidden.orientation = orient; c.discovered.orientation = disc;
+    c.romance = { r1: { name: "Ana", role: "Partner", status: status, rel: rel,
+                        kindness: 70, g: "F", chem: 60 } };
+    return c;
+  };
+  const labels = (c) => M.makeLoveMenu(c, "r1").pending.options.map((o) => o.label).filter(Boolean);
+
+  ok("asexual is recognised", M.isAce(partner("Asexual", true, "dating", 65)));
+  ok("demisexual is on the same spectrum", M.isAce(partner("Demisexual", true, "dating", 65)));
+  ok("gray-asexual too", M.isAce(partner("Gray-asexual", true, "dating", 65)));
+  ok("bisexual is not", M.isAce(partner("Bisexual", true, "dating", 65)) === false);
+
+  /* the stance is DERIVED — nothing stored, so no newCharacter() draw was
+     added and no seeded fixture in the repo moved (the trap that silently
+     cost test-edu-s07 twelve assertions once already) */
+  const a = partner("Asexual", true, "dating", 65);
+  ok("stance is derived, not stored", JSON.stringify(a).indexOf("aceStance") === -1);
+  ok("...and is stable for the same life", M.aceStance(a) === M.aceStance(a));
+  ok("...and is one of the three real ones",
+    ["repulsed", "neutral", "favourable"].indexOf(M.aceStance(a)) !== -1, M.aceStance(a));
+  ok("an allosexual character has no stance", M.aceStance(partner("Bisexual", true, "dating", 65)) === null);
+  ok("across many lives all three stances occur", (() => {
+    const seen = new Set();
+    for (let i = 0; i < 60; i++) {
+      H.seed(400 + i);
+      const c = H.mkChar({ country: "Sweden", birthYear: 1990, orient: "Asexual" });
+      c.hidden.orientation = "Asexual";
+      seen.add(M.aceStance(c));
+    }
+    return seen.size === 3;
+  })());
+
+  /* THE BUG: the scene was identical to everyone else's */
+  const ace = labels(partner("Asexual", true, "dating", 65));
+  const allo = labels(partner("Bisexual", true, "dating", 65));
+  ok("an asexual character does not get the allosexual scene verbatim",
+    JSON.stringify(ace) !== JSON.stringify(allo), ace);
+  ok("...the evening is offered on their terms", ace.some((l) => /no further/i.test(l)), ace);
+  /* NOT the mirror error — going further is still available, because people do */
+  ok("...going further is still possible", ace.some((l) => /Go further|Go along/i.test(l)), ace);
+  ok("...and there is a conversation to have about it",
+    ace.some((l) => /what you each want/i.test(l)), ace);
+
+  /* demisexual is not a weaker asexual: attraction arrives with the bond */
+  const early = partner("Demisexual", true, "dating", 60);
+  const bonded = partner("Demisexual", true, "married", 84);
+  ok("a demisexual early on is not yet drawn", M.aceAttracted(early, early.romance.r1) === false);
+  ok("...and after years of a bond, is", M.aceAttracted(bonded, bonded.romance.r1) === true);
+  ok("...and then gets the ordinary scene", labels(bonded).some((l) => /Spend the night together/i.test(l)));
+  ok("an asexual character is not 'unlocked' by a long marriage", (() => {
+    const long = partner("Asexual", true, "married", 92);
+    return M.aceAttracted(long, long.romance.r1) === false;
+  })());
+  ok("...and 'not yet' is worded differently from 'not ever'", (() => {
+    const t1 = M.makeLoveMenu(early, "r1").pending.text;
+    const t2 = M.makeLoveMenu(partner("Asexual", true, "dating", 60), "r1").pending.text;
+    return t1 !== t2 && /has not arrived|eventually/i.test(t1);
+  })());
+
+  /* undiscovered means no word for it yet — the confusion is the content */
+  const unknown = partner("Asexual", false, "dating", 65);
+  const ul = labels(unknown);
+  ok("without the word, the scene does not explain them to themselves",
+    ul.every((l) => !/no further/i.test(l)), ul);
+  ok("...but the confusion is available", ul.some((l) => /isn't landing/i.test(l)), ul);
+
+  /* the mixed-orientation conversation turns on the PARTNER, not on conceding */
+  ok("a kind partner makes the conversation go well", (() => {
+    const d = partner("Asexual", true, "dating", 78); d.romance.r1.kindness = 85;
+    const opt = M.makeLoveMenu(d, "r1").pending.options.find((o) => /what you each want/i.test(o.label || ""));
+    H.seed(2); M.applyFx(d, opt.fx);
+    return d.romance.r1.rel > 78;
+  })());
+  ok("an unkind one does not", (() => {
+    const d = partner("Asexual", true, "dating", 55); d.romance.r1.kindness = 20;
+    const opt = M.makeLoveMenu(d, "r1").pending.options.find((o) => /what you each want/i.test(o.label || ""));
+    H.seed(2); M.applyFx(d, opt.fx);
+    return d.romance.r1.rel < 55;
+  })());
+  /* going along with it costs a repulsed character more than a neutral one */
+  ok("going along with it costs, and costs most where it should", (() => {
+    const mk = (stance) => {
+      for (let i = 0; i < 200; i++) {
+        H.seed(600 + i);
+        const c = H.mkChar({ country: "Sweden", birthYear: 1990, orient: "Asexual" });
+        c.ageDays = Math.round(27 * 365.25);
+        c.hidden.orientation = "Asexual"; c.discovered.orientation = true;
+        c.romance = { r1: { name: "Ana", status: "dating", rel: 70, kindness: 60, g: "F" } };
+        if (M.aceStance(c) === stance) return c;
+      }
+      return null;
+    };
+    const rep = mk("repulsed"), neu = mk("neutral");
+    if (!rep || !neu) return false;
+    const cost = (c) => {
+      const d = JSON.parse(JSON.stringify(c));
+      const opt = M.makeLoveMenu(c, "r1").pending.options.find((o) => /Go further|Go along/i.test(o.label || ""));
+      H.seed(9); M.applyFx(d, opt.fx);
+      return c.stats.happiness - d.stats.happiness;
+    };
+    return cost(rep) > cost(neu) && cost(neu) > 0;
+  })());
+  /* Gotcha #2 again — this one IS a builder */
+  ok("the intimacy menu builder mutates nothing", (() => {
+    const d = partner("Asexual", true, "dating", 65);
+    const snap = JSON.stringify(d);
+    M.makeLoveMenu(d, "r1");
+    return JSON.stringify(d) === snap;
+  })());
 }
 
 console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");

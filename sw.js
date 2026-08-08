@@ -31,8 +31,14 @@
  *      offers trans-only options to cisgender pupils. A same-sex partner is
  *      standing evidence of the orientation, so coming out to them cannot
  *      go badly.
+ * v13 — EVT P2: one provider seam, exactly one fetch in the program, prose-only
+ *      realisation against a fixture in tests. School accommodations now
+ *      actually persist (a resolver was cloning its own result away). Teachers
+ *      cannot grant what they have no authority over, but can back you.
+ *      Asking your parents for the clothes. Asexuality reaches the intimacy
+ *      scene at last.
  */
-const CACHE_NAME = "a-life-cache-v12";
+const CACHE_NAME = "a-life-cache-v13";
 const ASSETS = [
   "./",
   "./index.html",

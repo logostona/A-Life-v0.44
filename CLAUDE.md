@@ -167,6 +167,36 @@ no feelings about were compromises they had settled for. The fix is never `if (t
 `EXPR_POOL` is gated on **neither `isQueerG` nor `isQueerO`**, and `test-identity.js` asserts that
 against the source text so a later edit cannot quietly re-couple them.
 
+The same rule caught `stxAlreadyOutMenu`, which offered "Ask them to use your name" to everybody —
+so a cisgender gay man who had come out about his **orientation** was invited to ask his friend to
+call him something else. The asks now follow the axis that person actually knows about.
+
+### Asexuality is about attraction, not about capability
+
+`makeLoveMenu` ignored the orientation axis entirely, which quietly said the label meant nothing.
+The fix is not the mirror error: "asexual people cannot have sex" is as wrong as the bug. What
+varies is **stance** — `aceStance` derives sex-repulsed / neutral / favourable from the world seed
+(derived, never stored, because one extra `Math.random()` in `newCharacter` reshuffles every
+fixture in the repo). Going further is still offered, and costs a repulsed character more than a
+neutral one, because that is the honest version of a thing many people do.
+
+**Demisexual is not a weaker asexual.** Attraction arrives with the bond, so `aceAttracted` gates
+on the relationship (`ACE_DEMI_REL`, plus a serious status) rather than on a stance — and "not
+yet" is worded differently from "not ever". Getting that wrong is the same fault as handing a
+grayromantic character demiromantic's text, which this project has already shipped once.
+
+**Undiscovered means no word for it yet**, so the scene reads as confusion rather than clarity and
+nudges the discovery beat instead of pre-empting it.
+
+**Who buys the clothes.** `exprClothesMenu` exists because the presentation axis let a
+fifteen-year-old decide to dress differently and simply do it. The game gives a teenager
+literally zero money, so the wardrobe is not theirs to change — it is asked for (each parent
+separately, since "which one do I ask" is the actual decision), bought, or improvised. The ask
+has **three** outcomes, not two: a flat yes/no made it dead in every decade before ~2000, and
+"in the house, yes; out of the house, let's see" is what actually happened. The compromise
+lands on `flags.exprClothesDIY`, which feeds `exprClothesPenalty` into `exprFriction` —
+improvised reads as improvised.
+
 **A same-sex partner is standing evidence of the orientation.** `comeOutNews(s, group, key)` returns
 `{orientation, gender, any, evidenced}`; when `evidenced` is true the orientation is not news to that
 person and `comeOutReact` cannot produce a bad outcome — the game was breaking up gay couples over a
@@ -309,6 +339,28 @@ it, or the block is unterminated and the stripper cannot match it.
 **Gotcha #2 — menu builders must not mutate.** They are handed a clone that gets discarded, so a
 write there is silent data loss with nothing to report it. Builders return; options mutate in
 `fx.run`.
+
+**Gotcha #2b — and a RESOLVER must not clone.** The same rule read backwards, and it cost more.
+`resolveRequest` opened with `pClone(state)` like the builders around it, but every one of its
+call sites reads
+
+```js
+st.pending = resolveRequest(st, reqKey, ck, null).pending;
+```
+
+— which keeps the popup and drops the clone. So `tr.granted[reqKey]`, `applyGrant`'s write to
+`school.present`, the happiness and every stx note landed on an object discarded one statement
+later: **the head granted the accommodation, the scene said so, and nothing changed.** Ask which
+one you are writing. A builder is called for its popup; a resolver decides what happened and
+takes the live draft, which is safe precisely because it is only ever called from inside
+`fx.run`. `escalateRequest` had the identical bug.
+
+**Authority is modelled, not assumed.** A classroom teacher cannot change the register, issue an
+ID card or sign a graduation certificate — `STX_TEACHER_GRANTS` is the list of what they *can*
+decide (their own address of you, their own seating plan). Asking them for anything else is not
+a refusal and not a grant: it is `stxBacking`, one adult at a time, worth `stxBackingBonus` when
+you later ask somebody who can actually decide. That is how these were really won, and it is why
+the teacher channel is worth walking even though it grants nothing.
 
 **Gotcha #6 — never assert on step counts.** A green 33,600-step run once had nobody aging a
 day. Assert observable outcomes.
