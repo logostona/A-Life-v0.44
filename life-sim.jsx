@@ -13673,7 +13673,23 @@ function evtValidate(proposal, realisation) {
 
       if (!val || typeof val !== "object") continue;
       const out = {};
-      for (const leaf in val) {
+      for (const rawLeaf in val) {
+        /* EVT P3 · SLOT ADDRESSING. A realiser writes "$friend", never "f2".
+           Two reasons, and the second is the load-bearing one:
+             - the model is never handed an internal identifier, so it cannot
+               learn to guess one;
+             - a realisation addressed by SLOT is not bound to one life, which
+               is what lets a validated realisation be cached and reused. That
+               reuse is how effects reach a popup synchronously, before it is
+               shown, instead of being swapped in underneath a player who is
+               already reading the options.
+           A slot that was not cast is dropped, never left dangling. */
+        let leaf = rawLeaf;
+        if (rawLeaf.charAt(0) === "$") {
+          const c = (proposal.cast || {})[rawLeaf.slice(1)];
+          if (!c) continue;
+          leaf = c.key;
+        }
         /* 3 · cast allowlist — a relationship key is legal only because the
            proposer cast that person into this scene */
         if (EVT_REL_GROUPS[key] && !castKeys[EVT_REL_GROUPS[key] + ":" + leaf]) continue;
@@ -13682,7 +13698,7 @@ function evtValidate(proposal, realisation) {
         if (!band) continue;                                  // unbanded is unauthorised
         /* 4 · clamp, never reject — an overreaching realiser still produces a
            playable scene, it just does not get to overreach */
-        const n = evtClamp(val[leaf], band);
+        const n = evtClamp(val[rawLeaf], band);
         if (n !== null && n !== 0) out[leaf] = Math.round(n * 100) / 100;
       }
       if (Object.keys(out).length) fx[key] = out;
@@ -13742,6 +13758,14 @@ function evtMaybeFire(s) {
      the popup is already on screen; P3 will additionally run whatever comes
      back through evtValidate, falling back to exactly this on any failure. */
   evtRemember(proposal);
+  /* P3: if a realisation of this SHAPE is already cached, bind it to this
+     proposal and use it — synchronously, here, before any popup exists. That
+     is the whole reason the cache is keyed on the situation rather than on the
+     event: effects can only ever arrive before the player sees the options,
+     never underneath them. A miss is the ordinary case and plays the
+     hand-written fallback. */
+  const realised = evtCachedFor(proposal);
+  if (realised) return realised;
   const ev = proposal.fallback;
   return { id: proposal.id, emoji: ev.emoji, title: ev.title, text: ev.text, options: ev.options, generated: 1 };
 }
@@ -18777,6 +18801,165 @@ function evtSanitiseProse(raw, names) {
   return t;
 }
 
+/* ── EVT P3 · THE MODEL CHOOSES EFFECTS ───────────────────────────────────
+   P2 could only change the words. P3 lets a realisation carry options and
+   their effects, which is the point at which P1's validator stops being
+   precautionary and starts being the only thing between model output and the
+   save file. Nothing about the validator changes here; it was built for this.
+
+   THE PROBLEM P3 ACTUALLY HAS, AND IT IS NOT SAFETY.
+   advance() must not await, so a realisation arrives after its popup is on
+   screen. Swapping the WORDS under a reader is untidy; swapping the BUTTONS
+   under them is a bug — they may have already read three options and reached
+   for the second one. So a full realisation is never applied to a popup that
+   is already up.
+
+   Instead it goes in a cache, slot-addressed and therefore life-agnostic, and
+   is applied SYNCHRONOUSLY at fire time to a later event of the same shape.
+   A situation the model has not seen yet plays its hand-written fallback and
+   is realised in the background for next time. That makes the cache
+   load-bearing rather than an optimisation — a piece of P4 pulled forward,
+   because P3 is not honestly shippable without it. */
+
+/* What the model is asked to fill in. The bands come from the KIND, so they
+   are still written as "$friend" — the model never sees f2. */
+function evtEffectsPrompt(proposal) {
+  if (!proposal || !proposal.fallback) return null;
+  const kind = EVT_BY_ID[proposal.kind];
+  if (!kind) return null;
+  const fb = proposal.fallback;
+  const [minOpt, maxOpt] = proposal.optionCount || [2, 3];
+  const bands = kind.bands || {};
+  const lines = Object.keys(bands).map((k) => `  "${k}": between ${bands[k][0]} and ${bands[k][1]}`);
+  const cast = evtCastList(proposal);
+  /* Do not ask for a trade-off a kind cannot express. `smallKindness` has
+     every band pinned at or above zero and may offer a single choice — telling
+     that prompt "different choices should cost different things" is an
+     instruction it cannot satisfy, and a model handed an impossible constraint
+     invents something to satisfy it with. */
+  const canDiffer = maxOpt > 1 && Object.keys(bands).some((k) => bands[k][0] < 0);
+  /* An empty PEOPLE PRESENT list is worse than no line at all: it reads as an
+     invitation to fill it, one sentence before being told not to. */
+  const situation = Object.assign({}, proposal.situation || {});
+  if (!situation.recentFeed || !situation.recentFeed.length) delete situation.recentFeed;
+  return [
+    "You are writing one short scene for a life-simulation game, and choosing what it costs.",
+    "",
+    "VOICE: second person, dry and unsentimental, concrete specific detail.",
+    "No moral, no saccharine resolution, no summing up. Two to four sentences.",
+    "",
+    "THE SCENE, as one writer already handled it: " + fb.text,
+    "Write a DIFFERENT scene of the same shape. Do not reuse its sentences.",
+    "",
+    "SITUATION: " + JSON.stringify(situation),
+    cast.length
+      ? "PEOPLE PRESENT (use these slot names, never invent a person): " +
+        JSON.stringify(cast.map((c) => ({ slot: "$" + c.slot, name: c.name })))
+      : "NOBODY ELSE IS IN THIS SCENE. Do not name or introduce a person.",
+    "",
+    minOpt === maxOpt
+      ? `Give exactly ${minOpt} choice${minOpt === 1 ? "" : "s"}. Each needs a label of at most 60 characters`
+      : `Give between ${minOpt} and ${maxOpt} choices. Each needs a label of at most 60 characters`,
+    "and an `fx` object drawn ONLY from these keys, each within the stated range:",
+    lines.join("\n"),
+    "",
+    "Omit any key you do not want to move. At least one choice must do something.",
+    canDiffer
+      ? "Different choices should cost different things — that is the whole of the decision."
+      : "Nothing here goes badly. The choices differ in what they are, not in what they cost.",
+    "",
+    'Respond with ONLY this JSON, no prose, no markdown fence:',
+    '{"text":"...","options":[{"label":"...","fx":{...}}]}',
+  ].join("\n");
+}
+
+/* Models wrap JSON in fences, in apologies, in both. Pull the first balanced
+   object out of whatever came back. Never throws; null means "use the
+   fallback", which is the same answer every other failure gives. */
+function evtParseJSON(raw) {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim().replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/, "");
+  const start = t.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (esc) { esc = false; continue; }
+    if (ch === "\\") { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        try { const o = JSON.parse(t.slice(start, i + 1)); return o && typeof o === "object" ? o : null; }
+        catch (e) { return null; }
+      }
+    }
+  }
+  return null;
+}
+
+/* Coarse on purpose: a "friend drifting in your thirties" realisation is
+   reusable across lives and across saves. Deliberately excludes names and
+   anything else life-specific, which is only sound because the realisation
+   it keys is slot-addressed. */
+function evtSituationKey(proposal) {
+  return proposal.kind + "|" + Math.floor((proposal.situation.age || 0) / 10) +
+         "|" + evtCastList(proposal).map((c) => c.slot).sort().join(",");
+}
+
+const EVT_FULL_CAP = 16;
+const _evtFullCache = new Map();
+/* Stored slot-addressed and UNBOUND. Binding happens per proposal, through
+   the validator, every time it is used — so a cached realisation can never
+   carry another life's relationship keys into this one. */
+function evtRememberRealisation(proposal, realisation) {
+  if (!proposal || !realisation) return;
+  _evtFullCache.set(evtSituationKey(proposal), realisation);
+  while (_evtFullCache.size > EVT_FULL_CAP) _evtFullCache.delete(_evtFullCache.keys().next().value);
+}
+/* Exists for the suite. Without it, a realisation cached by one block leaks
+   into the next and assertions quietly become order-dependent — which is the
+   shape of bug this repo has already paid for elsewhere. */
+function evtCacheReset() { _evtFullCache.clear(); _evtProseCache.clear(); _evtProposals.clear(); }
+
+/* Synchronous, and therefore safe to call from evtMaybeFire. Returns a fully
+   validated event, or null — and null is the ordinary case. */
+function evtCachedFor(proposal) {
+  const hit = _evtFullCache.get(evtSituationKey(proposal));
+  if (!hit) return null;
+  try { return evtValidate(proposal, hit); } catch (e) { return null; }
+}
+
+/* The background half. Fills the cache for NEXT time; never touches the popup
+   that is currently on screen. */
+const _evtFullInFlight = new Set();
+function evtRealiseAhead(s, proposal) {
+  if (!proposal || !llmAvailable(s)) return;
+  const key = evtSituationKey(proposal);
+  if (_evtFullCache.has(key) || _evtFullInFlight.has(key)) return;
+  if (Date.now() - _llmState.lastCallAt < AI_NARRATION_CONFIG.minIntervalMs) return;
+  const prompt = evtEffectsPrompt(proposal);
+  if (!prompt) return;
+  _evtFullInFlight.add(key);
+  const names = evtKnownNames(s, proposal);
+  llmComplete({ prompt: prompt, schema: "event", maxTokens: 420, state: s }).then((out) => {
+    _evtFullInFlight.delete(key);
+    const parsed = evtParseJSON(out && out.text);
+    if (!parsed) return;
+    /* the prose half of a full realisation is held to the SAME standard the
+       prose-only path is — including "did not name somebody who is not here" */
+    const prose = evtSanitiseProse(parsed.text, names);
+    if (!prose) return;
+    parsed.text = prose;
+    /* validate once now, against this proposal, purely to find out whether it
+       is usable at all. The stored copy stays unbound. */
+    if (!evtValidate(proposal, parsed)) return;
+    evtRememberRealisation(proposal, parsed);
+  }).catch(() => { _evtFullInFlight.delete(key); });
+}
+
 /* Takes a STRING. See the note above — this signature is the safety property.
    Options come from the proposal's own fallback, by reference, always. */
 function evtRealiseProse(proposal, prose) {
@@ -20744,10 +20927,16 @@ function Game({ state, setState, onReset }) {
        alone. Both paths land in the same place: aiText, a display field, set
        after the hand-written text is already on screen. */
     if (state.pending.generated) {
+      /* P2: upgrade the WORDS of the popup that is up. Safe, because aiText is
+         a display field and the options do not move. */
       evtEnhance(state, state.pending, (text) => {
         setState((prev) => (prev.pending && prev.pending.id === state.pending.id
           ? { ...prev, pending: { ...prev.pending, aiText: text } } : prev));
       });
+      /* P3: and, separately, bake a full realisation of this SHAPE for the
+         next event like it. Nothing it produces touches the popup on screen —
+         evtMaybeFire picks it up synchronously, before the next one is shown. */
+      evtRealiseAhead(state, _evtProposals.get(state.pending.id));
       return;
     }
     enhancePopupNarration(state, state.pending, (text) => {

@@ -37,8 +37,12 @@
  *      cannot grant what they have no authority over, but can back you.
  *      Asking your parents for the clothes. Asexuality reaches the intimacy
  *      scene at last.
+ * v14 — EVT P3: generated events can carry their own options and effects now,
+ *      slot-addressed and bound through the P1 validator. Applied at fire time
+ *      from a situation cache, so the choices never change under a player who
+ *      is already reading them.
  */
-const CACHE_NAME = "a-life-cache-v13";
+const CACHE_NAME = "a-life-cache-v14";
 const ASSETS = [
   "./",
   "./index.html",

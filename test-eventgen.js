@@ -538,6 +538,287 @@ sec("P2 · the provider seam");
   /* and the fx that came out the other side is still declarative */
   ok("no option gained a run", ev.options.every((o) => !o.fx || o.fx.run === undefined));
 }
+/* ══════════════════════════════════════════════════════════════════════════
+   EVT P3 · THE MODEL CHOOSES EFFECTS
+
+   This is where the validator stops being precautionary. Everything below
+   assumes the realiser is hostile, confused, or simply bad at arithmetic, and
+   checks that the game is unharmed in each case.
+   ═══════════════════════════════════════════════════════════════════════ */
+sec("P3 · the model chooses effects");
+{
+  M.evtCacheReset();
+  const s = only(at(34), "friendDrift");
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  const prop = proposeFor(s);
+  ok("a proposal to realise fully", !!prop);
+
+  const prompt = M.evtEffectsPrompt(prop);
+  ok("the effects prompt exists", typeof prompt === "string" && prompt.length > 200);
+  ok("...and states every band with its range", (() => {
+    const b = M.EVT_BY_ID.friendDrift.bands;
+    return Object.keys(b).every((k) => prompt.indexOf(k) > -1 && prompt.indexOf(String(b[k][1])) > -1);
+  })(), prompt.slice(0, 200));
+  ok("...and asks for slot names", prompt.indexOf("$friend") > -1);
+  /* the model is never handed an internal identifier, so it cannot learn to
+     guess one — and a realisation that names one is not reusable anyway */
+  ok("...and never leaks the real store key", prompt.indexOf('"f2"') === -1 && !/\bf2\b/.test(prompt), prompt);
+  ok("...and states the option count", /between 2 and 3 choices/.test(prompt));
+  ok("...and forbids inventing a person", /never invent a person/i.test(prompt));
+  ok("...and asks the choices to differ", /different things/i.test(prompt));
+  ok("...and does not ask it to copy the fallback", /Do not reuse its sentences/i.test(prompt));
+  ok("...and drops an empty recentFeed rather than shipping noise", prompt.indexOf("recentFeed") === -1, prompt);
+
+  /* Both of these were found by READING the six prompts, not by any assertion.
+     A prompt is content, and it goes through the same gate the prose does. */
+  const promptFor = (id) => {
+    for (const age of [12, 17, 24, 34, 45, 58, 70]) {
+      const c = at(age);
+      c.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+      c.romance = { r1: { name: "Ana", role: "Partner", status: "married", rel: 70, g: "F" } };
+      for (const k of M.EVT_KINDS) if (k.id !== id) c.flags["evt_" + k.id] = c.ageDays;
+      const p = proposeFor(c);
+      if (p && p.kind === id) return M.evtEffectsPrompt(p);
+    }
+    return null;
+  };
+  /* 1 · never ask for a trade-off the bands cannot express. smallKindness
+     pins every band at or above zero, so "different choices should cost
+     different things" is an instruction it cannot satisfy — and a model
+     handed an impossible constraint invents something to satisfy it with. */
+  const kind1 = promptFor("smallKindness");
+  if (kind1) {
+    ok("a kind with no downside is not asked for a trade-off",
+      !/cost different things/i.test(kind1), kind1);
+    ok("...it is told plainly that nothing goes badly", /Nothing here goes badly/i.test(kind1));
+  }
+  const kind2 = promptFor("moneyPinch");
+  if (kind2) {
+    /* 2 · an empty PEOPLE PRESENT list reads as an invitation to fill it,
+       one sentence before being told not to */
+    ok("a scene with no cast does not advertise an empty list",
+      kind2.indexOf("PEOPLE PRESENT") === -1, kind2);
+    ok("...it says so outright", /NOBODY ELSE IS IN THIS SCENE/.test(kind2));
+    ok("...and a kind WITH a downside still gets the trade-off line",
+      /cost different things/i.test(kind2));
+  }
+  /* every kind's prompt must be well-formed, not just the two above */
+  for (const k of M.EVT_KINDS) {
+    const pr = promptFor(k.id);
+    if (!pr) continue;
+    ok(k.id + ": prompt names every band", Object.keys(k.bands).every((b) => pr.indexOf(b) > -1));
+    ok(k.id + ": prompt has no undefined in it", !/undefined|\[object/.test(pr), pr.slice(0, 160));
+    ok(k.id + ": prompt asks for JSON only", /no prose, no markdown fence/.test(pr));
+  }
+}
+{
+  /* 2 · PARSING WHAT MODELS ACTUALLY SEND */
+  const body = '{"text":"ok","options":[]}';
+  ok("bare JSON parses", M.evtParseJSON(body).text === "ok");
+  ok("a fenced block parses", M.evtParseJSON("```json\n" + body + "\n```").text === "ok");
+  ok("a preamble is skipped", M.evtParseJSON("Sure! Here you go:\n" + body).text === "ok");
+  ok("trailing chatter is ignored", M.evtParseJSON(body + "\n\nLet me know if you'd like changes.").text === "ok");
+  ok("nested objects survive", M.evtParseJSON('{"a":{"b":{"c":1}},"text":"ok"}').text === "ok");
+  ok("a brace inside a string does not end the object",
+    M.evtParseJSON('{"text":"a { brace }","options":[]}').text === "a { brace }");
+  ok("an escaped quote does not end the string",
+    M.evtParseJSON('{"text":"she said \\"no\\"","options":[]}').text === 'she said "no"');
+  ok("truncated JSON is null, not a throw", M.evtParseJSON('{"text":"ok","opt') === null);
+  ok("prose with no JSON is null", M.evtParseJSON("I'd rather not.") === null);
+  ok("a non-string is null", M.evtParseJSON(null) === null && M.evtParseJSON(42) === null);
+  ok("an array at top level is null", M.evtParseJSON("[1,2,3]") === null);
+}
+{
+  /* 3 · SLOT ADDRESSING BINDS PER PROPOSAL — the property that makes a
+     realisation reusable, and the one that would be catastrophic if wrong:
+     a realisation cached from one life must never carry that life's
+     relationship keys into another. */
+  M.evtCacheReset();
+  const mk = (fkey, fname) => {
+    const c = only(at(34), "friendDrift");
+    c.friends = {}; c.friends[fkey] = { name: fname, role: "Friend", rel: 41, g: "F" };
+    return c;
+  };
+  const a = mk("f2", "Kim"), b = mk("f7", "Ros");
+  const pa = proposeFor(a), pb = proposeFor(b);
+  ok("two lives, two different store keys", pa.cast.friend.key !== pb.cast.friend.key,
+    [pa.cast.friend.key, pb.cast.friend.key]);
+
+  const realisation = { text: "A long enough sentence to clear the floor, about somebody you have not called.",
+    options: [{ label: "Call", fx: { relF: { $friend: 5 }, stats: { happiness: 2 } } },
+              { label: "Don't", fx: { relF: { $friend: -6 } } }] };
+  const ea = M.evtValidate(pa, realisation), eb = M.evtValidate(pb, realisation);
+  ok("the same realisation binds to life A's key", ea.options[0].fx.relF[pa.cast.friend.key] === 5, ea.options[0].fx);
+  ok("...and to life B's", eb.options[0].fx.relF[pb.cast.friend.key] === 5, eb.options[0].fx);
+  ok("...and never carries the other life's key across",
+    eb.options[0].fx.relF[pa.cast.friend.key] === undefined, eb.options[0].fx);
+  /* the option count is part of the contract, so every probe below carries a
+     second, deliberately boring choice */
+  const pad = { label: "Leave it", fx: { stats: { happiness: -1 } } };
+  ok("a slot that was not cast is dropped", (() => {
+    const bad = M.evtValidate(pa, { text: realisation.text,
+      options: [{ label: "x", fx: { relF: { $nobody: 5 }, stats: { happiness: 2 } } }, pad] });
+    return bad && bad.options[0].fx.relF === undefined && bad.options[0].fx.stats.happiness === 2;
+  })());
+  /* a raw store key still works, but only for somebody actually in the scene */
+  ok("addressing a real cast key directly still works", (() => {
+    const o = {}; o[pa.cast.friend.key] = 4;
+    const v = M.evtValidate(pa, { text: realisation.text, options: [{ label: "x", fx: { relF: o } }, pad] });
+    return v && v.options[0].fx.relF[pa.cast.friend.key] === 4;
+  })());
+  ok("...but somebody else's key is not in the scene", (() => {
+    const v = M.evtValidate(pa, { text: realisation.text,
+      options: [{ label: "x", fx: { relF: { mom: -20 }, stats: { happiness: 1 } } }, pad] });
+    return v && v.options[0].fx.relF === undefined;
+  })());
+}
+{
+  /* 4 · THE CACHE IS LOAD-BEARING, NOT AN OPTIMISATION.
+     Effects reach a popup by being applied at FIRE time, synchronously —
+     never swapped in under a player already reading the options. */
+  M.evtCacheReset();
+  const s = only(at(34), "friendDrift");
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  const prop = proposeFor(s);
+  ok("a cold cache realises nothing", M.evtCachedFor(prop) === null);
+
+  const realisation = { text: "Kim's name surfaces in a thread about somebody else entirely, and you put the phone face down.",
+    options: [{ label: "Call, finally", fx: { relF: { $friend: 6 }, stats: { happiness: 2 } } },
+              { label: "Leave it another year", fx: { relF: { $friend: -9 }, stats: { happiness: -3 } } }] };
+  M.evtRememberRealisation(prop, realisation);
+  const hit = M.evtCachedFor(prop);
+  ok("a warm cache realises", !!hit);
+  ok("...with the model's words", hit.text === realisation.text);
+  ok("...and the model's options", hit.options.length === 2 && hit.options[0].label === "Call, finally");
+  ok("...bound to this life's key", hit.options[0].fx.relF.f2 === 6, hit.options[0].fx);
+  /* emoji and title still come from the fallback: generated content does not
+     get to restyle the game */
+  ok("...but not the model's emoji or title",
+    hit.emoji === prop.fallback.emoji && hit.title === prop.fallback.title);
+
+  /* the situation key is coarse on purpose, so the reuse actually happens */
+  const older = only(at(37), "friendDrift");
+  older.friends = { f9: { name: "Ros", role: "Friend", rel: 44, g: "F" } };
+  const p2 = proposeFor(older);
+  ok("the same decade and shape reuses it", M.evtSituationKey(p2) === M.evtSituationKey(prop),
+    [M.evtSituationKey(p2), M.evtSituationKey(prop)]);
+  const reused = M.evtCachedFor(p2);
+  ok("...and binds to the other life's key", reused && reused.options[0].fx.relF.f9 === 6, reused && reused.options[0].fx);
+  ok("...carrying nothing of the first life", reused && reused.options[0].fx.relF.f2 === undefined);
+
+  const younger = only(at(19), "friendDrift");
+  younger.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  ok("a different decade does not reuse it",
+    M.evtSituationKey(proposeFor(younger)) !== M.evtSituationKey(prop));
+
+  /* and it reaches the player through evtMaybeFire, synchronously */
+  M.evtCacheReset();
+  M.evtRememberRealisation(prop, realisation);
+  const fired = (() => {
+    for (let d = 0; d < 400; d++) {
+      const c = only(at(34), "friendDrift");
+      c.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+      c.ageDays += d;
+      const ev = M.evtMaybeFire(c);
+      if (ev) return ev;
+    }
+    return null;
+  })();
+  ok("a generated event fires at all", !!fired);
+  if (fired) ok("...and it is the realised one, not the fallback",
+    fired.text === realisation.text, fired.text);
+
+  /* the cap keeps the cache from growing without bound */
+  M.evtCacheReset();
+  for (let i = 0; i < M.EVT_FULL_CAP + 6; i++) {
+    const c = only(at(20 + i * 11), "friendDrift");
+    c.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+    const p = proposeFor(c);
+    if (p) M.evtRememberRealisation(p, realisation);
+  }
+  ok("the realisation cache is capped", (() => {
+    let n = 0;
+    for (let i = 0; i < 90; i++) {
+      const c = only(at(20 + i), "friendDrift");
+      c.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+      const p = proposeFor(c);
+      if (p && M.evtCachedFor(p)) n++;
+    }
+    return n <= M.EVT_FULL_CAP * 12;      /* many ages share a decade key */
+  })());
+  M.evtCacheReset();
+}
+{
+  /* 5 · A HOSTILE REALISATION, END TO END THROUGH THE CACHE.
+     P1 asserted the validator in isolation. This asserts that nothing gets
+     past it on the path that now reaches the save file. */
+  M.evtCacheReset();
+  const s = only(at(34), "friendDrift");
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  const prop = proposeFor(s);
+  const text = "A perfectly ordinary sentence, long enough to clear the floor without any trouble at all.";
+
+  const hostile = { text: text, options: [
+    { label: "Run this", fx: { run: "() => { while(1); }", stats: { happiness: 2 } } },
+    { label: "Take everything", fx: { money: 999999999, stats: { happiness: 6, health: 40, looks: 90 } } },
+  ] };
+  M.evtRememberRealisation(prop, hostile);
+  const ev = M.evtCachedFor(prop);
+  ok("a hostile realisation still produces a playable event", !!ev);
+  ok("run never survives", JSON.stringify(ev).indexOf("run") === -1, JSON.stringify(ev).slice(0, 200));
+  ok("...and is not merely stringified away", ev.options.every((o) => o.fx.run === undefined));
+  ok("money outside any band is dropped", ev.options[1].fx.money === undefined, ev.options[1].fx);
+  ok("a stat inside its band survives, clamped", ev.options[1].fx.stats.happiness === 3, ev.options[1].fx.stats);
+  ok("unbanded stats are dropped", ev.options[1].fx.stats.health === undefined && ev.options[1].fx.stats.looks === undefined,
+    ev.options[1].fx.stats);
+  /* and applying it to a real life keeps every invariant the engine has */
+  const d = JSON.parse(JSON.stringify(s));
+  H.seed(5);
+  for (const o of ev.options) { const c2 = JSON.parse(JSON.stringify(d)); M.applyFx(c2, o.fx);
+    ok("applying '" + o.label + "' keeps stats in range",
+      ["health", "happiness", "smarts", "looks"].every((k) => c2.stats[k] >= 0 && c2.stats[k] <= 100), c2.stats);
+    ok("applying '" + o.label + "' never makes money negative", c2.money >= 0, c2.money);
+  }
+
+  /* every shape of nonsense falls back rather than throwing */
+  for (const [why, bad] of [
+    ["no text", { options: [{ label: "x", fx: { stats: { happiness: 1 } } }] }],
+    ["no options", { text: text }],
+    ["options is not an array", { text: text, options: "two" }],
+    ["too many options", { text: text, options: [1, 2, 3, 4, 5].map((i) => ({ label: "opt " + i, fx: { stats: { happiness: 1 } } })) }],
+    ["duplicate labels", { text: text, options: [{ label: "Same", fx: { stats: { happiness: 1 } } }, { label: "Same", fx: { stats: { happiness: -1 } } }] }],
+    ["a novel for a label", { text: text, options: [{ label: "x".repeat(61), fx: { stats: { happiness: 1 } } }, { label: "y", fx: {} }] }],
+    ["every option inert", { text: text, options: [{ label: "a", fx: {} }, { label: "b", fx: { nope: 1 } }] }],
+    ["text over the cap", { text: "x".repeat(601), options: [{ label: "a", fx: { stats: { happiness: 1 } } }] }],
+  ]) ok("rejected: " + why, M.evtValidate(prop, bad) === null, why);
+  M.evtCacheReset();
+}
+{
+  /* 6 · THE PROPERTY THE WHOLE PHASE TURNS ON.
+     A full realisation must never be applied to a popup already on screen.
+     evtEnhance is the only thing that touches a live popup, and it is
+     prose-only — asserted against the source text, because this is exactly
+     the kind of thing a later "improvement" would quietly break. */
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const clean = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const body = (name) => {
+    const i = clean.indexOf("function " + name + "(");
+    if (i < 0) return "";
+    const j = clean.indexOf("\nfunction ", i + 10);
+    return clean.slice(i, j > i ? j : i + 6000);
+  };
+  ok("evtEnhance still resolves with prose only", /onResolve\(prose\)/.test(body("evtEnhance")));
+  ok("...and never validates a full realisation", !/evtValidate/.test(body("evtEnhance")));
+  ok("...and never touches the effects cache", !/_evtFullCache|evtRememberRealisation/.test(body("evtEnhance")));
+  ok("the popup callback only ever assigns aiText",
+    /pending: \{ \.\.\.prev\.pending, aiText: text \}/.test(clean));
+  ok("evtRealiseAhead writes only to the cache",
+    /evtRememberRealisation/.test(body("evtRealiseAhead")) && !/onResolve|pending/.test(body("evtRealiseAhead")));
+  /* and the fire path is still synchronous */
+  ok("evtMaybeFire reads the cache synchronously",
+    /evtCachedFor/.test(body("evtMaybeFire")) && !/\bawait\b|\.then\(/.test(body("evtMaybeFire")));
+}
+
 /* 7 · END TO END, AGAINST A FIXTURE. No socket is opened at any point: the
    fixture replaces the transport and everything above it — prompt, sanitiser,
    realisation, cache — runs exactly as it does in the browser. */
