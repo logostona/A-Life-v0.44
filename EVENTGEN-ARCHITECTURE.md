@@ -308,6 +308,21 @@ Each phase is shippable and each is useful alone.
 | **P1** | Proposer + `EVT_KINDS` registry + validator + `fallback` rendering. Generated events flow end-to-end using *only* fallbacks. | no |
 | **P2** | Provider interface + one provider. Prose only — options and effects still come from the fallback. This is `enhancePopupNarration` generalised. | yes |
 | **P3** | Model chooses effects within bands. The validator from P1 is already the safety net. | yes |
+
+**P3 shipped, with one design change worth recording.** The hard part turned out not to be
+safety — the validator was built for this and needed only slot addressing added. It was
+*timing*. `advance()` must not await, so a realisation arrives after its popup is on screen;
+swapping the words under a reader is untidy, but swapping the **buttons** under them is a bug,
+because they may already have read three options and reached for the second.
+
+So a full realisation is never applied to a live popup. It goes into a cache keyed on the
+*situation* (`kind | age-decade | cast slots`) and **slot-addressed**, which makes it
+life-agnostic; `evtMaybeFire` binds it through the validator and applies it **synchronously**,
+before the next event of that shape is shown. A situation the model has not met plays its
+hand-written fallback and is realised in the background for next time.
+
+That makes the situation cache load-bearing rather than an optimisation — a piece of P4 pulled
+forward, because P3 is not honestly shippable without it.
 | **P4** | Bake-ahead queue, situation cache, tier config, settings UI. | yes |
 | **P5** | Persistence of realisations into the save; save-size budget. | yes |
 

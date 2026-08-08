@@ -362,6 +362,25 @@ a refusal and not a grant: it is `stxBacking`, one adult at a time, worth `stxBa
 you later ask somebody who can actually decide. That is how these were really won, and it is why
 the teacher channel is worth walking even though it grants nothing.
 
+**A generated event's effects must arrive BEFORE its popup, never during.** `advance()` cannot
+await, so a realisation always comes back after the popup is up. Changing the words there is
+fine (`aiText` is a display field). Changing the *options* is not — the player may have read
+three of them and reached for the second. So `evtRealiseAhead` only ever writes to a cache, and
+`evtMaybeFire` binds a cached realisation through `evtValidate` **synchronously** at fire time.
+`test-eventgen` asserts all of this against the source text, because it is exactly the property
+a later "let's make it feel more responsive" edit would quietly break.
+
+That works only because a realisation is **slot-addressed** (`relF.$friend`, never `relF.f2`),
+which is what makes it life-agnostic enough to cache. The validator resolves `$slot` against the
+proposal's own cast on every use, so a realisation cached from one life can never carry that
+life's relationship keys into another.
+
+**A prompt is content, and goes through the prose gate.** Reading the six generated prompts
+caught two things every assertion was green on: `smallKindness` — every band pinned at or above
+zero — was being told "different choices should cost different things", an instruction it cannot
+satisfy; and `moneyPinch`, which casts nobody, advertised `PEOPLE PRESENT: []` one line before
+telling the model not to invent a person.
+
 **Gotcha #6 — never assert on step counts.** A green 33,600-step run once had nobody aging a
 day. Assert observable outcomes.
 
