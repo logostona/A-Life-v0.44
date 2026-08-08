@@ -859,7 +859,10 @@ function newCharacter(form) {
       fam_momRemarry: Math.random() < 0.5,
       fam_dadRemarry: Math.random() < 0.5,
     },
-    ai: { enabled: false, level: "flavor" },
+    /* EVT P2. `provider: "off"` is the default and every suite runs on it, so
+       no test can reach the network. Its migrate() backfill is aiMigrate(),
+       landing in the same patch as this initializer — Gotcha #4. */
+    ai: aiInit(),
     hre: hreInit(hreSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random()),
                  form.country, form.city, form.cls, +form.birthYear),
     /* EDU S09. Its migrate() backfill lands in the same patch as this
@@ -902,7 +905,7 @@ function newCharacter(form) {
 }
 
 function migrate(s) {
-  if (!s.ai) s.ai = { enabled: false, level: "flavor" };
+  aiMigrate(s);
   hreMigrate(s);
   /* EDU S09 — runs after hreMigrate because its seed derivation falls back to
      s.hre.seed, and backfills the canonical stage from the still-authoritative
@@ -10359,24 +10362,115 @@ function childName(s) {
   return pick(nameList(s.profile.country, kind));
 }
 
+/* ── ASEXUALITY IS ABOUT ATTRACTION, NOT ABOUT CAPABILITY ─────────────────
+   The intimacy menu ignored the orientation axis completely: an asexual
+   character got the identical scene, the identical prose and the identical
+   outcome as anyone else, which quietly said the label meant nothing.
+
+   The fix is not the mirror error. "Asexual people cannot have sex" is as
+   wrong as the bug — plenty do, for a partner, for children, or because they
+   like the closeness without the attraction. What varies is STANCE, and the
+   real distinction is sex-repulsed / neutral / favourable. So:
+
+     - the stance is derived, never stored, from the world seed. Deriving keeps
+       it out of newCharacter(), where one extra Math.random() would silently
+       reshuffle every seeded fixture in the repo;
+     - a repulsed character can still choose to, and it costs them, because
+       that is the honest version of a thing many people actually do;
+     - DEMISEXUAL is not a weaker asexual: attraction arrives with the bond, so
+       it is gated on the relationship rather than on a stance;
+     - undiscovered means the character has no word for it yet, so the scene
+       reads as confusion rather than as clarity. */
+const ACE_ORIENTS = ["Asexual", "Demisexual", "Gray-asexual"];
+function isAce(s) { return ACE_ORIENTS.indexOf(s.hidden && s.hidden.orientation) !== -1; }
+function aceStance(s) {
+  if (!isAce(s)) return null;
+  const r = hreHash("ace:" + ((s.hre && s.hre.seed) || 1) + ":" + ((s.profile && s.profile.first) || "")) % 100;
+  return s.hidden.orientation === "Asexual"
+    ? (r < 42 ? "repulsed" : r < 82 ? "neutral" : "favourable")
+    : (r < 16 ? "repulsed" : r < 60 ? "neutral" : "favourable");
+}
+/* Demisexual and gray-ace attraction is conditional, and the condition is the
+   bond — which the game already tracks. */
+const ACE_DEMI_REL = 72;
+function aceAttracted(s, p) {
+  if (!isAce(s)) return true;
+  if (s.hidden.orientation === "Asexual") return false;
+  return !!p && (p.rel || 0) >= ACE_DEMI_REL && ["serious", "engaged", "married"].indexOf(p.status) !== -1;
+}
+
 function makeLoveMenu(state, pkey) {
   const s = pClone(state);
   const p = s.romance[pkey];
   const fertile = canConceive(s, p) && ageYears(s) >= 16 && ageYears(s) <= 48;
   const kids = Object.keys(s.children || {}).length;
+  const ace = isAce(s) && s.discovered.orientation;
+  const aceUnknown = isAce(s) && !s.discovered.orientation;
+  const stance = aceStance(s);
+  const drawn = aceAttracted(s, p);
   const opts = [];
-  opts.push({ label: "💞 Spend the night together", fx: { run: (st) => {
+
+  /* The always-available one, reworded for who is having the evening. */
+  opts.push({ label: ace && !drawn ? "🫂 Stay in, close, no further" : "💞 Spend the night together", fx: { run: (st) => {
     const q = st.romance[pkey];
     q.rel = clamp(q.rel + rnd(4, 8));
     q.lastLove = st.ageDays;
     st.stats.happiness = clamp(st.stats.happiness + rnd(3, 6));
     st.stats.health = clamp(st.stats.health + 1);
-    push(st, pick([
+    push(st, ace && !drawn ? pick([
+      `🫂 An evening of the kind of closeness you actually want with ${q.name} — no destination, nothing being worked towards.`,
+      `🫂 You and ${q.name} stayed in, tangled up and talking rubbish until one of you fell asleep mid-sentence.`,
+      `🫂 Closeness with ${q.name}, on the terms that are yours. It is not a lesser evening. It took years to stop hearing it as one.`,
+    ]) : pick([
       `💞 A slow evening with ${q.name} that made the rest of the week feel survivable.`,
       `💞 You and ${q.name} stayed in. The world could wait, and did.`,
       `💞 Closeness with ${q.name} — the ordinary, enormous kind that doesn't make it into stories.`,
     ]));
   } } });
+
+  /* Going further when you are not drawn to it. Available, because people do
+     this; costly, because of what it costs them. */
+  if (ace && !drawn) {
+    opts.push({ label: stance === "repulsed" ? "💤 Go along with it anyway"
+                     : s.hidden.orientation !== "Asexual" ? "💞 Go further, before you feel it"
+                     : "💞 Go further, for them", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      q.rel = clamp(q.rel + rnd(3, 7));
+      q.lastLove = st.ageDays;
+      st.stats.happiness = clamp(st.stats.happiness - (stance === "repulsed" ? rnd(6, 12) : rnd(1, 4)));
+      st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 2);
+      push(st, stance === "repulsed"
+        ? `💤 You went along with it, the way you have before. ${q.name} was happy, and did not notice you leaving the room without moving.`
+        : `💞 Not something you wanted for its own sake, and not nothing either — ${q.name} was glad, and being the reason for that has its own pull.`);
+    } } });
+    opts.push({ label: `🗣 Talk to ${p.name} about what you each want`, fx: { run: (st) => {
+      const q = st.romance[pkey];
+      /* whether a mixed-orientation partnership works is about the partner,
+         not about the ace person conceding */
+      const ok = (q.rel || 50) + (q.kindness ?? 50) > 110;
+      if (ok) {
+        q.rel = clamp(q.rel + rnd(5, 10));
+        q.openOk = true;
+        st.stats.happiness = clamp(st.stats.happiness + rnd(6, 11));
+        push(st, `🗣 You said it plainly, and ${q.name} asked questions rather than making a case. You are going to have to keep having this conversation. You are going to be allowed to.`);
+      } else {
+        q.rel = clamp(q.rel - rnd(3, 9));
+        st.stats.happiness = clamp(st.stats.happiness - rnd(4, 9));
+        push(st, `🗣 ${q.name} heard "not yet" and "not with you", neither of which you said. It went round in circles and landed where it started, only tireder.`);
+      }
+    } } });
+  }
+
+  /* No word for it yet — the confusion IS the content, and it is what nudges
+     the discovery scene rather than pre-empting it. */
+  if (aceUnknown) {
+    opts.push({ label: "🌫 Wonder why this isn't landing", fx: { run: (st) => {
+      const q = st.romance[pkey];
+      st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 6);
+      st.stats.happiness = clamp(st.stats.happiness - rnd(1, 4));
+      push(st, `🌫 Afterwards you lay there doing the arithmetic again: ${q.name} is lovely, you are not unhappy, and the thing everybody describes has still not arrived. You file it under "later", where it has been filed for years.`);
+    } } });
+  }
   if (fertile) {
     opts.push({ label: "🛡 Take precautions", fx: { run: (st) => {
       const q = st.romance[pkey];
@@ -10415,7 +10509,20 @@ function makeLoveMenu(state, pkey) {
     } } });
   }
   opts.push(CANCEL);
-  s.pending = { emoji: "💞", title: `An evening with ${p.name}`, text: fertile ? "How do you spend it?" : "How do you spend it?", options: opts };
+  s.pending = { emoji: ace && !drawn ? "🫂" : "💞", title: `An evening with ${p.name}`,
+    text: ace && !drawn
+      /* "not yet" and "not ever" are different sentences, and handing a
+         demisexual character the asexual one gets their orientation wrong in
+         the same way the game already got grayromantic wrong once. */
+      ? (s.hidden.orientation !== "Asexual"
+          ? `How do you spend it? You like ${p.name} enormously and the other thing has not arrived. It does arrive, for you, eventually — but never on the schedule anybody else is working to.`
+          : stance === "repulsed"
+          ? "How do you spend it? You know what the evening is expected to become, and you know you do not want that part of it."
+          : "How do you spend it? Wanting them and wanting that are two different wants, and only one of them is yours.")
+      : ace && drawn
+      ? `How do you spend it? It took ${p.name} a long time to become somebody you feel this for. That is not a flaw in the wiring; it is the wiring.`
+      : "How do you spend it?",
+    options: opts };
   return s;
 }
 
@@ -13629,10 +13736,12 @@ function evtMaybeFire(s) {
   if (!proposal) return null;
   s.flags["evt_" + proposal.kind] = s.ageDays;
   s.flags.evt_last = s.ageDays;
-  /* P1 ships fallback-only. P2/P3 will offer the proposal to a realiser and
-     pass whatever comes back through evtValidate, falling back to exactly this
-     on any failure — which is why the fallback is a complete event and not a
-     placeholder. */
+  /* The event returned here is ALWAYS the fallback, synchronously, complete
+     and playable — that is what keeps the model off the hot path. P2 hands the
+     proposal to an in-memory table so evtEnhance can upgrade the PROSE after
+     the popup is already on screen; P3 will additionally run whatever comes
+     back through evtValidate, falling back to exactly this on any failure. */
+  evtRemember(proposal);
   const ev = proposal.fallback;
   return { id: proposal.id, emoji: ev.emoji, title: ev.title, text: ev.text, options: ev.options, generated: 1 };
 }
@@ -14464,6 +14573,29 @@ function exprStyleOf(s) {
    be historical rather than flat: a feminine boy in 1955 and a feminine boy in
    2015 are the same boy meeting two different worlds. Returns 0..1, where 1 is
    maximum friction. */
+/* ── WHO BUYS THE CLOTHES ─────────────────────────────────────────────────
+   The presentation axis let a fifteen-year-old decide to dress differently
+   and simply do it, which is the one part of this that is not true of any
+   fifteen-year-old anywhere. A minor at home has no money — the game gives a
+   teenager literally zero — so the wardrobe is not theirs to change. It is
+   asked for, or it is improvised.
+
+   Kept in s.flags rather than as a new top-level field: flags is already a
+   free-form bag every subsystem writes into, so this needs no initializer and
+   no migrate backfill, and an old save simply arrives with neither key set —
+   which is the correct starting state anyway. */
+const EXPR_CLOTHES_COST = 60;
+function exprHasClothes(s) { return !!(s.flags && s.flags.exprClothes); }
+/* An adult with money is not asking anybody. A minor at home is. */
+function exprMustAsk(s) {
+  if (exprHasClothes(s)) return false;
+  if (ageYears(s) >= 18 || !hreAtParents(s)) return false;
+  return true;
+}
+/* Improvising gets you most of the way and reads as improvised, which is its
+   own kind of visible — so it does not remove the friction, it adds to it. */
+function exprClothesPenalty(s) { return exprHasClothes(s) ? 0 : (s.flags && s.flags.exprClothesDIY) ? 0.25 : 0; }
+
 function exprFriction(s) {
   const style = exprStyleOf(s);
   if (style.id === "conforming") return 0;
@@ -14475,7 +14607,99 @@ function exprFriction(s) {
   if (style.id === "soft") f *= 1.35;
   else if (style.id === "sharp") f *= 0.75;
   if (inSchool(s)) f *= 1.2;                          /* school is the sharpest room for this */
+  f += exprClothesPenalty(s);                         /* improvised reads as improvised */
   return Math.max(0, Math.min(1, f));
+}
+
+/* The ask. Each parent is a separate option because they are separate people
+   with separate `acceptance`, and "which one do I ask" is the actual decision
+   a kid in this position makes — often the whole of it.
+
+   Gotcha #2: this is a BUILDER. It reads s and returns; every write is inside
+   an fx.run against the state that one is handed. */
+function exprClothesMenu(state) {
+  const s = pClone(state);
+  const want = presTarget(s) - presently(s);
+  const toward = want > 0 ? "feminine" : "masculine";
+  const era = localAcceptance(s);
+  const sym = s.profile.curSym || "$";
+  const opts = [];
+
+  /* Odds: mostly this parent, partly this decade, and a little the household —
+     even a willing parent on no money is being asked for a second wardrobe
+     when the first one still fits. Even a warm parent in 1958 is being asked
+     something the decade has no script for. */
+  const clsTerm = { Poor: -10, Middle: 0, Rich: 7 }[s.profile.cls] || 0;
+  const oddsFor = (p) => clamp(((p.acceptance == null ? 50 : p.acceptance) * 0.75) + (era * 0.35) + clsTerm - 22);
+
+  for (const k of ["mom", "dad"]) {
+    const p = s.family && s.family[k];
+    if (!p || p.deceased) continue;
+    const odds = oddsFor(p);
+    const other = k === "mom" ? (s.family && s.family.dad) : (s.family && s.family.mom);
+    opts.push({ card: { emoji: k === "mom" ? "👩" : "👨", name: `Ask ${p.name}`,
+      sub: odds > 60 ? "probably fine" : odds > 30 ? "hard to call" : "unlikely to go well",
+      tag: "" }, fx: { run: (st) => {
+      const q = st.family[k];
+      const o = oddsFor(q);
+      const roll = Math.random() * 100;
+      /* THREE outcomes, not two. A flat yes/no made the ask dead in every
+         decade before about 2000, and worse, it was not what happened: the
+         common answer was neither, it was "in the house, not out of it".
+         The compromise is real and it is also a leash, which is why it lands
+         on the improvised flag — you get something, and it shows. */
+      if (roll < o) {
+        st.flags.exprClothes = 1;
+        q.rel = clamp((q.rel || 50) + rnd(2, 7));
+        st.stats.happiness = clamp(st.stats.happiness + rnd(6, 12));
+        push(st, era > 55
+          ? `🧺 ${q.name} took you shopping and made almost no comment about it, which you understood to be the comment.`
+          : `🧺 ${q.name} said yes, quietly${other && !other.deceased ? `, and did not mention it to ${other.name}` : ""}. The bag came into the house folded inside another bag.`);
+      } else if (roll < o + 34) {
+        st.flags.exprClothesDIY = 1;
+        q.rel = clamp((q.rel || 50) + rnd(0, 3));
+        st.stats.happiness = clamp(st.stats.happiness + rnd(1, 4));
+        push(st, `🧺 ${q.name} met you halfway, which is to say: in the house, yes; out of the house, "let's see". You have been given a thing and a fence around it at the same time.`);
+      } else {
+        q.rel = clamp((q.rel || 50) - rnd(2, 8));
+        st.stats.happiness = clamp(st.stats.happiness - rnd(4, 10));
+        st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 3);
+        push(st, st.profile.cls === "Poor"
+          ? `🧺 ${q.name} said there was no money for clothes you already had a version of, and that part was true, which made the rest of it harder to argue with.`
+          : era > 55
+          ? `🧺 ${q.name} said it wasn't about the money, and then talked about the money for ten minutes.`
+          : `🧺 ${q.name} said no in the tone that means do not ask again. You did not ask again, for a while.`);
+      }
+    } } });
+  }
+
+  if (s.money >= EXPR_CLOTHES_COST) {
+    opts.push({ card: { emoji: "💷", name: "Buy them yourself", sub: `${sym}${EXPR_CLOTHES_COST}`, tag: "" },
+      fx: { money: -EXPR_CLOTHES_COST, run: (st) => {
+        st.flags.exprClothes = 1;
+        st.stats.happiness = clamp(st.stats.happiness + rnd(5, 10));
+        push(st, `🧺 You bought them with your own money, which meant nobody got a say in it. That was most of the point.`);
+      } } });
+  }
+
+  /* Always available, because it is what people actually did: the charity
+     shop, an older sibling's cast-offs, a pair of scissors and a bad idea. */
+  opts.push({ card: { emoji: "✂️", name: "Piece it together yourself",
+    sub: "free, and it shows", tag: "" }, fx: { run: (st) => {
+    st.flags.exprClothesDIY = 1;
+    st.stats.happiness = clamp(st.stats.happiness + rnd(2, 5));
+    st.emergent.courage = clamp((st.emergent.courage ?? 40) + 5);
+    push(st, `🧺 Charity shop, a borrowed jumper, and one alteration you did yourself and should not have. It works from a distance and you know exactly how far that distance is.`);
+  } } });
+
+  opts.push(CANCEL);
+
+  s.pending = { emoji: "🧺", title: "You'd need the clothes first", layout: "grid",
+    text: ageYears(s) < 18 && hreAtParents(s)
+      ? `You do not buy your own clothes. Wanting to look more ${toward} is one thing; the wardrobe belongs to whoever paid for it, and that is not you.`
+      : `Nothing in the wardrobe goes that way yet. Looking more ${toward} starts with owning something that does.`,
+    options: opts };
+  return s;
 }
 
 // how far your presentation is from where you need it to be
@@ -15998,9 +16222,17 @@ function schoolPresentMenu(state) {
     const style = exprStyleOf(s);
     const gap = presTarget(s) - presently(s);
     const want = Math.abs(gap) > 8;
+    const needsClothes = want && !exprHasClothes(s) && !(s.flags && s.flags.exprClothesDIY);
     opts.push(opt({ emoji: "🪞", name: "How you dress here",
-      sub: exprLabel(presently(s)) + (want ? " · not quite you" : ""),
+      sub: exprLabel(presently(s)) + (needsClothes ? " · nothing to wear" : want ? " · not quite you" : ""),
       tag: style.id === "conforming" ? "" : "noticed" }, 0, (st) => {
+      /* You cannot decide your way into clothes you do not own. A minor at
+         home has no money at all, so this routes to the ask rather than
+         quietly conjuring a wardrobe. */
+      if (want && !exprHasClothes(st) && !(st.flags && st.flags.exprClothesDIY)) {
+        st.pending = exprClothesMenu(st).pending;
+        return;
+      }
       const f = exprFriction(st);
       if (!want) {
         push(st, `🪞 You look at what you put on this morning and find you have no argument with it. Not everybody gets that, and not on every morning.`);
@@ -16950,6 +17182,29 @@ const CHANNELS = {
   meeting:  { label: "Request a full meeting", emoji: "🏛", sub: "you, parents, staff, admin", formal: 1, bonus: 12, needsParent: 1 },
 };
 
+/* WHAT A TEACHER CAN ACTUALLY DELIVER.
+   A classroom teacher does not change the register, issue an ID card, create
+   an email account or sign a graduation certificate — those are administrative
+   acts, and a game in which asking Mr Doyle produced a new student ID was
+   quietly telling the player something false about how schools work.
+
+   They are still worth asking, which is the other half of it: within their own
+   room they decide what they call you and where you sit, and outside it they
+   can put their name behind you with the people who do have the authority.
+   That backing is the mechanically interesting part — it is how a real
+   accommodation usually got won, one adult at a time. */
+const STX_TEACHER_GRANTS = ["pronouns", "lists"];
+function stxTeacherCanGrant(reqKey) { return STX_TEACHER_GRANTS.indexOf(reqKey) !== -1; }
+/* Everyone who has already said they'd back you on this, worth a real bump the
+   next time you ask somebody who can actually decide. Capped, because a pile
+   of signatures is not the same as authority. */
+function stxBacking(s, reqKey) {
+  const b = s.school && s.school.trans && s.school.trans.backing;
+  const list = (b && b[reqKey]) || [];
+  return Math.min(3, list.length);
+}
+function stxBackingBonus(s, reqKey) { return stxBacking(s, reqKey) * 7; }
+
 function supportiveParent(s) {
   const cands = ["mom", "dad"].filter((k) => s.family[k] && !s.family[k].deceased && s.outTo[k] && s.family[k].acceptance > 55);
   return cands.length ? s.family[cands[0]] : null;
@@ -16974,8 +17229,24 @@ function staffDisposition(s, t) {
   return clamp(Math.round(score));
 }
 
-function resolveRequest(state, reqKey, chanKey, staffKey) {
-  const s = pClone(state);
+/* RESOLVER, NOT A BUILDER — and the distinction is the whole of a bug that
+   made every school accommodation purely cosmetic.
+
+   This used to open with `pClone(state)`, like the menu builders around it.
+   But a builder is called for its popup and nothing else; a RESOLVER decides
+   what happened, and every one of its call sites reads:
+
+       st.pending = resolveRequest(st, reqKey, ck, null).pending;
+
+   ...which keeps the popup and throws the clone away. So `tr.granted[reqKey]`,
+   applyGrant's write to school.present, the happiness, the feed line and every
+   stx note all landed on an object that was discarded one statement later. The
+   head said yes, the scene said yes, and nothing whatsoever changed.
+
+   It takes the live draft now. That is safe precisely because it is only ever
+   called from inside an option's fx.run, which applyFx hands the real state —
+   the same reason applyGrant(st, …) below it was always correct. */
+function resolveRequest(s, reqKey, chanKey, staffKey) {
   const lg = schoolLegal(s);
   const req = TRANS_REQUESTS[reqKey];
   const chan = CHANNELS[chanKey];
@@ -16984,12 +17255,51 @@ function resolveRequest(state, reqKey, chanKey, staffKey) {
   const parent = supportiveParent(s);
   if (!s.school.trans) s.school.trans = { granted: {}, refused: {}, pending: {}, attempts: 0, rep: 0 };
   const tr = s.school.trans;
+  if (!tr.backing) tr.backing = {};
   tr.attempts++;
+
+  /* ASKED THE WRONG PERSON — not a refusal, and not nothing.
+     A teacher has no route to the register, the ID system or the awarding
+     body. Rather than rolling for an approval they could never issue, the
+     scene becomes what it actually is: a conversation with somebody who
+     cannot help directly and may be willing to help anyway. */
+  if (chanKey === "teacher" && !stxTeacherCanGrant(reqKey)) {
+    stxOnAsk(s, staffKey || "head", staff, reqKey, chanKey);
+    const already = (tr.backing[reqKey] || []).indexOf(staffKey || "head") !== -1;
+    const willing = disp > 46 && !already;
+    const opts = [];
+    if (willing) opts.push({ label: `Ask ${staff.name} to back you`, fx: { run: (st) => {
+      const t2 = st.school.trans; if (!t2.backing) t2.backing = {};
+      if (!t2.backing[reqKey]) t2.backing[reqKey] = [];
+      if (t2.backing[reqKey].indexOf(staffKey || "head") === -1) t2.backing[reqKey].push(staffKey || "head");
+      st.stats.happiness = clamp(st.stats.happiness + rnd(4, 8));
+      push(st, `🤝 ${staff.name} agreed to put their name to it. It changes nothing on its own and it changes the room you walk into next time.`);
+    } } });
+    else if (already) opts.push({ label: `${staff.name} has already backed you`, fx: { feed: `🤝 They have already said their piece on this. Asking twice would only wear it out.` } });
+    opts.push({ label: "Ask what they'd do", fx: { run: (st) => {
+      st.emergent.selfAwareness = clamp((st.emergent.selfAwareness ?? 50) + 4);
+      push(st, disp > 55
+        ? `🤫 ${staff.name} told you who actually decides this, who to avoid, and which week of term to ask in. Nobody had told you any of that before.`
+        : `🤫 ${staff.name} said to "go through the proper channels", which you had already worked out, and which was the end of the help available.`);
+    } } });
+    opts.push({ label: "Leave it there for now", fx: {} });
+    const backed = stxBacking(s, reqKey);
+    s.pending = { emoji: req.emoji, title: `${staff.name} — ${req.label}`,
+      text: `"That's not mine to give you." ${disp > 46
+        ? `And it isn't — a form teacher does not touch the register${reqKey === "documents" ? " or the exam board" : ""}. But they say it apologetically, and they do not change the subject.`
+        : `Said briskly, with the relief of somebody handed a reason not to be involved.`}${backed ? ` ${backed} member${backed > 1 ? "s" : ""} of staff now behind you on this.` : ""}`,
+      options: opts };
+    return s;
+  }
 
   // base likelihood: legal tier vs how heavy the ask is, plus who you asked and how
   let score = disp + chan.bonus - req.weight;
   score += (TIER_RANK[lg.tier] - TIER_RANK[req.tier]) * 22;
   if (parent && (chanKey === "parents" || chanKey === "meeting")) score += 10;
+  /* Staff who already said they'd back you. This is what makes the teacher
+     channel worth walking even though a teacher can decide nothing: you go to
+     the head with names behind you instead of on your own. */
+  score += stxBackingBonus(s, reqKey);
   if (tr.refused[reqKey]) score -= 15;                       // asking again after a no
   if (s.school.trouble > 2) score -= 10;
   // H1/H2 (Module 11 stx): record the ask, then bend the odds by how coherently
@@ -17094,8 +17404,9 @@ function applyGrant(s, reqKey, partial) {
   if (reqKey === "restroom") p.restroom = partial ? "staff" : "preferred";
 }
 
-function escalateRequest(state, reqKey) {
-  const s = pClone(state);
+/* Same class of bug, same fix: a resolver, called only from fx.run, whose
+   stxSet("escalated") note was being discarded with the clone. */
+function escalateRequest(s, reqKey) {
   const lg = schoolLegal(s);
   // H5 (stx): going over someone's head is remembered by the person you skipped.
   const stxPrev = stxReq(s, reqKey).by;
@@ -17150,7 +17461,13 @@ function channelMenu(state, reqKey) {
   s.pending = { emoji: "🚪", title: TRANS_REQUESTS[reqKey].label, layout: "grid", text: "How do you go about asking?",
     options: [
       ...Object.entries(CHANNELS).filter(([, c]) => !c.needsParent || parent).map(([ck, c]) => ({
-        card: { emoji: c.emoji, name: c.label, sub: c.sub, tag: "" },
+        /* Say plainly what a teacher can and cannot do with this particular
+           ask. Offering "ask a teacher privately" for a graduation certificate
+           with no hint that they have no route to it is the game misleading
+           the player about the institution it is modelling. */
+        card: { emoji: c.emoji, name: c.label,
+          sub: ck === "teacher" && !stxTeacherCanGrant(reqKey) ? "can't decide this — but can back you" : c.sub,
+          tag: ck === "teacher" && stxBacking(s, reqKey) ? `${stxBacking(s, reqKey)} behind you` : "" },
         fx: { run: (st) => {
           if (ck === "teacher") { st.pending = pickStaffMenu(st, reqKey).pending; return; }
           st.pending = resolveRequest(st, reqKey, ck, null).pending;
@@ -17904,18 +18221,88 @@ function stxCanComeOut(s, group, key, what) {
   if (!p) return false;
   return !stxIsOutTo(s, group, key, what);
 }
-/* What you get instead, once they already know. Keeps the slot useful rather than empty. */
+/* What you get instead, once they already know. Keeps the slot useful rather than empty.
+
+   THE ASKS DEPEND ON WHICH AXIS THEY KNOW ABOUT. This shipped offering "Ask
+   them to use your name" to everybody, so a cisgender gay character who had
+   come out about his ORIENTATION was invited to ask his friend to call him
+   something else — which is not a thing that follows from what he told her.
+   Same fault as the school panel: content gated on the identity it was written
+   for rather than on the stake the player actually has.
+
+   The name ask additionally needs a name to ask for, exactly as the school
+   panel does. Without one it is asking somebody to start using the name
+   already on the register. */
 function stxAlreadyOutMenu(s, group, key, what) {
   const p = stxPerson(s, group, key) || { name: "them" };
+  const axis = what || stxCurrentAxis(s);
+  const chosen = usedName(s);
+  const nameOf = (st) => { const q = stxPerson(st, group, key); return q ? q.name : "They"; };
+  const accOf = (q) => (q ? (q.acceptance == null ? 50 : q.acceptance) : 50);
+  const opts = [];
+
+  if (axis === "gender") {
+    if (chosen !== s.profile.first) opts.push({ label: `Ask them to call you ${chosen}`, fx: { run: (st) => {
+      const q = stxPerson(st, group, key); const acc = accOf(q);
+      if (q) { q.rel = clamp((q.rel || 50) + rnd(-3, 6)); if (!q.known) q.known = []; if (q.known.indexOf("usesName") < 0 && acc > 45) q.known.push("usesName"); }
+      st.stats.happiness = clamp(st.stats.happiness + (acc > 45 ? rnd(4, 9) : -rnd(2, 6)));
+      push(st, acc > 45
+        ? `${nameOf(st)} says it back to you once, carefully, like testing a step.`
+        : `${nameOf(st)} said they'd try, in the voice people use when they have already decided not to.`);
+    } } });
+    opts.push({ label: "Ask them to use your pronouns", fx: { run: (st) => {
+      const q = stxPerson(st, group, key); const acc = accOf(q);
+      if (q && acc > 45) { if (!q.known) q.known = []; if (q.known.indexOf("usesPronouns") < 0) q.known.push("usesPronouns"); }
+      st.stats.happiness = clamp(st.stats.happiness + (acc > 45 ? rnd(3, 7) : -rnd(2, 6)));
+      push(st, acc > 45
+        ? `They get it wrong twice that week and correct themselves both times without being asked, which is most of what you wanted.`
+        : `They said it felt unnatural to them. You did not point out that it had felt unnatural to you for rather longer.`);
+    } } });
+  } else {
+    /* The orientation asks. What actually changes for somebody already out to
+       this person is not their name — it is whether the person keeps asking
+       the wrong question, and whether anyone they are seeing is allowed in
+       the room. */
+    opts.push({ label: "Ask them to stop asking about the wrong people", fx: { run: (st) => {
+      const q = stxPerson(st, group, key); const acc = accOf(q);
+      if (q) q.rel = clamp((q.rel || 50) + (acc > 45 ? rnd(0, 5) : -rnd(0, 6)));
+      st.stats.happiness = clamp(st.stats.happiness + (acc > 45 ? rnd(2, 6) : -rnd(1, 5)));
+      push(st, acc > 45
+        ? `They stopped. It took a couple of goes and one visibly bitten tongue at Christmas, but they stopped.`
+        : `They said they "didn't mean anything by it", which was true and was also not the point.`);
+    } } });
+    const seeing = (() => {
+      const r = s.romance || {};
+      for (const k of Object.keys(r)) {
+        const x = r[k];
+        if (x && !x.ex && ["dating", "serious", "engaged", "married"].indexOf(x.status) !== -1) return x;
+      }
+      return null;
+    })();
+    if (seeing) opts.push({ label: `Ask if they'd like to meet ${seeing.name}`, fx: { run: (st) => {
+      const q = stxPerson(st, group, key); const acc = accOf(q);
+      if (q) q.rel = clamp((q.rel || 50) + (acc > 50 ? rnd(3, 9) : -rnd(0, 4)));
+      st.stats.happiness = clamp(st.stats.happiness + (acc > 50 ? rnd(4, 9) : -rnd(2, 6)));
+      push(st, acc > 50
+        ? `They said yes before you finished the sentence, and then worried out loud for a week about what to cook.`
+        : `They said "maybe at some point", which is a date in the same way that "we should catch up" is a date.`);
+    } } });
+  }
+
+  opts.push({ label: "Ask how they actually feel about it", fx: { run: (st) => {
+    const acc = accOf(stxPerson(st, group, key));
+    push(st, acc > 65 ? "They tell you the truth, which is that they were more worried about you than about this."
+       : acc > 35 ? "They say the right words in the wrong order, and you can hear them trying."
+       : "They say they love you and then say nothing else, and the nothing else is the answer.");
+    applyFx(st, { stats: { happiness: acc > 55 ? rnd(2, 6) : -rnd(1, 5) } });
+  } } });
+  opts.push({ label: "Leave it", fx: {} });
+
   return {
     emoji: "💬",
     title: p.name + " already knows",
     text: "You told " + p.name + " " + stxWhen(s, p.outDay || -1) + ". There is nothing left to confess, which leaves the harder part: what they do about it day to day.",
-    options: [
-      { label: "Ask them to use your name", fx: { run: (st) => { const q = stxPerson(st, group, key); if (q) { q.rel = clamp((q.rel || 50) + rnd(-3, 6)); if (!q.known) q.known = []; if (q.known.indexOf("usesName") < 0 && (q.acceptance || 50) > 45) q.known.push("usesName"); } push(st, (q => q ? q.name : "They")(stxPerson(st, group, key)) + " says it back to you once, carefully, like testing a step."); } } },
-      { label: "Ask how they actually feel about it", fx: { run: (st) => { const q = stxPerson(st, group, key); const acc = q ? (q.acceptance == null ? 50 : q.acceptance) : 50; push(st, acc > 65 ? "They tell you the truth, which is that they were more worried about you than about this." : acc > 35 ? "They say the right words in the wrong order, and you can hear them trying." : "They say they love you and then say nothing else, and the nothing else is the answer."); applyFx(st, { stats: { happiness: acc > 55 ? rnd(2, 6) : -rnd(1, 5) } }); } } },
-      { label: "Leave it", fx: {} },
-    ],
+    options: opts,
   };
 }
 /* Migration repair: reconcile any historical s.outTo aggregate down onto people. */
@@ -18118,6 +18505,331 @@ POOL.push(...STX_POOL);
    and will fail closed — which is safe, but means the feature is inert there.
    See handoff open question #1; needs a product decision, not a silent key. */
 
+/* ═══════════════ LLM · PROVIDER LAYER (EVT P2) ═══════════════
+
+   P1 shipped the proposer and the validator; generated events flowed
+   end-to-end using only their own fallbacks. P2 is the seam that lets a model
+   answer at all — and deliberately nothing more than that.
+
+   ONE CONTRACT, THREE BACKENDS.
+
+       async llmComplete({ prompt, schema, maxTokens, signal, state })
+         -> { text } | null            null means "degrade, silently"
+
+   `schema` is accepted and ignored here. P3 is the phase where the model
+   returns structured effects and the schema starts being enforced; taking the
+   parameter now means P3 is a change to this function's body rather than to
+   every call site.
+
+   WHY A REGISTRY RATHER THAN AN `if`. Which backend a player can reach is a
+   product decision that has not been made (see EVENTGEN-ARCHITECTURE.md §2 and
+   §10: the HTTPS -> http://localhost question is genuinely unresolved and I am
+   not going to pretend otherwise by hard-coding one). A registry means the
+   answer, whenever it arrives, is a row.
+
+   THE ONE RULE THIS FILE ENFORCES STRUCTURALLY: `llmComplete` is the only
+   function in the program that calls `fetch`. test-eventgen asserts that
+   against the source text, because "the model is never on the hot path" is
+   worth nothing if some later helper quietly opens its own socket. */
+
+const LLM_PROVIDERS = [
+  { id: "off", label: "Off", local: true, needsKey: false, endpoint: "",
+    note: "No model. Generated events use their hand-written fallbacks, which is what P1 ships and what every test runs against.",
+    build: () => null, extract: () => null },
+
+  /* The one to try first. Ollama, llama.cpp's server, LM Studio, vLLM and most
+     other local runners all speak this, so a single row covers the whole of
+     option C — and a 1-3B model is enough, because the proposer already did
+     the reasoning (architecture §6). No key: it is your machine. */
+  { id: "openai", label: "Local server (OpenAI-compatible)", local: true, needsKey: false,
+    endpoint: "http://localhost:11434/v1/chat/completions",
+    model: "llama3.2",
+    note: "Ollama, llama.cpp, LM Studio, vLLM. Nothing leaves your machine. A page served over HTTPS may be blocked from reaching http://localhost — see the note in Settings.",
+    build: (cfg, req) => ({
+      url: cfg.endpoint,
+      init: { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: cfg.model, max_tokens: req.maxTokens, temperature: 0.8, stream: false,
+          messages: [{ role: "user", content: req.prompt }],
+        }) },
+    }),
+    extract: (d) => (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || null },
+
+  /* Option A, unchanged in substance from what module 15 already did. Kept
+     honest about the key: a static PWA cannot hold a secret, so this works in
+     a runtime that proxies the call and fails closed everywhere else. That is
+     open question #3 and it is still open. */
+  { id: "anthropic", label: "Anthropic API", local: false, needsKey: true,
+    endpoint: "https://api.anthropic.com/v1/messages",
+    model: "claude-sonnet-4-6",
+    note: "Remote. Costs no GPU of yours, but a static PWA has nowhere safe to keep a key — this fails closed unless the page is served somewhere that proxies the call.",
+    build: (cfg, req) => ({
+      url: cfg.endpoint,
+      init: { method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
+          cfg.key ? { "x-api-key": cfg.key } : {}),
+        body: JSON.stringify({
+          model: cfg.model, max_tokens: req.maxTokens,
+          messages: [{ role: "user", content: req.prompt }],
+        }) },
+    }),
+    extract: (d) => {
+      const b = d && Array.isArray(d.content) ? d.content.find((c) => c.type === "text") : null;
+      return (b && b.text) || null;
+    } },
+];
+const LLM_BY_ID = (() => { const o = {}; for (const p of LLM_PROVIDERS) o[p.id] = p; return o; })();
+
+/* Tests need a model that answers without a network, and the realiser has to
+   be tested against RECORDED output rather than a live call — a test that
+   makes a network call is a test that fails on a plane (architecture §7).
+   Registering a fixture swaps the transport, not the logic: prompt building,
+   sanitising and realisation all run exactly as they do in the browser. */
+let _llmFixture = null;
+function llmSetFixture(fn) { _llmFixture = typeof fn === "function" ? fn : null; }
+
+/* Session budget, in memory, deliberately not persisted — a soft ceiling that
+   resets on reload is the right shape for "don't melt the GPU by accident".
+
+   `key` lives here too, and NOT in the save. A static PWA has nowhere safe to
+   keep a secret (open question #3), and the one thing worse than having no
+   answer to that is writing the key into localStorage where every script on
+   the origin can read it and it outlives the session. Memory-only means the
+   remote provider has to be re-armed each launch, which is honest about what
+   it costs rather than quietly pretending the problem is solved. */
+const _llmState = { callsThisSession: 0, lastCallAt: 0, key: "" };
+function llmSetKey(k) { _llmState.key = typeof k === "string" ? k.trim() : ""; }
+
+const AI_STATE_V = 2;
+function aiInit() {
+  return { v: AI_STATE_V, enabled: false, level: "flavor",
+           provider: "off", endpoint: "", model: "" };
+}
+/* Gotcha #4's other half. Pre-P2 saves carry {enabled, level} and nothing
+   else; they land on the off provider, which is the same behaviour they had. */
+function aiMigrate(s) {
+  if (!s.ai || typeof s.ai !== "object") { s.ai = aiInit(); return; }
+  const a = s.ai;
+  if (a.enabled === undefined) a.enabled = false;
+  if (a.level === undefined) a.level = "flavor";
+  if (a.provider === undefined || !LLM_BY_ID[a.provider]) a.provider = "off";
+  if (a.endpoint === undefined) a.endpoint = "";
+  if (a.model === undefined) a.model = "";
+  if (a.key !== undefined) delete a.key;      /* an older build may have stored one */
+  a.v = AI_STATE_V;
+}
+
+function llmConfigFor(s) {
+  const a = (s && s.ai) || {};
+  const prov = LLM_BY_ID[a.provider] || LLM_BY_ID.off;
+  return {
+    prov: prov,
+    endpoint: (a.endpoint || prov.endpoint || "").trim(),
+    model: (a.model || prov.model || "").trim(),
+    key: _llmState.key,
+  };
+}
+/* Every reason the answer is "no model", in one place. Read by the settings
+   screen too, so what it explains and what the code does cannot drift. */
+function llmUnavailableReason(s) {
+  if (!s || !s.ai || !s.ai.enabled) return "turned off";
+  const cfg = llmConfigFor(s);
+  if (cfg.prov.id === "off") return "no provider chosen";
+  if (!cfg.endpoint) return "no endpoint";
+  if (!cfg.model) return "no model name";
+  if (cfg.prov.needsKey && !cfg.key) return "no API key";
+  if (_llmState.callsThisSession >= AI_NARRATION_CONFIG.maxCallsPerSession) return "session budget spent";
+  return null;
+}
+function llmAvailable(s) { return _llmFixture ? true : llmUnavailableReason(s) === null; }
+
+/* THE ONLY fetch IN THE PROGRAM. Always resolves; null is an ordinary answer
+   and means the caller keeps whatever hand-written text it already had. */
+async function llmComplete(req) {
+  const r = req || {};
+  const maxTokens = r.maxTokens || AI_NARRATION_CONFIG.maxTokens;
+  if (!r.prompt) return null;
+  if (_llmFixture) {
+    try { const t = await _llmFixture(r); return t ? { text: String(t) } : null; }
+    catch (e) { return null; }
+  }
+  if (!llmAvailable(r.state)) return null;
+  const cfg = llmConfigFor(r.state);
+  let plan = null;
+  try { plan = cfg.prov.build(cfg, { prompt: r.prompt, maxTokens: maxTokens }); } catch (e) { return null; }
+  if (!plan || !plan.url) return null;
+  _llmState.callsThisSession++;
+  _llmState.lastCallAt = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AI_NARRATION_CONFIG.timeoutMs);
+    const init = Object.assign({}, plan.init, { signal: r.signal || controller.signal });
+    const res = await fetch(plan.url, init);
+    clearTimeout(timer);
+    if (!res || !res.ok) return null;
+    const data = await res.json();
+    const text = cfg.prov.extract(data);
+    return text ? { text: String(text) } : null;
+  } catch (e) {
+    return null;                 /* offline, blocked, aborted, malformed */
+  }
+}
+
+/* ── EVT P2 · PROSE REALISATION ───────────────────────────────────────────
+   P2 upgrades the WORDS of a generated event and nothing else. The options
+   and their effects stay exactly as the proposer built them.
+
+   That is enforced by shape rather than by discipline: evtRealiseProse takes a
+   STRING. There is no parameter through which options or fx could arrive, so
+   no amount of prompt injection reaches them, and P1's validator is not even
+   the thing standing in the way here — it has nothing to guard yet. It becomes
+   load-bearing in P3, when the model starts choosing effects. */
+
+/* The register, stated explicitly, because voice drift is the single biggest
+   risk this feature carries (architecture §8) and a model will not find this
+   tone by accident. The option labels go in READ-ONLY: the prose is being
+   swapped underneath fixed choices, so it has to stay compatible with them. */
+/* evtResolveCast keys by SLOT ({ friend: {name, store, key} }), because the
+   bands resolve "$friend" against it. Everything downstream wants a list, so
+   flatten it in one place rather than three. */
+function evtCastList(proposal) {
+  const c = (proposal && proposal.cast) || {};
+  if (Array.isArray(c)) return c.filter(Boolean);
+  return Object.keys(c).map((slot) => Object.assign({ slot: slot }, c[slot])).filter((x) => x && x.name);
+}
+
+function evtProsePrompt(proposal) {
+  if (!proposal || !proposal.fallback) return null;
+  const fb = proposal.fallback;
+  const labels = (fb.options || []).map((o) => o.label || (o.card && o.card.name)).filter(Boolean);
+  return [
+    "You are rewriting one short scene for a life-simulation game.",
+    "",
+    "VOICE: second person, past or present, dry and unsentimental. Concrete specific detail.",
+    "No moral. No saccharine resolution. No summing up at the end. Two to four sentences.",
+    "",
+    "SCENE AS WRITTEN: " + fb.text,
+    "",
+    "THE PLAYER WILL THEN CHOOSE BETWEEN: " + labels.map((l) => JSON.stringify(l)).join(", "),
+    "Your text must leave every one of those choices still open and still sensible.",
+    "",
+    "SITUATION: " + JSON.stringify(proposal.situation || {}),
+    "PEOPLE PRESENT: " + JSON.stringify(evtCastList(proposal).map((c) => ({ name: c.name, role: c.slot }))),
+    "",
+    "Do not change any fact, name, number or outcome. Do not introduce a new person.",
+    "Do not mention any name not listed under PEOPLE PRESENT.",
+    "Respond with ONLY the finished prose. No preamble, no quotes, no JSON, no markdown.",
+  ].join("\n");
+}
+
+/* Everyone this save has a name for, split into who is legitimately in this
+   scene and who is not. The second set is what makes "do not introduce a new
+   person" checkable instead of merely requested — a model that reaches for the
+   player's mother, or for somebody who died in 1974, names her, and naming her
+   is exactly what we can detect. */
+function evtKnownNames(s, proposal) {
+  const cast = new Set();
+  for (const c of evtCastList(proposal)) cast.add(String(c.name));
+  if (s && s.profile && s.profile.first) cast.add(String(s.profile.first));
+  if (s && s.profile && s.profile.usedName) cast.add(String(s.profile.usedName));
+  const others = new Set();
+  for (const store of ["family", "friends", "romance", "relatives", "ppl"]) {
+    const g = (s && s[store]) || {};
+    for (const k of Object.keys(g)) {
+      const n = g[k] && g[k].name;
+      if (n && !cast.has(String(n))) others.add(String(n));
+    }
+  }
+  return { cast: cast, others: others };
+}
+
+const EVT_PROSE_MIN = 40;         /* shorter than this is not an upgrade */
+const EVT_PROSE_MAX = 600;        /* same cap the validator uses */
+const EVT_REFUSALS = /\b(as an ai|i cannot|i can't help|i'm unable|i am unable|language model)\b/i;
+
+/* Pure. Returns clean prose, or null to keep the hand-written text.
+   Over-length is REJECTED rather than truncated: a sentence cut off mid-clause
+   reads worse than the fallback it was supposed to improve. */
+function evtSanitiseProse(raw, names) {
+  if (typeof raw !== "string") return null;
+  let t = raw.trim();
+  /* markdown fences, whole-response quoting, and the "Here is the scene:"
+     preamble models add no matter how firmly they are asked not to */
+  t = t.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/, "").trim();
+  /* bounded loop, because they stack: "Sure, here is the scene: ..." is two
+     preambles and stripping one leaves the other sitting in the prose */
+  for (let i = 0; i < 3; i++) {
+    const was = t;
+    t = t.replace(/^(sure|certainly|of course|here(\s+is|'s)[^\n:]{0,60}|okay)[:,]\s*/i, "").trim();
+    if (t === was) break;
+  }
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("“") && t.endsWith("”"))) t = t.slice(1, -1).trim();
+  if (!t) return null;
+  if (t[0] === "{" || t[0] === "[") return null;          /* answered with JSON */
+  if (EVT_REFUSALS.test(t)) return null;
+  if (t.length < EVT_PROSE_MIN || t.length > EVT_PROSE_MAX) return null;
+  if (names && names.others) {
+    for (const n of names.others) {
+      if (n.length < 3) continue;
+      if (new RegExp("\\b" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) return null;
+    }
+  }
+  return t;
+}
+
+/* Takes a STRING. See the note above — this signature is the safety property.
+   Options come from the proposal's own fallback, by reference, always. */
+function evtRealiseProse(proposal, prose) {
+  if (!proposal || !proposal.fallback) return null;
+  if (typeof prose !== "string" || !prose.trim()) return null;
+  const fb = proposal.fallback;
+  return { id: proposal.id, emoji: fb.emoji, title: fb.title, text: prose.trim(),
+           options: fb.options, generated: 1, realised: "prose" };
+}
+
+/* In-memory only, and capped. A proposal is what the prompt needs, but it is
+   several hundred bytes of duplicated state and storing it in the save would
+   cost exactly the budget P5 exists to spend carefully. The consequence of
+   keeping it here is that reloading a save leaves an open popup un-upgraded,
+   which is the same graceful nothing that being offline produces. */
+const EVT_PROPOSAL_CAP = 24;
+const _evtProposals = new Map();
+function evtRemember(proposal) {
+  if (!proposal || !proposal.id) return;
+  _evtProposals.set(proposal.id, proposal);
+  while (_evtProposals.size > EVT_PROPOSAL_CAP) _evtProposals.delete(_evtProposals.keys().next().value);
+}
+const _evtProseCache = new Map();
+const _evtInFlight = new Set();
+
+/* The async half, and the reason advance() never awaits anything: the popup is
+   already on screen with its hand-written text when this starts. onResolve is
+   only ever allowed to replace a display string. */
+function evtEnhance(s, popup, onResolve) {
+  if (!popup || !popup.generated || !popup.id) return;
+  if (!llmAvailable(s)) return;
+  const prop = _evtProposals.get(popup.id);
+  if (!prop) return;
+  /* coarse, so "a friend drifting in your thirties" is written once and reused
+     across lives and across saves (architecture §6.3) */
+  const key = prop.kind + "|" + Math.floor((prop.situation.age || 0) / 10) +
+              "|" + evtCastList(prop).map((c) => c.slot).sort().join(",");
+  if (_evtProseCache.has(key)) { onResolve(_evtProseCache.get(key)); return; }
+  if (_evtInFlight.has(key)) return;
+  if (Date.now() - _llmState.lastCallAt < AI_NARRATION_CONFIG.minIntervalMs) return;
+  const prompt = evtProsePrompt(prop);
+  if (!prompt) return;
+  _evtInFlight.add(key);
+  const names = evtKnownNames(s, prop);
+  llmComplete({ prompt: prompt, maxTokens: AI_NARRATION_CONFIG.maxTokens, state: s }).then((out) => {
+    _evtInFlight.delete(key);
+    const prose = evtSanitiseProse(out && out.text, names);
+    if (!prose) return;                 /* keep the fallback; the player never knows */
+    _evtProseCache.set(key, prose);
+    onResolve(prose);
+  }).catch(() => { _evtInFlight.delete(key); });
+}
+
 const AI_NARRATION_CONFIG = {
   model: "claude-sonnet-4-6",
   maxTokens: 220,
@@ -18131,8 +18843,11 @@ const AI_NARRATION_CONFIG = {
 const _aiCache = new Map();
 const _aiState = { callsThisSession: 0, lastCallAt: 0, inFlight: new Set() };
 
+/* Now defers to the provider layer for "is there a model at all", and keeps
+   only its own per-surface budget on top. Two answers to one question is the
+   desync this repo has already paid for once (flags.homeless / hreSetTenure). */
 function aiNarrationAllowed(s) {
-  if (!s || !s.ai || !s.ai.enabled) return false;
+  if (!llmAvailable(s)) return false;
   if (_aiState.callsThisSession >= AI_NARRATION_CONFIG.maxCallsPerSession) return false;
   return true;
 }
@@ -18160,28 +18875,15 @@ function _sanitizeAIText(raw) {
 }
 
 // Always resolves, never throws — null means "keep the hand-written text".
-async function requestAINarration(prompt) {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), AI_NARRATION_CONFIG.timeoutMs);
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: AI_NARRATION_CONFIG.model,
-        max_tokens: AI_NARRATION_CONFIG.maxTokens,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const block = Array.isArray(data.content) ? data.content.find((c) => c.type === "text") : null;
-    return _sanitizeAIText(block && block.text);
-  } catch (e) {
-    return null; // offline / aborted / malformed — always degrade silently
-  }
+//
+// EVT P2: this used to open its own hardwired connection to api.anthropic.com.
+// It now goes through llmComplete like everything else, which is what makes
+// "there is exactly one fetch in the program" true rather than aspirational —
+// and incidentally means module 15's narration gained the local-model option
+// for free, since the provider is a setting rather than a literal in here.
+async function requestAINarration(prompt, state) {
+  const out = await llmComplete({ prompt: prompt, maxTokens: AI_NARRATION_CONFIG.maxTokens, state: state });
+  return _sanitizeAIText(out && out.text);
 }
 
 function _narrationPrompt(base, ctx) {
@@ -18210,7 +18912,7 @@ function enhancePopupNarration(s, popupSnapshot, onResolve) {
   _aiState.callsThisSession++;
   _aiState.inFlight.add(key);
   const prompt = _narrationPrompt(popupSnapshot.text, buildNarrationContext(s));
-  requestAINarration(prompt).then((text) => {
+  requestAINarration(prompt, s).then((text) => {
     _aiState.inFlight.delete(key);
     if (!text) return;
     _aiCache.set(key, text);
@@ -18236,7 +18938,7 @@ function generateNPCLine(s, person, situationText) {
     personTraits: person ? { warmth: person.warmth, kindness: person.kindness } : undefined,
   });
   const prompt = _narrationPrompt(situationText || "a short conversation", ctx);
-  return requestAINarration(prompt).then((text) => text || fallback);
+  return requestAINarration(prompt, s).then((text) => text || fallback);
 }
 
 const AI_GROUP = {
@@ -18249,24 +18951,46 @@ const AI_GROUP = {
 };
 ACT_GROUPS.push(AI_GROUP);
 
+/* EVT P2 added the provider row. Endpoint and model are NOT asked for here:
+   each provider ships a working default (Ollama's, for the local one), so
+   picking a provider is the whole of the setup for the case that matters. A
+   popup menu has no text entry, and inventing one to collect a URL nobody
+   needs to change would be the wrong shape for the 90% case. */
 function aiSettingsMenu(s) {
   const on = !!(s.ai && s.ai.enabled);
-  const ensure = (st) => { if (!st.ai) st.ai = { enabled: false, level: "flavor" }; return st.ai; };
+  const ensure = (st) => { if (!st.ai || typeof st.ai !== "object") st.ai = aiInit(); else aiMigrate(st); return st.ai; };
+  const cfg = llmConfigFor(s);
+  const why = llmUnavailableReason(s);
+  const status = !on ? ""
+    : why ? ` Right now it can't run: ${why}.`
+    : ` Using ${cfg.prov.label}${cfg.model ? ` (${cfg.model})` : ""}.`;
+  const opts = [
+    on
+      ? { label: "Turn off", fx: { run: (st) => { ensure(st).enabled = false; push(st, "\u2728 AI narration turned off. Back to the written word."); } } }
+      : { label: "Turn on", fx: { run: (st) => { ensure(st).enabled = true; push(st, "\u2728 AI narration turned on. Some moments will read a little differently from here."); } } },
+  ];
+  for (const p of LLM_PROVIDERS) {
+    opts.push({
+      label: (cfg.prov.id === p.id ? "\u2713 " : "") + p.label,
+      cond: (st) => !!(st.ai && st.ai.enabled),
+      fx: { run: (st) => {
+        const a = ensure(st);
+        a.provider = p.id; a.endpoint = ""; a.model = "";   /* back to that provider's defaults */
+        push(st, `\u2728 ${p.label}. ${p.note}`);
+      } },
+    });
+  }
+  opts.push({ label: "Flavour: subtle", cond: (st) => !!(st.ai && st.ai.enabled), fx: { run: (st) => { ensure(st).level = "flavor"; } } });
+  opts.push({ label: "Flavour: rich", cond: (st) => !!(st.ai && st.ai.enabled), fx: { run: (st) => { ensure(st).level = "rich"; } } });
+  opts.push({ label: "Close", fx: {} });
   return {
     id: "aiSettingsMenu",
     emoji: "\u2728",
     title: "AI Narration",
-    text: on
+    text: (on
       ? "AI narration is on. When it's available, some event and conversation text gets rewritten with extra, unique detail. It never changes what actually happens \u2014 only how it's described. Offline, or if the request fails, you just get the regular text."
-      : "AI narration is off. Turn it on to have some events and conversations get an extra AI-written pass of flavour. This never changes outcomes, stats, or options \u2014 only wording.",
-    options: [
-      on
-        ? { label: "Turn off", fx: { run: (st) => { ensure(st).enabled = false; push(st, "\u2728 AI narration turned off. Back to the written word."); } } }
-        : { label: "Turn on", fx: { run: (st) => { ensure(st).enabled = true; push(st, "\u2728 AI narration turned on. Some moments will read a little differently from here."); } } },
-      { label: "Flavour: subtle", cond: (s) => !!(s.ai && s.ai.enabled), fx: { run: (st) => { ensure(st).level = "flavor"; } } },
-      { label: "Flavour: rich", cond: (s) => !!(s.ai && s.ai.enabled), fx: { run: (st) => { ensure(st).level = "rich"; } } },
-      { label: "Close", fx: {} },
-    ],
+      : "AI narration is off. Turn it on to have some events and conversations get an extra AI-written pass of flavour. This never changes outcomes, stats, or options \u2014 only wording.") + status,
+    options: opts,
   };
 }
 
@@ -18594,7 +19318,7 @@ function RelCard({ p, group, pkey, accent, state, apply, openKey, onToggle, conf
                 {!p.pet && <button className="btn" disabled={!spyReady} onClick={() => confirm({ title: `Spy on ${p.name}?`, body: "Going through their private things. If they catch you, trust breaks — and you'll carry it either way.", yes: "Snoop", danger: true }, () => apply((st) => spyAction(st, group, pkey)))} style={{ ...chip(spyReady), color: spyReady ? TH.amber : undefined }}>🕵 Spy</button>}
                 {canOut && <button className="btn" onClick={() => apply((st) => comeOutStart(st, group, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>🏳️‍🌈 Tell them who you are</button>}
                 {alreadyOut && <button className="btn" onClick={() => apply((st) => { const n = pClone(st); n.pending = stxAlreadyOutMenu(n, group, pkey, stxCurrentAxis(n)); return n; })} style={{ ...smallBtn(true), flexBasis: "100%", opacity: 0.9 }}>💬 They already know</button>}
-                {isRom && isActive && age >= ageOfConsent(state) && state.ageDays - (p.lastLove || 0) >= 20 && <button className="btn" onClick={() => apply((st) => makeLoveMenu(st, pkey))} style={chip(true)}>💞 Make love</button>}
+                {isRom && isActive && age >= ageOfConsent(state) && state.ageDays - (p.lastLove || 0) >= 20 && <button className="btn" onClick={() => apply((st) => makeLoveMenu(st, pkey))} style={chip(true)}>{isAce(state) && state.discovered.orientation && !aceAttracted(state, p) ? "🫂 An evening in" : "💞 Make love"}</button>}
                 {isRom && (p.status === "serious" || p.status === "dating") && <button className="btn" onClick={() => apply((st) => proposeMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>💍 Propose{p.status === "dating" ? " — early days" : ""}</button>}
                 {isRom && p.status === "engaged" && !state.spouse && <button className="btn" onClick={() => apply((st) => weddingMenu(st, pkey))} style={{ ...smallBtn(true), borderColor: accent, color: accent, flexBasis: "100%" }}>👰 Plan the wedding</button>}
                 {isActive && <button className="btn" onClick={() => confirm({ title: `Break up with ${p.name}?`, body: "This ends the relationship. It will hurt, and it can't be undone.", yes: "End it", danger: true }, () => apply((st) => { const n = pClone(st); const nm = n.romance[pkey]?.name; doBreakup(n, pkey, false); if (nm) push(n, `💔 You ended things with ${nm}. ${pick(["Said out loud, it sounded smaller and worse than it had in your head.", "There were tears, and a box of things to return, and a walk home that took a very long time.", "It was the right call and it still felt like standing in a doorway you couldn't go back through."])}`); return n; }))} style={{ ...smallBtn(true), color: TH.coral, flexBasis: "100%" }}>💔 Break up</button>}
@@ -20014,6 +20738,18 @@ function Game({ state, setState, onReset }) {
   // field). No-op when disabled/offline — the written text is already rendered.
   useEffect(() => {
     if (!state.pending) return;
+    /* EVT P2: a GENERATED event gets its own realiser, because the prompt can
+       be built from the proposal — the cast, the bands, the option labels the
+       prose has to stay compatible with — rather than from the finished string
+       alone. Both paths land in the same place: aiText, a display field, set
+       after the hand-written text is already on screen. */
+    if (state.pending.generated) {
+      evtEnhance(state, state.pending, (text) => {
+        setState((prev) => (prev.pending && prev.pending.id === state.pending.id
+          ? { ...prev, pending: { ...prev.pending, aiText: text } } : prev));
+      });
+      return;
+    }
     enhancePopupNarration(state, state.pending, (text) => {
       setState((prev) => (prev.pending ? { ...prev, pending: { ...prev.pending, aiText: text } } : prev));
     });

@@ -353,5 +353,246 @@ sec("4 · it reaches the player");
   ok("nothing named run was ever persisted into a save", runLeaks === 0, runLeaks);
 }
 
-console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
-process.exit(fail === 0 ? 0 : 1);
+/* ══════════════════════════════════════════════════════════════════════════
+   EVT P2 · THE PROVIDER SEAM
+
+   P2 is where a model can answer at all, so this half of the suite is about
+   the two properties that make that safe rather than merely working:
+
+     1. a realisation can change the WORDS and nothing else, and that is true
+        by SHAPE — evtRealiseProse takes a string, so there is no parameter
+        through which options or effects could arrive;
+     2. no test ever touches the network. Everything below runs against a
+        registered fixture, which swaps the transport and leaves prompt
+        building, sanitising and realisation running exactly as they do in the
+        browser. A test that makes a network call is a test that fails on a
+        plane (architecture §7).
+   ═══════════════════════════════════════════════════════════════════════ */
+sec("P2 · the provider seam");
+{
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const clean = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  /* THE structural claim. "The model is never on the hot path" is worth
+     nothing if a later helper quietly opens its own socket. */
+  const fetches = (clean.match(/[^.\w]fetch\s*\(/g) || []).length;
+  ok("there is exactly one fetch in the whole program", fetches === 1, fetches);
+  ok("...and it is inside llmComplete", (() => {
+    const i = clean.indexOf("async function llmComplete");
+    const j = clean.indexOf("\nfunction ", i + 10);
+    const body = clean.slice(i, j > i ? j : undefined);
+    return /[^.\w]fetch\s*\(/.test(body);
+  })());
+  /* The hot path itself. advance() and evtMaybeFire must be synchronous —
+     the popup is on screen with its written text before a model is asked
+     anything, which is the property the whole design rests on. */
+  const bodyOf = (name) => {
+    const i = clean.indexOf("function " + name + "(");
+    if (i < 0) return "";
+    const j = clean.indexOf("\nfunction ", i + 10);
+    return clean.slice(i, j > i ? j : i + 8000);
+  };
+  for (const fn of ["advance", "evtMaybeFire", "evtPropose", "evtBuildProposal"]) {
+    const b = bodyOf(fn);
+    ok(fn + " exists", b.length > 0);
+    ok(fn + " is not async", !new RegExp("async\\s+function\\s+" + fn + "\\b").test(clean));
+    ok(fn + " awaits nothing", !/\bawait\b/.test(b));
+    ok(fn + " never calls the model", !/llmComplete|evtEnhance|requestAINarration/.test(b));
+  }
+  ok("the realiser is the only async thing in EVT", /function evtEnhance/.test(clean));
+
+  /* every provider is a complete row, or it is a trap for whoever adds one */
+  ok("there are at least three providers", M.LLM_PROVIDERS.length >= 3);
+  for (const p of M.LLM_PROVIDERS) {
+    ok(p.id + ": has a label", typeof p.label === "string" && p.label.length > 0);
+    ok(p.id + ": has a note explaining its cost", typeof p.note === "string" && p.note.length > 20);
+    ok(p.id + ": builds and extracts", typeof p.build === "function" && typeof p.extract === "function");
+    if (p.id !== "off") {
+      ok(p.id + ": ships a working default endpoint", /^https?:\/\//.test(p.endpoint), p.endpoint);
+      ok(p.id + ": ships a default model", typeof p.model === "string" && p.model.length > 0);
+    }
+  }
+  ok("off is the default a new life gets", M.aiInit().provider === "off");
+  ok("...and a new life has it disabled entirely", M.aiInit().enabled === false);
+}
+{
+  /* 2 · NOTHING RUNS WITHOUT BEING ASKED FOR, which is what keeps every other
+     suite in this repo offline. Each reason is reported distinctly, because
+     the settings screen shows the string. */
+  const s = at(30);
+  ok("off by default", M.llmAvailable(s) === false);
+  ok("...and says why", M.llmUnavailableReason(s) === "turned off");
+  s.ai.enabled = true;
+  ok("enabling alone is not enough", M.llmAvailable(s) === false);
+  ok("...because no provider is chosen", M.llmUnavailableReason(s) === "no provider chosen");
+  s.ai.provider = "openai";
+  ok("a chosen provider brings its own endpoint and model", M.llmUnavailableReason(s) === null);
+  ok("...and that endpoint is local", M.llmConfigFor(s).endpoint.indexOf("localhost") > -1);
+  s.ai.provider = "anthropic";
+  ok("a remote provider still wants a key", M.llmUnavailableReason(s) === "no API key");
+  /* the key is memory-only, never in the save — a static PWA has nowhere safe
+     to keep a secret, and localStorage is not it */
+  M.llmSetKey("test-key-not-a-real-one");
+  ok("...which lives in memory, not in the save", M.llmUnavailableReason(s) === null);
+  ok("...and never reaches the serialised state", JSON.stringify(s).indexOf("test-key-not-a-real-one") === -1);
+  M.llmSetKey("");
+  /* an unknown provider id in a hand-edited save must not become reachable */
+  s.ai.provider = "definitely-not-a-provider";
+  M.aiMigrate(s);
+  ok("an unknown provider migrates back to off", s.ai.provider === "off");
+}
+{
+  /* 3 · MIGRATION — Gotcha #4, both halves in the same patch */
+  const old = { enabled: true, level: "rich" };            /* a pre-P2 save */
+  const s = at(30); s.ai = JSON.parse(JSON.stringify(old));
+  M.aiMigrate(s);
+  ok("a pre-P2 save keeps what it had", s.ai.enabled === true && s.ai.level === "rich");
+  ok("...and gains the provider field", s.ai.provider === "off");
+  ok("...so it behaves exactly as it did before", M.llmAvailable(s) === false);
+  const withKey = at(30); withKey.ai = { enabled: true, level: "flavor", provider: "anthropic", key: "leaked" };
+  M.aiMigrate(withKey);
+  ok("a key stored by an older build is removed from the save", withKey.ai.key === undefined);
+  const broken = at(30); broken.ai = "nonsense";
+  M.aiMigrate(broken);
+  ok("a corrupt ai blob is replaced wholesale", broken.ai.provider === "off" && broken.ai.enabled === false);
+}
+{
+  /* 4 · THE PROMPT CARRIES WHAT THE PROSE HAS TO STAY COMPATIBLE WITH */
+  const s = only(at(34), "friendDrift");
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  const prop = proposeFor(s);
+  ok("a proposal exists to realise", !!prop, prop);
+  if (prop) {
+    const prompt = M.evtProsePrompt(prop);
+    ok("the prompt exists", typeof prompt === "string" && prompt.length > 100);
+    ok("...and states the register", /unsentimental/i.test(prompt) && /saccharine/i.test(prompt));
+    ok("...and carries the option labels", prop.fallback.options.every((o) => prompt.indexOf(o.label) > -1));
+    ok("...and says the choices must stay open", /still open/i.test(prompt));
+    ok("...and forbids inventing a person", /not introduce a new person/i.test(prompt));
+    ok("...and asks for prose, not JSON", /no JSON/i.test(prompt) && /ONLY the finished prose/i.test(prompt));
+
+    /* §5 — the model learns nothing the player does not already know */
+    s.hidden.gender = "Trans man"; s.discovered.gender = false;
+    s.hidden.orientation = "Gay";  s.discovered.orientation = false;
+    const p2 = M.evtProsePrompt(proposeFor(s));
+    ok("an undiscovered identity never reaches the prompt",
+      p2.indexOf("Trans man") === -1 && p2.indexOf("Gay") === -1);
+  }
+}
+{
+  /* 5 · THE SANITISER, adversarially. Each of these is a real thing models do. */
+  const names = { cast: new Set(["Kim"]), others: new Set(["Marguerite", "Bo"]) };
+  const good = "Kim's name comes up in a message you do not answer for two days. " +
+               "You draft three replies on the bus and send none of them.";
+  ok("clean prose survives", M.evtSanitiseProse(good, names) === good);
+  ok("a code fence is stripped", M.evtSanitiseProse("```\n" + good + "\n```", names) === good);
+  ok("a preamble is stripped", M.evtSanitiseProse("Sure, here is the scene: " + good, names) === good);
+  ok("whole-response quoting is stripped", M.evtSanitiseProse('"' + good + '"', names) === good);
+  ok("JSON is rejected outright", M.evtSanitiseProse('{"text":"' + good + '"}', names) === null);
+  ok("a refusal is rejected", M.evtSanitiseProse("As an AI language model I cannot write that.", names) === null);
+  ok("empty is rejected", M.evtSanitiseProse("   ", names) === null);
+  ok("a non-string is rejected", M.evtSanitiseProse(null, names) === null && M.evtSanitiseProse(42, names) === null);
+  ok("too short is not an upgrade", M.evtSanitiseProse("Kim called.", names) === null);
+  /* rejected rather than truncated: a sentence cut mid-clause reads worse
+     than the hand-written text it was meant to improve */
+  ok("over-length is rejected, not truncated", M.evtSanitiseProse("x".repeat(M.EVT_PROSE_MAX + 1), names) === null);
+  /* the failure the architecture names: the model reaches for somebody who is
+     not in this scene — the mother, the one who died in 1974 */
+  ok("naming somebody not in the cast is rejected",
+    M.evtSanitiseProse(good + " Marguerite would have had something to say about that.", names) === null);
+  ok("...but the cast themselves are fine", M.evtSanitiseProse(good, names) === good);
+  ok("...and a substring of a known name is not a false positive",
+    typeof M.evtSanitiseProse("Kim's message sat there unanswered while the bomb of it went off quietly.", names) === "string");
+
+  /* the name set is built from every store the save has */
+  const s = at(40);
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41 } };
+  s.family = { mom: { name: "Marguerite", role: "Mom", rel: 60 } };
+  const kn = M.evtKnownNames(s, { cast: [{ slot: "friend", name: "Kim" }] });
+  ok("the cast is known", kn.cast.has("Kim"));
+  ok("the player is never a stranger in their own scene", kn.cast.has(s.profile.first));
+  ok("everybody else is a stranger to this scene", kn.others.has("Marguerite"));
+  ok("...and the cast is not also in the stranger set", !kn.others.has("Kim"));
+}
+{
+  /* 6 · THE SAFETY PROPERTY OF P2, WHICH IS ITS SIGNATURE.
+     evtRealiseProse takes a STRING. A hostile realisation cannot smuggle
+     options or fx through it because there is no parameter for them. */
+  const s = only(at(34), "friendDrift");
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  const prop = proposeFor(s);
+  const before = JSON.stringify(prop.fallback.options);
+  const prose = "Kim's name comes up and you realise it has been eleven months. " +
+                "You look at the message for a while and then put the phone face down.";
+  const ev = M.evtRealiseProse(prop, prose);
+  ok("the words change", ev.text === prose && ev.text !== prop.fallback.text);
+  ok("the options do not", JSON.stringify(ev.options) === before);
+  ok("...they are the proposer's own objects", ev.options === prop.fallback.options);
+  ok("the title and emoji are the proposer's", ev.emoji === prop.fallback.emoji && ev.title === prop.fallback.title);
+  ok("it is still marked generated", ev.generated === 1 && ev.realised === "prose");
+  ok("arity is the guarantee: it takes a string, not an object", M.evtRealiseProse.length === 2);
+  ok("an object where prose belongs realises nothing",
+    M.evtRealiseProse(prop, { text: prose, options: [{ label: "x", fx: { run: () => {} } }] }) === null);
+  ok("empty prose realises nothing", M.evtRealiseProse(prop, "  ") === null);
+  ok("no proposal, no realisation", M.evtRealiseProse(null, prose) === null);
+  /* and the fx that came out the other side is still declarative */
+  ok("no option gained a run", ev.options.every((o) => !o.fx || o.fx.run === undefined));
+}
+/* 7 · END TO END, AGAINST A FIXTURE. No socket is opened at any point: the
+   fixture replaces the transport and everything above it — prompt, sanitiser,
+   realisation, cache — runs exactly as it does in the browser. */
+async function p2EndToEnd() {
+  const s = only(at(34), "friendDrift");
+  s.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+  const prop = proposeFor(s);
+  if (!prop) { ok("a proposal exists to realise end to end", false); return; }
+  M.evtRemember(prop);
+  const popup = { id: prop.id, generated: 1, text: prop.fallback.text };
+
+  const run = (reply) => new Promise((resolve) => {
+    M.llmSetFixture(async () => reply);
+    let got = null;
+    M.evtEnhance(s, popup, (t) => { got = t; });
+    setTimeout(() => { M.llmSetFixture(null); resolve(got); }, 15);
+  });
+
+  const first = await run(
+    "Kim's name comes up in a group message you scroll past twice before answering. " +
+    "It has been eleven months and neither of you has said so out loud.");
+  ok("a good realisation reaches the popup", typeof first === "string" && first.indexOf("eleven months") > -1, first);
+
+  /* the same situation must not spend a second call (architecture §6.3) */
+  const second = await run("A COMPLETELY DIFFERENT ANSWER, LONG ENOUGH TO CLEAR THE LENGTH FLOOR WITHOUT TROUBLE.");
+  ok("the situation cache answers the second time", second === first, second);
+
+  /* and every way a realisation can be bad leaves the written text standing */
+  const other = only(at(52), "friendDrift");
+  other.friends = { f9: { name: "Ros", role: "Friend", rel: 38, g: "F" } };
+  const p2 = proposeFor(other);
+  if (p2) {
+    M.evtRemember(p2);
+    const pop2 = { id: p2.id, generated: 1, text: p2.fallback.text };
+    const bad = (reply) => new Promise((resolve) => {
+      M.llmSetFixture(async () => reply);
+      let got = null;
+      M.evtEnhance(other, pop2, (t) => { got = t; });
+      setTimeout(() => { M.llmSetFixture(null); resolve(got); }, 15);
+    });
+    ok("a refusal leaves the written text standing", (await bad("I'm unable to help with that.")) === null);
+    ok("JSON leaves the written text standing", (await bad('{"text":"nope"}')) === null);
+    ok("a provider returning nothing leaves it standing", (await bad("")) === null);
+    ok("a novel-length answer leaves it standing", (await bad("x".repeat(2000))) === null);
+  }
+
+  /* with no fixture AND no provider, nothing happens at all — this is the
+     state every other suite in the repo runs in */
+  let fired = false;
+  M.evtEnhance(s, { id: prop.id, generated: 1, text: "x" }, () => { fired = true; });
+  await new Promise((r) => setTimeout(r, 15));
+  ok("with no model configured, the realiser does nothing", fired === false);
+}
+
+p2EndToEnd().then(() => {
+  console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
+  process.exit(fail === 0 ? 0 : 1);
+});
