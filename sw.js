@@ -51,7 +51,13 @@
  *      this bump is doing real work — index.html is in ASSETS below, so
  *      without it an installed copy keeps the old shell and never sees it.
  */
-const CACHE_NAME = "a-life-cache-v16";
+/* v17 — the fetch handler stopped caching other origins' responses: it had
+   cached a local model server's /v1/models and kept serving it after the
+   server was shut down. This bump is load-bearing, not routine — `activate`
+   deletes caches whose name differs, which is the only thing that clears
+   that stale entry off devices that already have it. */
+/* v18 — server presets and a model picker for the local provider. */
+const CACHE_NAME = "a-life-cache-v18";
 const ASSETS = [
   "./",
   "./index.html",
@@ -79,6 +85,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  /* ONLY THIS APP'S OWN FILES. A fetch handler sees cross-origin requests from
+     the pages it controls too, and this one cached any GET that answered 200.
+     Measured: with a local model server on another origin, GET /v1/models was
+     cached under a-life-cache-v16 and then served from that cache AFTER THE
+     SERVER HAD BEEN SHUT DOWN — so a connection test would have reported
+     "running, model installed" with nothing running at all. Anything not
+     ours goes straight to the network, untouched and uncached. */
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)

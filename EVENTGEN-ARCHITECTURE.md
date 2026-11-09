@@ -99,16 +99,31 @@ most affects the GPU question.
 | **B** | In-browser WebGPU (WebLLM / transformers.js) | yours, bounded | ✓ after download | **1–2 GB** | first-run download dwarfs the 932 KB bundle |
 | **C** | Local server (Ollama / llama.cpp on localhost) | yours, best perf | ✓ | none | **HTTPS→localhost is a mixed-content problem — needs testing, see below** |
 
-**On option C and mixed content.** The game is served over HTTPS from
-`logostona.github.io`. A `fetch()` from an HTTPS origin to `http://localhost:11434`
-is subject to mixed-content rules and Private Network Access. Browsers treat
-`localhost` as a *potentially trustworthy origin*, which is why this sometimes
-works — but the behaviour differs across Chrome, Firefox and Safari and has
-changed between versions. **I have not verified this in this environment and would
-not build on it until someone has**, because the whole option collapses if it is
-blocked. The fallbacks if it is: run the PWA from `http://localhost` too, ship a
-tiny local proxy, or use a browser extension. All of those cost the "just open the
-website" property that makes this a PWA.
+**On option C and mixed content — now MEASURED.** The original text here said this
+was unverified and should not be built on until someone had checked. It has been
+checked, in Chromium 153, with the real game served as `https://logostona.github.io`
+(no request interception — interception suppresses CORS preflights and makes the
+result meaningless) and a real server on loopback:
+
+| | result |
+|---|---|
+| HTTPS page → `http://localhost` | **allowed** — mixed content is not the obstacle; `localhost` counts as trustworthy |
+| …without the *Local Network Access* permission | **blocked inside the browser** — the server receives nothing, even a `no-cors` probe fails |
+| …permission granted, server allows the origin | **works**, including the `POST` and its preflight |
+| …server sends no `Access-Control-Allow-Private-Network` | **still works** — the permission replaced that header; Ollama never sends it |
+| …server refuses the origin | CORS failure |
+| HTTPS page → `http://<another machine>` | **blocked by mixed content**, before any request |
+
+Two consequences. **Stock Ollama refuses this site**: its default allowlist is
+`localhost` / `127.0.0.1` / `0.0.0.0` plus a few app schemes (read from
+`envconfig/config.go`, `AllowedOrigins`), so every player must set
+`OLLAMA_ORIGINS`. And **a phone cannot use a desktop's model** from the hosted site —
+"local model" means the same computer as the browser. Safari and Firefox remain
+untested; only Chromium is available where this was measured.
+
+All of this is surfaced in-game by a connection test (`llmDiagnose`) that walks the
+same steps and names the failing one, because every failure on the real path is
+silent by design.
 
 **Recommendation: build for all three behind one interface, ship B or C first.**
 The provider is a function with one shape; which one is configured is a setting.
@@ -324,7 +339,22 @@ hand-written fallback and is realised in the background for next time.
 That makes the situation cache load-bearing rather than an optimisation — a piece of P4 pulled
 forward, because P3 is not honestly shippable without it.
 | **P4** | Bake-ahead queue, situation cache, tier config, settings UI. | yes |
-| **P5** | Persistence of realisations into the save; save-size budget. | yes |
+| **P5** | Persistence of realisations into the save; save-size budget. **Shipped** — see below. | yes |
+
+**P5 shipped, and found a P3 bug on the way.** The P3 prompt listed effects as dotted
+keys (`"stats.happiness": between -6 and 3`) while the validator read only the nested
+form — so a model following the prompt literally had *every* realisation rejected,
+silently, while every test stayed green because every fixture had been written nested.
+The validator now accepts both (expanding before the allowlist, with prototype keys
+refused), and the prompt shows a worked example built from the kind's own bands.
+
+P5 itself fixed three ways shown content was lost: the model's prose on an open popup
+lived only in React state, so a reload re-narrated it with different words; choosing an
+option of a realised event wrote **nothing** to the feed, so the event vanished from the
+life story; and the coarse situation cache would repeat a realisation word for word
+within one life. `s.evt.hist` records hashes of what each life has been shown — byte-
+budgeted, a whole life's worth fitting untrimmed — and everything is saved the moment
+it lands.
 
 **P1 is worth building even if the LLM half never happens.** A registry of event
 *kinds* with declared bands and procedural casting is a better authoring format
@@ -335,9 +365,9 @@ currently is not.
 
 ## 10 · Open questions
 
-1. **Which provider ships first** — and specifically, has anyone verified
-   HTTPS→`http://localhost` from this PWA in the browsers you care about? The
-   answer decides B vs C and I would not guess it.
+1. ~~**Which provider ships first** — has anyone verified HTTPS→`http://localhost`?~~
+   **Answered (§2):** it works in Chromium once the player allows local network access
+   and sets `OLLAMA_ORIGINS`. Local server ships first. Safari and Firefox are untested.
 2. **Mixing ratio.** What share of events should be generated? I would start at
    ~10% and raise it only after reading a lot of output.
 3. **API key**, if option A. A static PWA cannot hold a secret. The existing code

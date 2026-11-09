@@ -180,8 +180,10 @@ async function main() {
        bump would mean nobody already installed ever sees the button. */
     const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
     ok("index.html is cached by the service worker", /"\.\/index\.html"/.test(sw));
-    ok("...so the cache name had to move with it", /a-life-cache-v16/.test(sw),
-      (sw.match(/a-life-cache-v\d+/) || [])[0]);
+    /* at least the version that shipped the button — written as a floor so
+       the next routine bump does not have to edit this line */
+    const cacheV = +((sw.match(/const CACHE_NAME = "a-life-cache-v(\d+)"/) || [])[1] || 0);
+    ok("...so the cache name had to move with it", cacheV >= 16, cacheV);
 
     /* The UA rules, checked as logic rather than through jsdom — jsdom v31
        ignores its own `userAgent` option, so a browser cannot be simulated
@@ -202,6 +204,21 @@ async function main() {
       isIOS(UA.criOS, "iPhone", 5) === true);
     ok("DESKTOP Safari does not", isIOS(UA.mac, "MacIntel", 0) === false);
     ok("...nor desktop Chrome, which has a real API instead", isIOS(UA.win, "Win32", 0) === false);
+  }
+
+  sec("6 · the service worker caches only this app");
+  {
+    /* Measured before this fix: with a model server on another origin, the
+       SW cached GET /v1/models and served it after the server was shut down —
+       a connection test would have reported a dead server as healthy. */
+    const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+    const handler = sw.slice(sw.indexOf('addEventListener("fetch"'));
+    ok("the fetch handler leaves other origins alone",
+      /if \(new URL\(event\.request\.url\)\.origin !== self\.location\.origin\) return;/.test(handler));
+    ok("...and does so BEFORE it can respond from cache",
+      handler.indexOf("self.location.origin) return;") < handler.indexOf("event.respondWith("));
+    ok("...with a cache bump to clear the stale entry from devices that have it",
+      +((sw.match(/const CACHE_NAME = "a-life-cache-v(\d+)"/) || [])[1] || 0) >= 17);
   }
 
   console.log("\n" + pass + " passed, " + fail + " failed");

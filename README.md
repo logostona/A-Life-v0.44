@@ -20,6 +20,58 @@ uploaded anywhere and there is no account.
 
 ---
 
+## Optional: a local model for generated events
+
+The game can have a language model **on your own computer** rewrite its generated
+events. It is off by default and the game is complete without it. Nothing is sent
+anywhere else — the model runs on your machine.
+
+**What works.** A desktop or laptop running the model and the game in the **same
+browser on the same computer**, in Chrome or Edge. This was measured, not assumed:
+in Chromium 153, a page served from this site can reach a model server on
+`localhost` once you allow it.
+
+**What does not.** A phone using a model running on your desktop. The game is served
+over HTTPS, and browsers will not let an HTTPS page talk to a plain-`http` server on
+another machine at all. Safari and Firefox are untested.
+
+**Setup with [Ollama](https://ollama.com):**
+
+1. Install Ollama and pull a small model: `ollama pull llama3.2`
+2. **Allow this site.** Ollama only accepts browser requests from `localhost`-type
+   addresses by default, so it refuses this site until you add it. Set
+   `OLLAMA_ORIGINS` to `https://logostona.github.io` (it *adds* to the defaults):
+   - **Mac app:** `launchctl setenv OLLAMA_ORIGINS "https://logostona.github.io"`,
+     then quit and reopen Ollama.
+   - **Linux (systemd):** `systemctl edit ollama.service`, add under `[Service]`:
+     `Environment="OLLAMA_ORIGINS=https://logostona.github.io"`, then
+     `systemctl daemon-reload && systemctl restart ollama`.
+   - **Windows:** quit Ollama, open *Edit environment variables for your account*,
+     add `OLLAMA_ORIGINS` = `https://logostona.github.io`, start Ollama again.
+   - **From a terminal:** `OLLAMA_ORIGINS=https://logostona.github.io ollama serve`
+3. In the game: **🎯 Act → AI Narration → AI Narration Settings → Turn on**, then
+   choose **Local server**.
+4. **🖥 Server** — pick the one you run (Ollama is the default).
+   **🧠 Model** — lists the models your server actually has installed; tap one.
+5. Tap **🔌 Test the connection**. The browser will ask whether this site may access
+   apps on your device — **allow it**. The test walks every step and tells you
+   exactly which one fails and what to do about it, for the server you chose.
+
+**LM Studio or llama.cpp instead of Ollama.** Both work, but each listens on its own
+port and guards browser access differently, so choose it under **🖥 Server**:
+
+| | port | to let this site in |
+|---|---|---|
+| **Ollama** | 11434 | set `OLLAMA_ORIGINS` as above — it admits just this site |
+| **LM Studio** | 1234 | turn on CORS in its server settings, or `lms server start --cors`. Note this lets **any** website reach it, not only this one |
+| **llama.cpp** (`llama-server`) | 9931 — older builds used 8080 | nothing: it allows every origin unless `--tools` or MCP servers are on. To narrow it, `--cors-origins https://logostona.github.io` |
+
+These were read from each project's own source — Ollama's `envconfig`, LM Studio's
+`lms` CLI, llama.cpp's server — rather than remembered. vLLM and other
+OpenAI-compatible servers are not presets yet.
+
+---
+
 ## Hosting your own copy
 
 The repository root is a ready-to-host static build. No build step needed —
