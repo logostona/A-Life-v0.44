@@ -1,6 +1,28 @@
-# A Life — GitHub Pages deployment
+# A Life
 
-This folder is a ready-to-host static build of the game. No build step needed —
+### ▶︎ [**Play / install it here**](https://logostona.github.io/A-Life-v0.44/)
+
+A life simulation game. It is a **progressive web app**, not a download in the
+app-store sense — there is no `.apk` or `.exe`, and nothing to sideload.
+
+Open the link above and the page offers an **Install** button:
+
+| | what happens |
+|---|---|
+| **Android / Chrome / Edge** | Tap **Install**. It installs as a real app with its own icon and launcher entry. |
+| **Desktop Chrome / Edge** | Click **Install**, or use the ⊕ icon in the address bar. Opens in its own window. |
+| **iPhone / iPad (any browser)** | Tap **Install** for instructions: Share → **Add to Home Screen**. Apple provides no install API, so this step is manual. |
+| **Desktop Firefox** | No install support. The game still runs normally in the tab. |
+
+Once installed it **works fully offline** — the service worker caches the whole
+app on first visit, and saves live in your browser's own storage. Nothing is
+uploaded anywhere and there is no account.
+
+---
+
+## Hosting your own copy
+
+The repository root is a ready-to-host static build. No build step needed —
 GitHub just needs to serve these files as-is.
 
 ## Steps

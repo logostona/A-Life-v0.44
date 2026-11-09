@@ -158,6 +158,52 @@ async function main() {
     ok("...and wiping actually removes it", gone === null, gone);
   }
 
+  sec("5 · the install prompt");
+  {
+    /* Everything needed to install this was in place for months with no way
+       to SAY so — the affordance lived in a browser menu the player had to
+       already know about. These assert the two halves that can actually
+       break: the Chromium event path, and the UA logic for iOS, where no
+       install API exists at all. */
+    const html = fs.readFileSync(indexPath, "utf8");
+    ok("the page has an install control", /id="install-go"/.test(html));
+    ok("...and iOS instructions to fall back on", /id="ios-help"/.test(html));
+    ok("...and captures beforeinstallprompt", /addEventListener\("beforeinstallprompt"/.test(html));
+    ok("...preventing the default so the event can be replayed", /e\.preventDefault\(\)/.test(html));
+    ok("...and hides itself once installed", /addEventListener\("appinstalled"/.test(html));
+    ok("...and in a standalone window", /display-mode: standalone\) \{ #install \{ display: none/.test(html));
+    ok("every localStorage touch is guarded",
+      (html.match(/try \{[^}]*localStorage/g) || []).length >= 2, "an unguarded read throws in private mode");
+
+    /* index.html is IN the service worker's ASSETS, so an installed copy
+       keeps the old shell until CACHE_NAME changes. Shipping this without a
+       bump would mean nobody already installed ever sees the button. */
+    const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+    ok("index.html is cached by the service worker", /"\.\/index\.html"/.test(sw));
+    ok("...so the cache name had to move with it", /a-life-cache-v16/.test(sw),
+      (sw.match(/a-life-cache-v\d+/) || [])[0]);
+
+    /* The UA rules, checked as logic rather than through jsdom — jsdom v31
+       ignores its own `userAgent` option, so a browser cannot be simulated
+       here and a test that appeared to do so would be testing nothing. */
+    const isIOS = (ua, plat, touch) =>
+      /iPad|iPhone|iPod/.test(ua) || (plat === "MacIntel" && touch > 1);
+    const UA = {
+      iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      ipad:   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+      criOS:  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120 Mobile/15E148 Safari/604.1",
+      mac:    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+      win:    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    };
+    ok("an iPhone gets the instructions", isIOS(UA.iphone, "iPhone", 5) === true);
+    /* iPadOS reports itself as a Mac, which is why the touch test exists */
+    ok("...and an iPad, which claims to be a Mac", isIOS(UA.ipad, "MacIntel", 5) === true);
+    ok("...and Chrome on iOS, which is WebKit underneath and can still do it",
+      isIOS(UA.criOS, "iPhone", 5) === true);
+    ok("DESKTOP Safari does not", isIOS(UA.mac, "MacIntel", 0) === false);
+    ok("...nor desktop Chrome, which has a real API instead", isIOS(UA.win, "Win32", 0) === false);
+  }
+
   console.log("\n" + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
 }

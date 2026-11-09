@@ -19,10 +19,88 @@
   <style>
     html, body { margin: 0; padding: 0; height: 100%; background: #f6f5f1; overscroll-behavior: none; }
     #root { min-height: 100dvh; }
+
+    /* ---- Install prompt -------------------------------------------------
+       Everything needed to install this has been in place for months — a
+       manifest, a service worker with a fetch handler, maskable icons — and
+       there was no way to SAY so. The affordance lived in a browser menu the
+       player had to already know about.
+
+       Deliberately slim and dismissible: it sits over a game whose own
+       controls are at the bottom of the screen, so it must be easy to get
+       rid of and must never come back once it has been. */
+    #install {
+      position: fixed; left: 12px; right: 12px;
+      bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      margin: 0 auto; max-width: 420px;
+      z-index: 9999; display: none; align-items: center; gap: 8px;
+      padding: 8px 8px 8px 14px;
+      background: #141926; color: #e8e6e1;
+      border: 1px solid #2b3347;
+      /* NOT a pill. At 999px a box that grows to two lines renders as an
+         ellipse, which is what the first cut did on a phone. */
+      border-radius: 14px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.45);
+      font: 14px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    #install.show { display: flex; }
+    /* min-width:0 lets the label ellipsize instead of forcing the row wider
+       than the screen; nowrap keeps it to the two lines it is designed for. */
+    #install .txt { flex: 1 1 auto; min-width: 0; }
+    #install .txt b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #install .txt span { display: block; opacity: .6; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #install button {
+      flex: 0 0 auto; font: inherit; font-weight: 600; cursor: pointer;
+      border-radius: 10px; border: 0; padding: 9px 16px;
+      background: #c9b27a; color: #141926;
+    }
+    #install .x {
+      background: none; color: #e8e6e1; opacity: .5;
+      padding: 9px 8px; font-weight: 400; font-size: 18px; line-height: 1;
+    }
+    /* an installed copy must never advertise installing */
+    @media (display-mode: standalone) { #install { display: none !important; } }
+
+    #ios-help {
+      position: fixed; inset: 0; z-index: 10000; display: none;
+      align-items: center; justify-content: center; padding: 24px;
+      background: rgba(6,8,14,.72);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    #ios-help.show { display: flex; }
+    #ios-help div {
+      max-width: 340px; background: #141926; color: #e8e6e1;
+      border: 1px solid #2b3347; border-radius: 16px; padding: 20px 22px;
+    }
+    #ios-help h3 { margin: 0 0 10px; font-size: 16px; }
+    #ios-help ol { margin: 0 0 16px; padding-left: 20px; }
+    #ios-help li { margin: 6px 0; }
+    #ios-help button {
+      width: 100%; font: inherit; font-weight: 600; cursor: pointer;
+      border: 0; border-radius: 10px; padding: 10px; background: #c9b27a; color: #141926;
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
+
+  <div id="install" role="region" aria-label="Install this app">
+    <div class="txt"><b>Install A Life</b><span>Works offline · no app store</span></div>
+    <button id="install-go" type="button">Install</button>
+    <button id="install-x" class="x" type="button" aria-label="Not now">&times;</button>
+  </div>
+
+  <div id="ios-help" role="dialog" aria-modal="true" aria-labelledby="ios-help-h">
+    <div>
+      <h3 id="ios-help-h">Add to Home Screen</h3>
+      <ol>
+        <li>Tap the <b>Share</b> button in your browser's toolbar.</li>
+        <li>Scroll down and choose <b>Add to Home Screen</b>.</li>
+        <li>Tap <b>Add</b>. It launches full-screen, like any other app.</li>
+      </ol>
+      <button id="ios-help-x" type="button">Got it</button>
+    </div>
+  </div>
 
   <script src="./storage-polyfill.js"></script>
   <script src="./life-sim.bundle.js"></script>
@@ -35,6 +113,72 @@
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./sw.js").catch(() => {});
     }
+  </script>
+
+  <script>
+    /* Install prompt. Two entirely separate paths, because Chrome and Safari
+       do not agree that installing a web app is a thing a page may ask for:
+
+         - Chromium fires `beforeinstallprompt`, which must be captured and
+           held; calling prompt() later is the real install.
+         - iOS Safari fires nothing, ever, and has no API. The only honest
+           thing is to tell the player where the button is.
+
+       Everything is wrapped so that a browser doing neither simply shows no
+       chip, which is the correct outcome rather than a broken one. */
+    (function () {
+      var bar = document.getElementById("install");
+      var go = document.getElementById("install-go");
+      var xx = document.getElementById("install-x");
+      var help = document.getElementById("ios-help");
+      var helpX = document.getElementById("ios-help-x");
+      var deferred = null;
+      var KEY = "lifesim:install-dismissed";
+
+      /* localStorage throws outright in a private window on some browsers, so
+         every touch of it is guarded and the feature works without it. */
+      function dismissed() { try { return localStorage.getItem(KEY) === "1"; } catch (e) { return false; } }
+      function remember() { try { localStorage.setItem(KEY, "1"); } catch (e) {} }
+
+      function installed() {
+        if (navigator.standalone) return true;                       /* iOS */
+        try { return matchMedia("(display-mode: standalone)").matches; } catch (e) { return false; }
+      }
+      function show() { if (!installed() && !dismissed()) bar.classList.add("show"); }
+      function hide() { bar.classList.remove("show"); }
+
+      window.addEventListener("beforeinstallprompt", function (e) {
+        e.preventDefault();
+        deferred = e;
+        show();
+      });
+
+      /* iOS gets the chip too, but it opens instructions rather than an API
+         that does not exist there. Checked against the UA because there is no
+         feature to detect: iPadOS reports itself as a Mac, hence the touch
+         test, which is also what keeps DESKTOP Safari out.
+
+         Every browser on iOS is WebKit underneath and every one of them can
+         Add to Home Screen, so Chrome and Firefox there are included rather
+         than excluded — which is why the instructions say "your browser"
+         rather than naming Safari. */
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (isIOS) setTimeout(show, 1200);
+
+      go.addEventListener("click", function () {
+        if (deferred) {
+          deferred.prompt();
+          deferred.userChoice.then(function () { deferred = null; hide(); }).catch(function () { hide(); });
+          return;
+        }
+        help.classList.add("show");
+      });
+      xx.addEventListener("click", function () { remember(); hide(); });
+      helpX.addEventListener("click", function () { help.classList.remove("show"); remember(); hide(); });
+      help.addEventListener("click", function (e) { if (e.target === help) help.classList.remove("show"); });
+      window.addEventListener("appinstalled", function () { remember(); hide(); });
+    })();
   </script>
 </body>
 </html>
