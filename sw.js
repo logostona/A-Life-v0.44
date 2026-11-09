@@ -45,8 +45,13 @@
  *      instead of ratcheting, and dysphoria is a continuous load alongside
  *      debt and housing rather than one event on a cooldown. Grief, isolation
  *      and peer support join it. A feminising passing menu, finally.
+ * v16 — An actual Install button. Everything needed to install this has been
+ *      in place for months and there was no way to say so; the affordance
+ *      lived in a browser menu the player had to already know about. NOTE:
+ *      this bump is doing real work — index.html is in ASSETS below, so
+ *      without it an installed copy keeps the old shell and never sees it.
  */
-const CACHE_NAME = "a-life-cache-v15";
+const CACHE_NAME = "a-life-cache-v16";
 const ASSETS = [
   "./",
   "./index.html",
