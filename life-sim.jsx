@@ -18974,7 +18974,11 @@ const LLM_PROVIDERS = [
   { id: "openai", label: "Local server (OpenAI-compatible)", local: true, needsKey: false,
     endpoint: "http://localhost:11434/v1/chat/completions",
     model: "llama3.2",
-    note: "Ollama, llama.cpp, LM Studio, vLLM. Nothing leaves your machine. A page served over HTTPS may be blocked from reaching http://localhost — see the note in Settings.",
+    /* This used to warn that an HTTPS page "may be blocked" from localhost and
+       point at "the note in Settings", neither of which was true: measured, it
+       works once the player allows local network access and the server
+       allows the site — and there was no such note. */
+    note: "Ollama, LM Studio or llama.cpp, on this computer. Nothing leaves your machine. Choose the server and the model in these settings, then tap 🔌 Test the connection — it walks every step and says what to fix.",
     build: (cfg, req) => ({
       url: cfg.endpoint,
       init: { method: "POST", headers: { "Content-Type": "application/json" },
@@ -19009,6 +19013,47 @@ const LLM_PROVIDERS = [
     } },
 ];
 const LLM_BY_ID = (() => { const o = {}; for (const p of LLM_PROVIDERS) o[p.id] = p; return o; })();
+
+/* ── LOCAL SERVERS ────────────────────────────────────────────────────────
+   The local provider speaks one API, but the servers that speak it listen on
+   different ports and guard browser access differently, and the endpoint was
+   fixed at Ollama's — so the README's "LM Studio and llama.cpp work the same
+   way" was untrue: nothing could reach them. A preset is a row; choosing one
+   sets the endpoint, and the connection test reads its `start` and `allow`
+   so its advice is about the server the player actually runs.
+
+   Every value here was read from that project's own source, not recalled —
+   and recall would have been wrong once already (llama.cpp moved off 8080):
+     Ollama     11434  envconfig/config.go; refuses other origins until
+                       OLLAMA_ORIGINS names them
+     LM Studio  1234   lms CLI, src/createClient.ts DEFAULT_SERVER_PORT; CORS
+                       off unless enabled (`lms server start --cors`)
+     llama.cpp  9931   common/common.h; cors_origins defaults to "*", narrowed
+                       to localhost only when --tools or MCP servers are on
+
+   `model` is the preset's default, and empty where there is no sensible one:
+   LM Studio and llama.cpp serve whatever the player loaded, so the picker
+   asks the server rather than guessing a name. */
+const LLM_SERVERS = [
+  { id: "ollama", label: "Ollama", endpoint: "http://localhost:11434/v1/chat/completions", model: "llama3.2",
+    start: "open the Ollama app, or run `ollama serve`",
+    allow: (o) => `quit Ollama and start it again with OLLAMA_ORIGINS=${o} set (steps for Mac, Linux and Windows are in the README)` },
+  { id: "lmstudio", label: "LM Studio", endpoint: "http://localhost:1234/v1/chat/completions", model: "",
+    start: "start the local server in LM Studio, or run `lms server start`",
+    allow: () => "turn on CORS in LM Studio's server settings, or start it with `lms server start --cors` — note that this lets ANY website reach it, not just this one" },
+  { id: "llamacpp", label: "llama.cpp", endpoint: "http://localhost:9931/v1/chat/completions", model: "",
+    start: "start `llama-server` with a model loaded (current builds listen on 9931; older ones used 8080)",
+    allow: (o) => `start llama-server with --cors-origins ${o} (it allows every origin unless --tools or MCP servers narrowed it)` },
+];
+/* DERIVED, never stored: the current preset is whichever one the endpoint
+   matches. A stored "server" field would be a second authority on a fact the
+   endpoint already states. null means a custom endpoint. */
+function llmServerFor(s) {
+  const cfg = llmConfigFor(s);
+  if (cfg.prov.id !== "openai") return null;
+  for (const v of LLM_SERVERS) if (v.endpoint === cfg.endpoint) return v;
+  return null;
+}
 
 /* Tests need a model that answers without a network, and the realiser has to
    be tested against RECORDED output rather than a live call — a test that
@@ -19052,10 +19097,18 @@ function aiMigrate(s) {
 function llmConfigFor(s) {
   const a = (s && s.ai) || {};
   const prov = LLM_BY_ID[a.provider] || LLM_BY_ID.off;
+  const endpoint = (a.endpoint || prov.endpoint || "").trim();
+  /* An unset model falls back to the PRESET's default when the endpoint is a
+     known server, and only otherwise to the provider's. Without this, LM
+     Studio with no model chosen resolved to the provider default "llama3.2"
+     — a name LM Studio will not have — instead of to "none chosen", which is
+     the honest answer and the one that sends the player to the picker. */
+  let preset = null;
+  if (prov.id === "openai") for (const v of LLM_SERVERS) if (v.endpoint === endpoint) { preset = v; break; }
   return {
     prov: prov,
-    endpoint: (a.endpoint || prov.endpoint || "").trim(),
-    model: (a.model || prov.model || "").trim(),
+    endpoint: endpoint,
+    model: (a.model || (preset ? preset.model : prov.model) || "").trim(),
     key: _llmState.key,
   };
 }
@@ -19181,7 +19234,13 @@ async function llmDiagnose(s, env) {
   if (cfg.prov.id === "off") return out("no-provider", "Choose a provider first.");
   let ep = null;
   try { ep = new URL(cfg.endpoint); } catch (x) { return out("bad-endpoint", `“${cfg.endpoint}” is not a web address.`); }
-  step(true, `${cfg.prov.label} at ${cfg.endpoint}`);
+  /* advice is about the server the player actually runs — a preset if the
+     endpoint matches one, plain words if it is a custom address */
+  const srv = llmServerFor(s);
+  const who = origin || "this site's address";
+  const startHint = srv ? srv.start : "start your model server";
+  const allowHint = srv ? srv.allow(who) : `allow the origin ${who} in your server's CORS settings`;
+  step(true, `${srv ? srv.label : cfg.prov.label} at ${cfg.endpoint}`);
 
   /* 1 · mixed content */
   const loopback = LLM_LOOPBACK.indexOf(ep.hostname) !== -1;
@@ -19209,7 +19268,7 @@ async function llmDiagnose(s, env) {
     step(false, "Nothing answered");
     return out(perm === "prompt" ? "unreachable-or-prompt" : "unreachable", perm === "prompt"
       ? `Nothing answered at ${ep.host}. Either the server is not running, or the browser is waiting for you to allow local network access — look for a prompt by the address bar, allow it, and test again.`
-      : `Nothing answered at ${ep.host}. Is it running? For Ollama: open the Ollama app, or run \`ollama serve\`.`);
+      : `Nothing answered at ${ep.host}. Is it running? To start it: ${startHint}.`);
   }
 
   /* 4 · CORS — and the model list, if the server offers one */
@@ -19222,11 +19281,11 @@ async function llmDiagnose(s, env) {
       step(true, "The server accepts this page");
     } else if (r.status === 403) {
       step(false, "The server refused this page (403)");
-      return out("cors", `The server is running but refuses this page's origin. For Ollama, quit it and start it again with OLLAMA_ORIGINS=${origin || "<this site's address>"} set.`, { origin: origin });
+      return out("cors", `The server is running but refuses this page's origin. To allow it, ${allowHint}.`, { origin: origin });
     } else step(true, `Model list unavailable (${r.status}); carrying on`);
   } catch (x) {
     step(false, "The server refused this page");
-    return out("cors", `The server is running but refuses this page's origin. For Ollama, quit it and start it again with OLLAMA_ORIGINS=${origin || "<this site's address>"} set.`, { origin: origin });
+    return out("cors", `The server is running but refuses this page's origin. To allow it, ${allowHint}.`, { origin: origin });
   }
 
   /* 5 · is the configured model actually installed? */
@@ -19258,7 +19317,7 @@ async function llmDiagnose(s, env) {
       : "Working. Generated events will be rewritten as you play.", { ms: ms });
   } catch (x) {
     step(false, "The test generation was refused");
-    return out("cors", `Listing models worked but generating did not — the browser refused the request itself. For Ollama, make sure OLLAMA_ORIGINS=${origin || "<this site's address>"} is set.`, { origin: origin });
+    return out("cors", `Listing models worked but generating did not — the browser refused the request itself. To allow it, ${allowHint}.`, { origin: origin });
   }
 }
 
@@ -19284,6 +19343,95 @@ function llmDiagPopup(rep) {
   opts.push({ label: "Close", fx: {} });
   return { id: "aiDiag", noNarrate: 1, emoji: r.ok ? "✅" : "🔌", title: r.ok ? "Connected" : "Not connected yet",
     text: (lines ? lines + "\n\n" : "") + r.fix, options: opts };
+}
+
+/* ── CHOOSING THE SERVER AND THE MODEL ────────────────────────────────────
+   The settings popup has no text entry, so neither choice is typed. The
+   server is a preset; the model is picked from the list the server itself
+   reports at /v1/models — which means the menu can only ever offer a model
+   that is actually installed, the failure people hit most. */
+function aiEnsure(st) {
+  if (!st.ai || typeof st.ai !== "object") st.ai = aiInit(); else aiMigrate(st);
+  return st.ai;
+}
+const LLM_PICK_MAX = 12;
+const LLM_PICKING = { id: "aiModels", modelPick: "run", noNarrate: 1, emoji: "🧠", title: "Your models", text: "Asking the server what it has…" };
+
+/* The third and last permitted caller of llmFetch (test-eventgen enumerates
+   them). A plain GET with no body, so it needs no preflight — but it still
+   needs the server to allow this origin, and when it fails the honest
+   answer is "the connection test will tell you why", not a guess here. */
+async function llmListModels(s) {
+  const cfg = llmConfigFor(s);
+  if (cfg.prov.id !== "openai") return { ok: false, why: "not-local" };
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), LLM_DIAG_TIMEOUT_MS);
+  try {
+    const r = await llmFetch(llmModelsUrl(cfg.endpoint), { signal: c.signal });
+    if (!r.ok) return { ok: false, why: "status", status: r.status };
+    const j = await r.json();
+    const ids = Array.isArray(j && j.data) ? j.data.map((m) => m && m.id).filter((x) => typeof x === "string" && x) : [];
+    return { ok: true, models: Array.from(new Set(ids)) };
+  } catch (e) {
+    return { ok: false, why: "unreachable" };
+  } finally { clearTimeout(t); }
+}
+
+/* Pure: the popup a player reads, from what the server said. Every path back
+   leads to the settings screen, so a choice is visible the moment it is made. */
+function llmModelPopup(res, s) {
+  const cfg = llmConfigFor(s);
+  const srv = llmServerFor(s);
+  const where = srv ? srv.label : cfg.endpoint;
+  const back = { label: "Back", fx: { run: (st) => { st.pending = aiSettingsMenu(st); } } };
+  const again = { label: "Look again", fx: { run: (st) => { st.pending = Object.assign({}, LLM_PICKING, { options: [CANCEL] }); } } };
+  const base = { id: "aiModels", noNarrate: 1, emoji: "🧠" };
+  if (!res || !res.ok) {
+    return Object.assign(base, { title: "Couldn't list the models",
+      text: `${where} didn't hand over its list of models. 🔌 Test the connection will say exactly which step is failing.`,
+      options: [
+        { label: "🔌 Test the connection", fx: { run: (st) => { st.pending = { id: "aiDiag", diag: "run", noNarrate: 1, emoji: "🔌", title: "Testing the connection", text: "Checking…", options: [CANCEL] }; } } },
+        again, back] });
+  }
+  if (!res.models.length) {
+    return Object.assign(base, { title: "No models yet",
+      text: `${where} is running but reports no models. ${srv && srv.id === "ollama" ? "Pull one first — `ollama pull llama3.2` is a good small start —" : "Load one in it first,"} then look again.`,
+      options: [again, back] });
+  }
+  const shown = res.models.slice(0, LLM_PICK_MAX);
+  const opts = shown.map((m) => ({
+    label: (llmModelMatches(cfg.model, m) || m === cfg.model ? "✓ " : "") + m,
+    fx: { run: (st) => {
+      aiEnsure(st).model = m;
+      push(st, `🧠 Generated events will be written by ${m} from now on.`);
+      st.pending = aiSettingsMenu(st);
+    } },
+  }));
+  opts.push(back);
+  return Object.assign(base, { title: "Your models",
+    text: `${res.models.length} model${res.models.length === 1 ? "" : "s"} on ${where}.` +
+      (res.models.length > shown.length ? ` Showing the first ${shown.length}.` : "") +
+      " Smaller ones keep up best — a generated event wants a quick answer more than a clever one.",
+    options: opts });
+}
+
+/* A builder: reads s, returns a popup, writes nothing (Gotcha #2). */
+function llmServerMenu(s) {
+  const cur = llmServerFor(s);
+  const opts = LLM_SERVERS.map((v) => ({
+    label: (cur && cur.id === v.id ? "✓ " : "") + v.label + " · port " + new URL(v.endpoint).port,
+    fx: { run: (st) => {
+      const a = aiEnsure(st);
+      a.provider = "openai";
+      a.endpoint = v.endpoint;
+      a.model = "";                    /* back to this server's own default */
+      st.pending = aiSettingsMenu(st);
+    } },
+  }));
+  opts.push({ label: "Back", fx: { run: (st) => { st.pending = aiSettingsMenu(st); } } });
+  return { id: "aiServers", noNarrate: 1, emoji: "🖥", title: "Which server?",
+    text: `Where your model is running, on this computer.${cur ? "" : " You're on a custom address at the moment."} Each listens on its own port; choosing one points the game at it.`,
+    options: opts };
 }
 
 /* ── EVT P2 · PROSE REALISATION ───────────────────────────────────────────
@@ -19907,6 +20055,13 @@ function aiSettingsMenu(s) {
       } },
     });
   }
+  /* the local server and its model — both chosen, never typed */
+  const localOn = (st) => !!(st.ai && st.ai.enabled) && llmConfigFor(st).prov.id === "openai";
+  const srv = llmServerFor(s);
+  opts.push({ label: `🖥 Server: ${srv ? srv.label : "custom address"}`, cond: localOn,
+    fx: { run: (st) => { st.pending = llmServerMenu(st); } } });
+  opts.push({ label: `🧠 Model: ${cfg.model || "none chosen"}`, cond: localOn,
+    fx: { run: (st) => { st.pending = Object.assign({}, LLM_PICKING, { options: [CANCEL] }); } } });
   /* Every failure on the real path is silent by design — null, keep the
      written text — which is right during play and leaves a player setting
      this up with no idea why nothing is happening. The test says why. */
@@ -21678,6 +21833,12 @@ function Game({ state, setState, onReset }) {
       llmDiagnose(state).then((rep) => setState((prev) =>
         (prev.pending && prev.pending.id === "aiDiag" && prev.pending.diag === "run" ? Object.assign({}, prev, { pending: llmDiagPopup(rep) }) : prev)))
         .catch(() => setState((prev) => (prev.pending && prev.pending.id === "aiDiag" ? Object.assign({}, prev, { pending: llmDiagPopup(null) }) : prev)));
+      return;
+    }
+    /* the model picker asks the server what it has; same shape as the test */
+    if (state.pending.modelPick === "run") {
+      llmListModels(state).then((res) => setState((prev) =>
+        (prev.pending && prev.pending.id === "aiModels" && prev.pending.modelPick === "run" ? Object.assign({}, prev, { pending: llmModelPopup(res, prev) }) : prev)));
       return;
     }
     /* settings screens and test results are not scenes to be narrated */

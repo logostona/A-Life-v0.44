@@ -56,7 +56,8 @@
    server was shut down. This bump is load-bearing, not routine — `activate`
    deletes caches whose name differs, which is the only thing that clears
    that stale entry off devices that already have it. */
-const CACHE_NAME = "a-life-cache-v17";
+/* v18 — server presets and a model picker for the local provider. */
+const CACHE_NAME = "a-life-cache-v18";
 const ASSETS = [
   "./",
   "./index.html",

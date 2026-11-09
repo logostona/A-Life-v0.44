@@ -51,13 +51,24 @@ another machine at all. Safari and Firefox are untested.
    - **From a terminal:** `OLLAMA_ORIGINS=https://logostona.github.io ollama serve`
 3. In the game: **🎯 Act → AI Narration → AI Narration Settings → Turn on**, then
    choose **Local server**.
-4. Tap **🔌 Test the connection**. The browser will ask whether this site may access
+4. **🖥 Server** — pick the one you run (Ollama is the default).
+   **🧠 Model** — lists the models your server actually has installed; tap one.
+5. Tap **🔌 Test the connection**. The browser will ask whether this site may access
    apps on your device — **allow it**. The test walks every step and tells you
-   exactly which one fails and what to do; if your installed model has a different
-   name it lists what you have and sets it in one tap.
+   exactly which one fails and what to do about it, for the server you chose.
 
-LM Studio, llama.cpp's server and vLLM speak the same API and should work the same
-way, with their own setting for allowed origins.
+**LM Studio or llama.cpp instead of Ollama.** Both work, but each listens on its own
+port and guards browser access differently, so choose it under **🖥 Server**:
+
+| | port | to let this site in |
+|---|---|---|
+| **Ollama** | 11434 | set `OLLAMA_ORIGINS` as above — it admits just this site |
+| **LM Studio** | 1234 | turn on CORS in its server settings, or `lms server start --cors`. Note this lets **any** website reach it, not only this one |
+| **llama.cpp** (`llama-server`) | 9931 — older builds used 8080 | nothing: it allows every origin unless `--tools` or MCP servers are on. To narrow it, `--cors-origins https://logostona.github.io` |
+
+These were read from each project's own source — Ollama's `envconfig`, LM Studio's
+`lms` CLI, llama.cpp's server — rather than remembered. vLLM and other
+OpenAI-compatible servers are not presets yet.
 
 ---
 

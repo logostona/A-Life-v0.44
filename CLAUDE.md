@@ -463,6 +463,15 @@ it lands and never re-requested; `evtWithAiText` lands a reply only on the popup
 text asked for it (the hand-written path used to put a slow reply on whatever popup was open);
 `s.evt.hist` holds hashes so one life never sees the same realisation twice.
 
+**Local servers are presets, and the current one is DERIVED from the endpoint** (`llmServerFor`)
+— no stored "server" field to drift from the address it describes. Each `LLM_SERVERS` row carries
+its own `start` and `allow` advice, which the connection test reads, so its fix is about the server
+the player actually runs. Ports and CORS defaults were read from each project's source, and recall
+was wrong once: llama.cpp's server moved from 8080 to **9931**. An unset model resolves to the
+*preset's* default, never the provider's — otherwise LM Studio resolved to `llama3.2`, a name it
+will not have. The model picker (`llmListModels`) is the third permitted `llmFetch` caller, and
+`test-eventgen` enumerates all three.
+
 ### Testing what a browser allows
 
 `logostona.github.io` is unreachable from here, but the browser's *rules* can still be measured —

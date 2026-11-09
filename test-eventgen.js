@@ -404,8 +404,11 @@ sec("P2 · the provider seam");
     }
     return [...callers].sort();
   })();
-  ok("...which only generation and the connection test call",
-    JSON.stringify(fetchCallers) === JSON.stringify(["llmComplete", "llmDiagnose"]), fetchCallers);
+  /* three, each argued for: generation; the connection test; and the model
+     picker, which asks the server what it has installed. A fourth fails here
+     until somebody decides it belongs. */
+  ok("...which only generation, the connection test and the model picker call",
+    JSON.stringify(fetchCallers) === JSON.stringify(["llmComplete", "llmDiagnose", "llmListModels"]), fetchCallers);
   /* The hot path itself. advance() and evtMaybeFire must be synchronous —
      the popup is on screen with its written text before a model is asked
      anything, which is the property the whole design rests on. */
@@ -1262,6 +1265,121 @@ async function diagAsync() {
   ok("...and only lands a result on the test popup that asked", /prev\.pending\.id === "aiDiag" && prev\.pending\.diag === "run"/.test(clean));
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CHOOSING THE SERVER AND THE MODEL
+
+   The endpoint was fixed at Ollama's, so LM Studio and llama.cpp — which the
+   README said would "work the same way" — could not be reached at all; and
+   the model could only be changed if the default was missing. Ports below
+   were read from each project's own source, not recalled.
+   ═══════════════════════════════════════════════════════════════════════ */
+async function pickAsync() {
+  sec("choosing the server and the model");
+  const life = (mut) => {
+    const c = at(30);
+    c.ai = Object.assign(M.aiInit(), { enabled: true, provider: "openai" });
+    if (mut) mut(c);
+    return c;
+  };
+  const byId = (id) => M.LLM_SERVERS.find((v) => v.id === id);
+  const port = (id) => new URL(byId(id).endpoint).port;
+  ok("three servers are offered", M.LLM_SERVERS.length === 3, M.LLM_SERVERS.map((v) => v.id));
+  ok("Ollama on 11434", port("ollama") === "11434");
+  ok("LM Studio on 1234 (lms CLI, DEFAULT_SERVER_PORT)", port("lmstudio") === "1234");
+  ok("llama.cpp on 9931 (common.h — it moved off 8080)", port("llamacpp") === "9931");
+  for (const v of M.LLM_SERVERS) {
+    ok(v.id + ": a loopback OpenAI-compatible endpoint", /^http:\/\/localhost:\d+\/v1\/chat\/completions$/.test(v.endpoint), v.endpoint);
+    ok(v.id + ": says how to start it and how to allow this site",
+      typeof v.start === "string" && v.start.length > 10 && typeof v.allow === "function" && v.allow("https://x").length > 10);
+  }
+  ok("LM Studio's advice warns that its CORS switch opens it to every site", /ANY website/.test(byId("lmstudio").allow("https://x")));
+
+  /* the current server is DERIVED from the endpoint, never stored */
+  ok("a fresh local setup is Ollama", M.llmServerFor(life()).id === "ollama");
+  ok("...derived, so nothing new is stored", !("server" in life().ai));
+  ok("a custom address is no preset", M.llmServerFor(life((c) => { c.ai.endpoint = "http://localhost:5000/v1/chat/completions"; })) === null);
+  ok("a remote provider has no local server", M.llmServerFor(life((c) => { c.ai.provider = "anthropic"; })) === null);
+
+  /* an unset model follows the PRESET's default — the bug this replaced
+     resolved LM Studio to "llama3.2", a name it will not have */
+  ok("Ollama defaults to llama3.2", M.llmConfigFor(life()).model === "llama3.2");
+  ok("LM Studio with nothing chosen resolves to nothing, not to Ollama's default",
+    M.llmConfigFor(life((c) => { c.ai.endpoint = byId("lmstudio").endpoint; })).model === "");
+  ok("...which the settings name as the reason it cannot run",
+    M.llmUnavailableReason(life((c) => { c.ai.endpoint = byId("lmstudio").endpoint; })) === "no model name");
+
+  /* the settings screen */
+  const labels = (c) => M.aiSettingsMenu(c).options.filter((o) => !o.cond || o.cond(c)).map((o) => o.label);
+  ok("the settings show the server", labels(life()).some((l) => l === "🖥 Server: Ollama"), labels(life()));
+  ok("...and the model", labels(life()).some((l) => l === "🧠 Model: llama3.2"));
+  ok("...and say so when none is chosen",
+    labels(life((c) => { c.ai.endpoint = byId("lmstudio").endpoint; })).some((l) => l === "🧠 Model: none chosen"));
+  ok("neither is offered for a remote provider",
+    !labels(life((c) => { c.ai.provider = "anthropic"; })).some((l) => /Server:|Model:/.test(l)));
+  ok("...nor while it is turned off",
+    !labels(life((c) => { c.ai.enabled = false; })).some((l) => /Server:|Model:/.test(l)));
+
+  /* the server menu */
+  const sm = M.llmServerMenu(life());
+  ok("the server menu ticks the current one", sm.options.some((o) => o.label === "✓ Ollama · port 11434"), sm.options.map((o) => o.label));
+  ok("...and shows every port", ["1234", "9931"].every((p) => sm.options.some((o) => o.label.indexOf("port " + p) > -1)));
+  const toLms = (() => { const c = life((x) => { x.ai.model = "llama3.2:latest"; }); M.applyFx(c, sm.options.find((o) => /LM Studio/.test(o.label)).fx); return c; })();
+  ok("choosing LM Studio points the game at it", M.llmConfigFor(toLms).endpoint === byId("lmstudio").endpoint);
+  ok("...forgets a model chosen for another server", toLms.ai.model === "");
+  ok("...and returns to the settings, showing the change", toLms.pending && toLms.pending.id === "aiSettingsMenu" &&
+    toLms.pending.options.some((o) => o.label === "🖥 Server: LM Studio"));
+
+  /* the connection test now advises about the server actually in use */
+  const lms = life((c) => { c.ai.endpoint = byId("lmstudio").endpoint; c.ai.model = "qwen2.5-7b-instruct"; });
+  const env = { origin: "https://logostona.github.io", https: true, permission: async () => "granted" };
+  const diag = async (s, server) => { M.llmSetFetchForTest(server); try { return await M.llmDiagnose(s, env); } finally { M.llmSetFetchForTest(null); } };
+  let r = await diag(lms, async () => { throw new TypeError("Failed to fetch"); });
+  ok("silence from LM Studio says how to start LM Studio", /lms server start/.test(r.fix) && !/ollama/i.test(r.fix), r.fix);
+  r = await diag(lms, async (url, init) => { if (init && init.mode === "no-cors") return { ok: false, status: 0 }; throw new TypeError("Failed to fetch"); });
+  ok("a refusal from LM Studio names its CORS switch", /--cors/.test(r.fix) && !/OLLAMA_ORIGINS/.test(r.fix), r.fix);
+  r = await diag(life((c) => { c.ai.endpoint = byId("llamacpp").endpoint; c.ai.model = "x"; }),
+    async (url, init) => { if (init && init.mode === "no-cors") return { ok: false, status: 0 }; throw new TypeError("Failed to fetch"); });
+  ok("...and from llama.cpp names --cors-origins with this site", r.fix.indexOf("--cors-origins https://logostona.github.io") > -1, r.fix);
+  r = await diag(life((c) => { c.ai.endpoint = "http://localhost:5000/v1/chat/completions"; }),
+    async (url, init) => { if (init && init.mode === "no-cors") return { ok: false, status: 0 }; throw new TypeError("Failed to fetch"); });
+  ok("...and a custom address gets plain advice, not another server's", !/OLLAMA|lms|llama-server/.test(r.fix), r.fix);
+
+  /* the model picker: only ever offers what is installed */
+  const list = async (s, server) => { M.llmSetFetchForTest(server); try { return await M.llmListModels(s); } finally { M.llmSetFetchForTest(null); } };
+  const serving = (ids) => async () => ({ ok: true, status: 200, json: async () => ({ data: ids.map((id) => ({ id })) }) });
+  let res = await list(life(), serving(["llama3.2:latest", "qwen2.5:7b", "qwen2.5:7b"]));
+  ok("the picker reads what the server has", res.ok && res.models.join() === "llama3.2:latest,qwen2.5:7b", res);
+  const pop = M.llmModelPopup(res, life());
+  ok("...ticks the one in use, including a bare name's :latest", pop.options.some((o) => o.label === "✓ llama3.2:latest"), pop.options.map((o) => o.label));
+  ok("...and offers the rest", pop.options.some((o) => o.label === "qwen2.5:7b"));
+  ok("...and is not narrated over", pop.noNarrate === 1);
+  const picked = (() => { const c = life(); M.applyFx(c, pop.options.find((o) => o.label === "qwen2.5:7b").fx); return c; })();
+  ok("picking one sets it", M.llmConfigFor(picked).model === "qwen2.5:7b");
+  ok("...returns to the settings, showing it", picked.pending.id === "aiSettingsMenu" && picked.pending.options.some((o) => o.label === "🧠 Model: qwen2.5:7b"));
+  ok("...and says so in the feed", /qwen2\.5:7b/.test(String((picked.feed[picked.feed.length - 1] || {}).text || picked.feed[picked.feed.length - 1])));
+  const many = M.llmModelPopup({ ok: true, models: Array.from({ length: 30 }, (_, i) => "m" + i) }, life());
+  ok("a long list is capped", many.options.filter((o) => /^(✓ )?m\d+$/.test(o.label)).length === M.LLM_PICK_MAX && /first 12/.test(many.text));
+  const empty = M.llmModelPopup({ ok: true, models: [] }, life());
+  ok("no models says how to get one", empty.title === "No models yet" && /ollama pull/.test(empty.text));
+  res = await list(life(), async () => { throw new TypeError("Failed to fetch"); });
+  const failed = M.llmModelPopup(res, life());
+  ok("a failed list does not guess why", !res.ok && /Test the connection/.test(failed.text));
+  ok("...it offers the test that will say", failed.options.some((o) => /Test the connection/.test(o.label)));
+  ok("the picker is never offered a remote provider's list",
+    (await list(life((c) => { c.ai.provider = "anthropic"; }), serving(["x"]))).ok === false);
+
+  /* Gotcha #2: every one of these is a builder */
+  for (const [name, fn] of [["aiSettingsMenu", (c) => M.aiSettingsMenu(c)], ["llmServerMenu", (c) => M.llmServerMenu(c)],
+                            ["llmModelPopup", (c) => M.llmModelPopup({ ok: true, models: ["a", "b"] }, c)]]) {
+    const c = life(); const snap = JSON.stringify(c); fn(c);
+    ok(name + " mutates nothing", JSON.stringify(c) === snap);
+  }
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const clean = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok("the game loop runs the picker and lands it only on its own popup",
+    /prev\.pending\.id === "aiModels" && prev\.pending\.modelPick === "run"/.test(clean));
+}
+
 /* P5, the async half — still against a fixture, still no socket */
 async function p5Async() {
   const wait = () => new Promise((r) => setTimeout(r, 20));
@@ -1316,7 +1434,7 @@ async function p5Async() {
   M.evtCacheReset();
 }
 
-p2EndToEnd().then(p5Async).then(diagAsync).then(() => {
+p2EndToEnd().then(p5Async).then(diagAsync).then(pickAsync).then(() => {
   console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
 });
