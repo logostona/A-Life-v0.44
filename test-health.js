@@ -454,5 +454,154 @@ sec("8 · nothing broke");
   })());
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   HAPPINESS IS A MOOD, NOT A SCORE
+
+   What was here was a flat ±0.045/week nudge with NO TARGET: it pushed
+   happiness up whenever mood was above 67 and never stopped. The content is
+   net positive, nothing pulled back, and so every life ratcheted into the
+   nineties. Measured before the change: 83% of lives ended at 90+, not one
+   ever fell below 50, and one character sat at happiness 97 with mood 9 and
+   stress 70 — the two systems stating opposite things about the same person
+   in the same tick.
+
+   These assertions are about SHAPE, not values (§8): that a target exists,
+   that displacement decays toward it, and that the two authorities can no
+   longer contradict each other.
+   ═══════════════════════════════════════════════════════════════════════ */
+sec("happiness: a mood with a setpoint");
+{
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const clean = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok("happiness has a target at all", /function happinessTarget/.test(clean));
+  ok("...and the tick drifts toward it rather than nudging",
+    /s\.stats\.happiness = hltDrift\(s\.stats\.happiness, happinessTarget\(s\)/.test(clean), "the ratchet is back");
+  ok("...with no targetless nudge left anywhere",
+    !/s\.stats\.happiness = q\(s\.stats\.happiness \+ \(s\.hlt\.mind\.mood/.test(clean));
+
+  /* a setpoint that is the same number for everybody is not a setpoint */
+  const setpoints = new Set();
+  for (let i = 0; i < 40; i++) {
+    H.seed(2200 + i);
+    setpoints.add(M.moodSetpoint(H.mkChar({ country: "Sweden", birthYear: 1980 })));
+  }
+  ok("trait affect differs between people", setpoints.size >= 6, setpoints.size);
+  ok("...within a believable band",
+    [...setpoints].every((v) => v >= 60 && v <= 85), [...setpoints].sort((a, b) => a - b));
+  ok("...and is derived, not stored", (() => {
+    H.seed(3); const c = H.mkChar({ country: "Sweden", birthYear: 1980 });
+    return JSON.stringify(c).indexOf("moodSetpoint") === -1 && JSON.stringify(c).indexOf("setpoint") === -1;
+  })());
+  ok("...and is stable for one life", (() => {
+    H.seed(9); const c = H.mkChar({ country: "Sweden", birthYear: 1980 });
+    return M.moodSetpoint(c) === M.moodSetpoint(c);
+  })());
+}
+{
+  /* THE RATCHET ITSELF. A run of pure good news must not bank forever, and a
+     life in crisis must not drift upward at all. */
+  const mk = (mut) => {
+    H.seed(41);
+    const c = H.mkChar({ country: "Sweden", birthYear: 1980, cls: "Middle" });
+    c.ageDays = Math.round(30 * 365.25);
+    c.friends = { f1: { name: "A", role: "Friend", rel: 60 }, f2: { name: "B", role: "Friend", rel: 55 } };
+    c.money = 4000; c.career = { job: { title: "Clerk", industry: "admin", pay: 30000 } };
+    if (mut) mut(c);
+    return c;
+  };
+  const settle = (c, n) => { for (let i = 0; i < (n || 400); i++) M.hltOnTick(c, 7); return c; };
+
+  const spiked = mk(); spiked.stats.happiness = 100; settle(spiked);
+  ok("a happiness spike does not last forever", spiked.stats.happiness < 95, spiked.stats.happiness);
+  const floored = mk(); floored.stats.happiness = 0; settle(floored);
+  ok("...and a crash does not either", floored.stats.happiness > 20, floored.stats.happiness);
+  ok("...both converge on the same life's target",
+    Math.abs(spiked.stats.happiness - floored.stats.happiness) < 3,
+    [spiked.stats.happiness, floored.stats.happiness]);
+
+  /* but an event still has to MATTER in the short term, or choices are moot */
+  const a = mk(); settle(a, 400);
+  const before = a.stats.happiness;
+  a.stats.happiness = M.clamp(a.stats.happiness + 14);
+  for (let i = 0; i < 8; i++) M.hltOnTick(a, 7);    /* two months later */
+  ok("a +14 event is still felt two months on", a.stats.happiness > before + 8,
+    [before, a.stats.happiness]);
+
+  /* the contradiction that started this: mood 9 and happiness 97 */
+  const wrecked = mk((c) => {
+    c.money = -500; c.career = {}; c.friends = {}; c.romance = {};
+    c.hlt.vitals.slp = 20;
+  });
+  wrecked.stats.happiness = 97;
+  settle(wrecked);
+  ok("a life in crisis cannot sit in the nineties", wrecked.stats.happiness < 60, wrecked.stats.happiness);
+  ok("...and its mood and happiness now agree in direction",
+    (wrecked.hlt.mind.mood < 50) === (wrecked.stats.happiness < 60),
+    [wrecked.hlt.mind.mood, wrecked.stats.happiness]);
+  ok("...while a life going well is clearly better off",
+    settle(mk()).stats.happiness > wrecked.stats.happiness + 15);
+
+  /* and the scales are mapped, not equated — the first cut copied mood
+     straight across and put a third of ordinary lives at or below 50 */
+  const ord = settle(mk());
+  ok("an unremarkable life is not miserable", ord.stats.happiness > 55, ord.stats.happiness);
+  ok("...nor maxed out", ord.stats.happiness < 92, ord.stats.happiness);
+  ok("happiness sits above raw mood for the same person",
+    ord.stats.happiness > ord.hlt.mind.mood, [ord.stats.happiness, ord.hlt.mind.mood]);
+}
+{
+  /* THE NEW LOADS. Each must be visible in the terms list, so the Health
+     panel's explanation and the number can never drift apart. */
+  const mk = () => {
+    H.seed(63);
+    const c = H.mkChar({ country: "Sweden", birthYear: 1980 });
+    c.ageDays = Math.round(35 * 365.25);
+    c.friends = { f1: { name: "A", role: "Friend", rel: 60 }, f2: { name: "B", role: "Friend", rel: 55 } };
+    c.money = 4000;
+    return c;
+  };
+  const termsOf = (c) => M.hltMindTarget(c).terms.map((t) => t[1]);
+
+  /* grief — a parent's death was a one-off hit the accumulator absorbed */
+  const fresh = mk(); fresh.flags.griefAt = fresh.ageDays - 30;
+  const old = mk(); old.flags.griefAt = old.ageDays - 1200;
+  ok("recent bereavement is a load", M.hltGriefLoad(fresh) > 0);
+  ok("...named in the terms", termsOf(fresh).indexOf("grief") > -1, termsOf(fresh));
+  ok("...and it decays", M.hltGriefLoad(old) === 0, M.hltGriefLoad(old));
+  ok("...monotonically", (() => {
+    let last = Infinity;
+    for (const d of [10, 100, 300, 600, 900, 1099]) {
+      const c = mk(); c.flags.griefAt = c.ageDays - d;
+      const v = M.hltGriefLoad(c);
+      if (v > last) return false;
+      last = v;
+    }
+    return true;
+  })());
+  ok("...and no death means no grief", M.hltGriefLoad(mk()) === 0);
+
+  /* and it is captured by DIFFING, so no death site has to know it exists */
+  ok("losses are counted, not stamped", (() => {
+    const c = mk();
+    const n0 = M.hltLossCount(c);
+    c.family.mom.deceased = true;
+    return M.hltLossCount(c) === n0 + 1;
+  })());
+  ok("...and a death during a tick stamps the grief", (() => {
+    const c = mk();
+    M.hltOnTick(c, 7);                       /* establishes the baseline count */
+    c.family.mom.deceased = true;
+    M.hltOnTick(c, 7);
+    return c.flags.griefAt !== undefined && M.hltGriefLoad(c) > 0;
+  })());
+
+  /* isolation — having nobody was previously free */
+  const alone = mk(); alone.friends = {}; alone.romance = {};
+  ok("having nobody is a load", termsOf(alone).indexOf("nobody") > -1, termsOf(alone));
+  ok("...and costs more than having people", M.hltMindTarget(alone).stress > M.hltMindTarget(mk()).stress);
+  const child = mk(); child.friends = {}; child.romance = {}; child.ageDays = Math.round(6 * 365.25);
+  ok("...but a six-year-old is not 'isolated'", termsOf(child).indexOf("nobody") === -1);
+}
+
 console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
 process.exit(fail === 0 ? 0 : 1);

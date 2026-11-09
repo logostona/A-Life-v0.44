@@ -9253,6 +9253,12 @@ const ACT_GROUPS = [
   { id: "body", emoji: "🧘", name: "Mind & body", items: [
     { id: "salon", minAge: 5, emoji: "💆", label: "Salon & spa", cost: 1, special: "salon" },
     { id: "masckit", minAge: 10, emoji: "🧢", label: "Passing (binder, packer, voice)", cost: 1, special: "masckit", cond: (s) => s.discovered.gender && isQueerG(s) && presTarget(s) < 50 },
+    /* The other half of the same action. It was gated presTarget < 50, so a
+       trans woman had no tucking, no shapewear and — the one that matters —
+       no voice work, which is the single thing oestrogen does NOT do for her.
+       Hair removal already existed in the salon, ungated, and stays there. */
+    { id: "femkit", minAge: 10, emoji: "🎀", label: "Passing (voice, shapewear)", cost: 1, special: "femkit", cond: (s) => s.discovered.gender && isQueerG(s) && presTarget(s) >= 50 },
+    { id: "peers", minAge: 12, emoji: "🫂", label: "People who get it", cost: 1, special: "peers", cond: (s) => (s.discovered.gender && isQueerG(s)) || (s.discovered.orientation && isQueerO(s)) },
     { id: "workout", minAge: 12, emoji: "💪", label: "Work out", cost: 2, sub: { emoji: "💪", title: "Training day", text: "What's the session?", opts: [
       { label: "🏃 Go for a run", fx: { stats: { health: +3 } }, feed: "🏃 A long run. Lungs on fire, head finally quiet." },
       { label: "🏋️ Lift weights", fx: { stats: { health: +2, looks: +2 } }, feed: "🏋️ Weights day. Everything hurts in the correct way." },
@@ -9354,6 +9360,8 @@ function doActivity(state, act) {
     return advance(s, 3);
   }
   if (act.special === "masckit") { return Object.assign(s, { pending: mascKitMenu(s).pending }); }
+  if (act.special === "femkit") { return Object.assign(s, { pending: femKitMenu(s).pending }); }
+  if (act.special === "peers") { return Object.assign(s, { pending: peerMenu(s).pending }); }
   if (act.special === "parentsroom") { return Object.assign(s, { pending: parentsRoomMenu(s).pending }); }
   if (act.special === "faculty") { return Object.assign(s, { pending: facultyMenu(s).pending }); }
   if (act.special === "clubs") { return Object.assign(s, { pending: clubsMenu(s).pending }); }
@@ -11868,6 +11876,41 @@ function hltSleepTarget(s) {
    the slow accumulator that decides how hard the other two hit. Deliberately
    NOT a copy of stats.happiness: happiness is how the life is going, this is
    how well the person is holding it. */
+/* People differ in trait affect, and flatly. A single hardcoded 72 for every
+   character meant two lives with identical circumstances had identical moods,
+   which is the one thing the research on this is unanimous about not being
+   true. Derived from the world seed rather than drawn: an extra Math.random()
+   in newCharacter() reshuffles every seeded fixture in the repo. */
+function moodSetpoint(s) {
+  const h = hreHash("mood:" + ((s.hre && s.hre.seed) || 1) + ":" + ((s.profile && s.profile.first) || ""));
+  return 64 + (h % 17);                 /* 64..80, centred on the old constant */
+}
+
+/* Bereavement decays. A parent's death is not a -16 happiness event and then
+   nothing, which is what it was: the hit landed, the accumulator absorbed it,
+   and a fortnight later the character was measurably fine. Grief here is a
+   load that fades over about three years, which is the shape the literature
+   actually describes — not a cliff and not forever. */
+const GRIEF_DAYS = 1100;
+function hltGriefLoad(s) {
+  const at = s.flags && s.flags.griefAt;
+  if (at === undefined) return 0;
+  const since = s.ageDays - at;
+  if (since < 0 || since > GRIEF_DAYS) return 0;
+  const fresh = 1 - since / GRIEF_DAYS;
+  return Math.round(26 * fresh * fresh);     /* steep early, long tail */
+}
+
+/* Who, if anyone, knows. Deliberately separate from "has friends": the
+   protective factor the evidence is strongest about is people who do not need
+   the preamble, which is not the same thing as company. */
+function peerSupport(s) {
+  const p = s.flags && s.flags.peerGroup;
+  if (!p) return 0;
+  const months = Math.floor((s.ageDays - p.since) / 30);
+  return Math.min(3, 1 + Math.floor(months / 18));   /* 1..3 over about three years */
+}
+
 function hltMindTarget(s) {
   const t = [];
   let stress = 26;
@@ -11884,10 +11927,31 @@ function hltMindTarget(s) {
   if (untreatedMH) { stress += untreatedMH * 14; t.push([untreatedMH * 14, "untreated"]); }
   for (const id in s.hlt.addict) if (s.hlt.addict[id].st >= 2) { stress += 12; t.push([12, "the habit"]); break; }
   if (s.hlt.vitals.slp < 40) { stress += 12; t.push([12, "not sleeping"]); }
+  /* DYSPHORIA BELONGS HERE, with every other chronic burden, and its absence
+     was the whole bug. It used to reach happiness through exactly one POOL
+     event on a 60-day cooldown competing with 220 others, so a character at
+     dysphoria 74, not on hormones, out to one person, finished at happiness
+     96. It is a continuous pressure, not an occasional bad day, and
+     dysphoriaLevel already accounts for whatever relief the character has
+     actually obtained — so treatment shows up here as the load easing. */
+  const dys = dysphoriaLevel(s);
+  if (dys > 12) { const d = Math.round(dys * 0.42); stress += d; t.push([d, "dysphoria"]); }
+
+  const grief = hltGriefLoad(s);
+  if (grief > 0) { stress += grief; t.push([grief, "grief"]); }
+
   /* the protective side — the thing that makes this not a misery generator */
   const friends = Object.keys(s.friends || {}).length;
   if (friends >= 2) { stress -= 10; t.push([-10, "people around you"]); }
   if (activePartners(s).length) { stress -= 8; t.push([-8, "someone at home"]); }
+  /* ...and its absence is not neutral. Isolation was simply unmodelled: a
+     character with nobody at all paid nothing for it. */
+  if (!friends && !activePartners(s).length && ageYears(s) >= 14) { stress += 12; t.push([12, "nobody"]); }
+  /* Strong, but not stronger than having friends at all (-10) or somebody at
+     home (-8) — the first calibration gave it -18 and a peer group came out
+     worth more than either, which inverts what it is. */
+  const peers = peerSupport(s);
+  if (peers) { const pr = peers * 3; stress -= pr; t.push([-pr, "people who get it"]); }
   return { stress: clamp(stress), terms: t };
 }
 
@@ -12189,9 +12253,18 @@ function hltOnTick(s, days) {
   s.hlt.debt = Math.round(Math.max(0, Math.min(100, s.hlt.debt + (v.slp < 45 ? (45 - v.slp) * 0.03 : v.slp > 60 ? -(v.slp - 60) * 0.05 : -0.2) * (step / 7))) * 100) / 100;
 
   /* 2 · mind */
+  /* Bereavement is captured by DIFFING the count of people this life has
+     lost, the same way crOnTick diffs the job rather than trusting seven call
+     sites to remember. Deaths are written in a dozen places and none of them
+     records a date; this covers all of them, and any added later, for free. */
+  const lost = hltLossCount(s);
+  if (s.flags.lostSeen === undefined) s.flags.lostSeen = lost;
+  else if (lost > s.flags.lostSeen) { s.flags.griefAt = s.ageDays; s.flags.lostSeen = lost; }
+  else if (lost < s.flags.lostSeen) s.flags.lostSeen = lost;
+
   const mind = hltMindTarget(s);
   s.hlt.mind.stress = hltDrift(s.hlt.mind.stress, mind.stress, step, 0.11);
-  const moodTarget = clamp(72 - s.hlt.mind.stress * 0.55 + (v.slp - 50) * 0.22 + (v.fit - 50) * 0.1 - s.hlt.debt * 0.15);
+  const moodTarget = clamp(moodSetpoint(s) - s.hlt.mind.stress * 0.55 + (v.slp - 50) * 0.22 + (v.fit - 50) * 0.1 - s.hlt.debt * 0.15);
   s.hlt.mind.mood = hltDrift(s.hlt.mind.mood, moodTarget, step, 0.09);
   /* resilience is the slow one: it grows when a person is coping and erodes
      when they are not, which is why it uses a tenth of the rate */
@@ -12229,11 +12302,57 @@ function hltOnTick(s, days) {
      keeps every accumulation this tick can produce and costs four characters. */
   const q = (n) => Math.round(clamp(n) * 100) / 100;
   s.stats.health = q(s.stats.health + pull + addictDrain);
-  /* mental health feeds happiness the same way, and only gently — happiness is
-     still the game's own account of how life is going */
-  if (Math.abs(s.hlt.mind.mood - 55) > 12) {
-    s.stats.happiness = q(s.stats.happiness + (s.hlt.mind.mood > 55 ? 0.045 : -0.055) * (step / 7));
+
+  /* HAPPINESS IS A MOOD, NOT A SCORE — and this line is where it stopped
+     being a score.
+
+     What was here was a flat nudge of ±0.045 a week with NO TARGET: it pushed
+     happiness up whenever mood was above 67 and never stopped pushing. The
+     game's events are net positive, nothing pulled back, and so every life
+     ratcheted into the nineties and stayed. Measured before this change: 83%
+     of lives ended at 90+, not one ever fell below 50, and one character sat
+     at happiness 97 with mood 9 and stress 70 — the two systems stating
+     opposite things about the same person in the same tick.
+
+     Now it drifts TOWARD mood, which is the model that was already here and
+     already good: a stress-derived setpoint the character returns to. Events
+     still move happiness and still matter, but the displacement decays with a
+     half-life of about four months instead of being banked forever. That is
+     hedonic adaptation, it is the single best-attested finding about human
+     mood, and it is what makes a chronic burden worth more than any one
+     afternoon. */
+  s.stats.happiness = hltDrift(s.stats.happiness, happinessTarget(s), step, 0.035);
+}
+
+/* MOOD AND HAPPINESS ARE NOT THE SAME SCALE, and the first cut of this change
+   treated them as one — happiness drifted straight onto mind.mood and a third
+   of perfectly ordinary lives landed at or below 50, which is a misery
+   generator rather than an honest model.
+
+   The two were calibrated for different jobs. hltMindTarget's baseline stress
+   for an unremarkable life measures ~47 — a quarter of that being "no work"
+   and "money", which fire for very nearly every life — so raw mood sits near
+   46 for somebody with nothing much wrong. On the Health panel 46 reads as
+   middling, which is right. In the header, where happiness is the player's
+   account of how the life is going, 46 reads as failing, which is not.
+
+   So mood is MAPPED rather than copied: real crisis lands in the twenties, an
+   unremarkable life in the high fifties to sixties, and a life that is
+   genuinely going well reaches the eighties — with the top of the range kept
+   rare instead of, as before, universal. */
+function happinessTarget(s) {
+  return clamp(18 + s.hlt.mind.mood * 0.78);
+}
+
+/* Everyone this life has buried. Counted, not stamped, so no death site has
+   to know grief exists. */
+function hltLossCount(s) {
+  let n = 0;
+  for (const store of ["family", "friends", "romance", "relatives", "children"]) {
+    const g = s[store] || {};
+    for (const k in g) if (g[k] && g[k].deceased) n++;
   }
+  return n;
 }
 
 /* ── stopping ────────────────────────────────────────────────────────────
@@ -14745,8 +14864,20 @@ function presLabel(s) {
 
 // dysphoria: most trans people carry it; it eases as presentation and transition catch up
 function dysphoriaLevel(s) {
-  if (!s.discovered.gender || !isQueerG(s)) return 0;
   if (s.flags.noDysphoria) return 0;
+  if (!isQueerG(s)) return 0;
+  /* BEFORE THE WORD FOR IT. This returned a hard 0 until discovered.gender,
+     so a fourteen-year-old carried nothing and then jumped to 55 the instant
+     they found the word — a step function at precisely the age the distress
+     is usually at its worst. Undiscovered dysphoria is not absent, it is
+     unnamed, and being unnamed is part of what makes it heavy: there is
+     nothing to do about a thing you cannot describe. It is held a little
+     lower than the named kind only because none of the relief below is
+     reachable yet, so the honest total lands in much the same place. */
+  if (!s.discovered.gender) {
+    const raw = 34 + presGap(s) * 0.18 - (s.emergent.selfAwareness ?? 50) * 0.06;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
   let d = 55;
   d += presGap(s) * 0.35;                       // living wrong is the biggest driver
   if (s.flags.hrt) d -= 22;
@@ -14757,9 +14888,34 @@ function dysphoriaLevel(s) {
   if (usedName(s) !== s.profile.first) d -= 6;
   const outCount = Object.keys(s.outTo).filter((k) => s.outTo[k]).length;
   d -= Math.min(14, outCount * 3);              // being known as yourself helps
+  /* THE DAILY, CHEAP, UNGLAMOROUS RELIEF — which the game already sold and
+     then ignored. A binder, a tuck, voice work and a laser course all existed
+     as purchasable actions that paid out a flat happiness bump and touched
+     dysphoria not at all. For most people most of the time these matter more
+     day to day than surgery does, because they are what you have before you
+     have anything else. */
+  d -= dysRelief(s);
   if (s.flags.buried) d += 12;
+  /* and the people who do not need the preamble */
+  d -= peerSupport(s) * 4;
   d -= (s.emergent.selfAwareness ?? 50) * 0.08;
   return Math.max(0, Math.min(100, Math.round(d)));
+}
+
+/* Capped as a group: a wardrobe of coping is not a substitute for the things
+   it stands in for, and stacking every item should not out-perform hormones. */
+function dysRelief(s) {
+  const b = (s.body && typeof s.body === "object") ? s.body : {};
+  const fem = presTarget(s) >= 50;
+  let r = 0;
+  const bd = b.binder;
+  if (!fem && bd && bd.owned && bd.use && bd.use !== "none") r += bd.kind === "sportsbra" ? 4 : 7;
+  if (fem && b.tuck && b.tuck.use && b.tuck.use !== "none") r += 6;
+  const vt = s.emergent && s.emergent.voiceTraining;
+  if (vt) r += Math.min(8, vt * 0.08);
+  const laser = (b.laserFace || 0) + (b.laserBody || 0);
+  if (fem && laser) r += Math.min(7, laser * 0.6);
+  return Math.min(16, Math.round(r));
 }
 
 const DYSPHORIA_POOL = [
@@ -16532,6 +16688,179 @@ const SCHOOL_ENFORCE = [
       ] } }; } },
 ];
 POOL.push(...SCHOOL_ENFORCE);
+
+/* ═══════════════ FEMINISING PRESENTATION ═══════════════
+   The sibling of mascKitMenu below, and the reason it exists: that menu is
+   gated on presTarget < 50, so for the whole life of this file a trans woman
+   could buy a salon appointment and a surgery and nothing in between.
+
+   The asymmetry matters most for VOICE. Testosterone drops a voice and keeps
+   it dropped; oestrogen does not raise one, at all, ever. So for a trans man
+   voice is something that happens TO him and for a trans woman it is work she
+   either does or does not do — which is exactly the kind of difference this
+   game is otherwise careful about. */
+const TUCKS = [
+  { id: "gaff",  name: "A gaff",    sub: "made for this, comfortable enough to forget", price: 30, relief: 6,
+    got: `👗 A gaff, ordered in plain packaging and opened with the door shut. It is unremarkable to look at and it changes the line of every single thing you own.` },
+  { id: "tape",  name: "Tape",      sub: "cheap, effective, and it has to come off",    price: 12, relief: 5, sore: 1,
+    got: `👗 Tape. Twelve pounds and a technique you learn from strangers on the internet. It works beautifully and taking it off at the end of the day is its own small tax.` },
+  { id: "shape", name: "Shapewear", sub: "does a different job, does it well",          price: 45, relief: 4,
+    got: `👗 Shapewear, which is sold to everyone and so required no explaining at the till. You stood in front of the mirror longer than you meant to.` },
+];
+
+function tuckState(s) {
+  const b = bodyState(s);
+  if (!b.tuck) b.tuck = { owned: false, kind: null, use: "none", sore: 0 };
+  return b.tuck;
+}
+
+function femKitMenu(state) {
+  const s = pClone(state);
+  const cur = s.profile.curSym;
+  const tk = tuckState(s);
+  const b = bodyState(s);
+  const onE = !!s.flags.hrt && presTarget(s) >= 50;
+  const vt = s.emergent.voiceTraining ?? 0;
+  const opts = [];
+  const p = (n) => cur + n;
+
+  if (!s.flags.srg_gcs) {
+    if (!tk.owned) {
+      for (const t of TUCKS) {
+        opts.push({ card: { emoji: "👗", name: t.name, sub: t.sub, tag: p(t.price) },
+          cond: (st) => st.money >= t.price,
+          fx: { money: -t.price, run: (st) => {
+            const q = tuckState(st);
+            q.owned = true; q.kind = t.id; q.use = "out";
+            st.stats.happiness = clamp(st.stats.happiness + rnd(4, 8));
+            push(st, t.got);
+          } } });
+      }
+    } else {
+      const label = tk.use === "all" ? "every waking hour" : tk.use === "out" ? "when you go out" : "not at the moment";
+      opts.push({ card: { emoji: "👗", name: "How often", sub: label, tag: tk.use === "all" ? "sore" : "" },
+        fx: { run: (st) => {
+          const q = tuckState(st);
+          q.use = q.use === "none" ? "out" : q.use === "out" ? "all" : "none";
+          if (q.use === "all") {
+            q.sore = (q.sore || 0) + 1;
+            st.stats.health = clamp(st.stats.health - 1);
+            push(st, `👗 All day, every day. It works and it aches, and you have started doing the arithmetic of how long is too long.`);
+          } else if (q.use === "out") push(st, `👗 For going out, then. A compromise between being seen as yourself and being comfortable in your own flat.`);
+          else { st.stats.happiness = clamp(st.stats.happiness - 4); push(st, `👗 You stopped. Your body thanked you and you missed the line of your own clothes immediately.`); }
+        } } });
+    }
+  }
+
+  /* the one hormones will not do */
+  opts.push({ card: { emoji: "🗣", name: "Voice work", sub: onE ? "oestrogen will not do this one for you" : "resonance, not pitch", tag: `${vt}/100` },
+    fx: { run: (st) => {
+      const gain = st.money >= 60 ? rnd(5, 9) : rnd(2, 5);     /* a coach, or a library book */
+      const paid = st.money >= 60;
+      if (paid) st.money -= 60;
+      st.emergent.voiceTraining = clamp((st.emergent.voiceTraining ?? 0) + gain);
+      movePres(st, 1);
+      st.stats.happiness = clamp(st.stats.happiness + rnd(2, 5));
+      const now = st.emergent.voiceTraining;
+      push(st, paid
+        ? (now > 70
+          ? `🗣 A session with a speech therapist who has done this a hundred times. You read a paragraph back and did not flinch at it, which is new.`
+          : `🗣 Forty minutes of resonance work with a coach. It is physical, it is tiring, and it is the opposite of putting on a voice.`)
+        : (now > 70
+          ? `🗣 Recordings, a tuner app, your own patience. You answered the phone today and the call went the way you wanted it to go.`
+          : `🗣 Practising alone, where nobody can hear the bad attempts. Higher is not the goal; forward is. It is slow and it is yours.`));
+    } } });
+
+  opts.push({ card: { emoji: "🚶", name: "Stance and mannerisms", sub: "how you take up space", tag: "" },
+    fx: { run: (st) => {
+      movePres(st, 3);
+      st.emergent.confidence = clamp((st.emergent.confidence ?? 40) + 4);
+      st.stats.happiness = clamp(st.stats.happiness + rnd(2, 5));
+      push(st, pick([
+        `🚶 Narrower, quieter, hands differently. Half of it is things you were taught to stop doing at eight years old and are now relearning on purpose.`,
+        `🚶 You watched how women you admire move through a room, and copied it badly, and then less badly.`,
+      ]));
+    } } });
+
+  const laser = (b.laserFace || 0) + (b.laserBody || 0);
+  opts.push({ label: laser ? `🔦 Hair removal: ${laser} sessions done — continue at the salon` : "🔦 Hair removal is at the salon (💆)", fx: {} });
+
+  opts.push(CANCEL);
+  s.pending = { emoji: "🎀", title: "Passing", layout: "grid",
+    text: `Presentation: ${presLabel(s)}. ${onE ? "Hormones are doing the slow work. These are the parts they do not touch." : "None of this needs a prescription or anyone's permission."}`,
+    options: opts };
+  return s;
+}
+
+/* ═══════════════ PEOPLE WHO GET IT ═══════════════
+   The strongest protective factor in the literature on this, and the game had
+   a slot shaped exactly like it already — hltMindTarget credits friends and a
+   partner, and this is neither. It is the people who do not need the preamble.
+
+   Era-gated by how you would actually have found them, which for most of the
+   twentieth century was difficult, deliberately obscure, and risky. */
+function peerMenu(state) {
+  const s = pClone(state);
+  const y = yearOf(s);
+  const g = s.flags.peerGroup;
+  const opts = [];
+  const where = y < 1970 ? "a room above a pub, address passed by word of mouth"
+              : y < 1990 ? "a switchboard number on a card in a bookshop window"
+              : y < 2005 ? "a mailing list, then a monthly meet in a community centre"
+              : y < 2015 ? "a forum, and eventually a pub table with faces attached to the usernames"
+              : "a group chat that turns into a standing Thursday";
+  /* Scaled by era as well as acceptance: before the internet this was not a
+     matter of courage, it was a matter of not knowing where to look, and the
+     first calibration let a character walk into a 1958 group three times out
+     of four. */
+  const reach = y < 1970 ? 0.22 : y < 1990 ? 0.4 : y < 2005 ? 0.7 : 1;
+  const risk = Math.max(0, (60 - localAcceptance(s)) / 100);
+
+  if (!g) {
+    opts.push({ card: { emoji: "🔎", name: "Go looking", sub: where, tag: risk > 0.4 ? "risky here" : "" },
+      fx: { run: (st) => {
+        if (Math.random() > reach * (1 - risk * 0.5)) {
+          st.stats.happiness = clamp(st.stats.happiness - rnd(3, 7));
+          push(st, `🔎 You looked, carefully, and found nothing you were willing to walk into. ${yearOf(st) < 1990 ? "In this decade the people like you are not advertising." : "Everything you found was two towns over and you lost your nerve at the station."}`);
+          return;
+        }
+        st.flags.peerGroup = { since: st.ageDays, where: where };
+        st.stats.happiness = clamp(st.stats.happiness + rnd(8, 14));
+        st.emergent.courage = clamp((st.emergent.courage ?? 40) + 6);
+        push(st, `🫂 You found them: ${where}. Nobody asked you to explain the basics. It had not occurred to you how much of your talking was explaining the basics.`);
+      } } });
+  } else {
+    const months = Math.floor((s.ageDays - g.since) / 30);
+    const tier = peerSupport(s);
+    opts.push({ card: { emoji: "🫂", name: "Go along", sub: `${months} month${months === 1 ? "" : "s"} · ${["", "new", "settled", "family"][tier] || "family"}`, tag: "" },
+      fx: { run: (st) => {
+        st.stats.happiness = clamp(st.stats.happiness + rnd(3, 7));
+        push(st, pick([
+          `🫂 Two hours of the kind of talk that does not need footnotes. You came home lighter and could not have said exactly why.`,
+          `🫂 Somebody newer than you asked a question you had asked three years ago, and you knew the answer, and that was its own strange milestone.`,
+          `🫂 Not a support group so much as people. Someone's terrible dog came. You argued about a film.`,
+        ]));
+      } } });
+    opts.push({ card: { emoji: "🤝", name: "Be the one who helps", sub: "there is always somebody newer", tag: "" },
+      fx: { run: (st) => {
+        st.emergent.kindness = clamp((st.emergent.kindness ?? 50) + 6);
+        st.stats.happiness = clamp(st.stats.happiness + rnd(4, 9));
+        push(st, `🤝 You sat with somebody at the beginning of it and did not tell them it gets better, because they would not have believed you. You told them what to do on Monday instead.`);
+      } } });
+    opts.push({ card: { emoji: "🚪", name: "Stop going", sub: "it has run its course", tag: "" },
+      fx: { run: (st) => {
+        delete st.flags.peerGroup;
+        st.stats.happiness = clamp(st.stats.happiness - rnd(2, 6));
+        push(st, `🚪 You stopped going. Not a falling-out — you simply stopped, the way people do, and noticed the absence later than you expected to.`);
+      } } });
+  }
+  opts.push(CANCEL);
+  s.pending = { emoji: "🫂", title: g ? "People who get it" : "Finding people", layout: "grid",
+    text: g ? `Since ${Math.floor((s.ageDays - g.since) / 30)} months ago. The preamble is not required here.`
+            : `Everywhere else, you are the explanation. ${risk > 0.4 ? "In this time and place, looking for people like you is not a neutral act." : "Somewhere there is a room where you would not be."}`,
+    options: opts };
+  return s;
+}
 
 /* ═══════════════ MASCULINISING PRESENTATION ═══════════════ */
 
