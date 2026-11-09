@@ -41,8 +41,12 @@
  *      slot-addressed and bound through the P1 validator. Applied at fire time
  *      from a situation cache, so the choices never change under a player who
  *      is already reading them.
+ * v15 — Happiness is a mood: it drifts toward a stress-derived setpoint
+ *      instead of ratcheting, and dysphoria is a continuous load alongside
+ *      debt and housing rather than one event on a cooldown. Grief, isolation
+ *      and peer support join it. A feminising passing menu, finally.
  */
-const CACHE_NAME = "a-life-cache-v14";
+const CACHE_NAME = "a-life-cache-v15";
 const ASSETS = [
   "./",
   "./index.html",

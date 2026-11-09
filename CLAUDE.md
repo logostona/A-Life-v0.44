@@ -89,6 +89,16 @@ node test-deploy.js                         # tests the ARTIFACT, not the source
 node -e 'require("./harness.js")'           # see the trap below
 ```
 
+**There is no `package.json`, and `node_modules` is not committed.** A fresh container therefore
+fails the build with `Could not resolve "react"` and `test-deploy` with `Cannot find module
+'jsdom'` — neither is a code fault. Install all three *in one command*, because without a
+manifest `npm install --no-save X` prunes whatever was there before (installing jsdom on its own
+silently removes react, and the build breaks again):
+
+```sh
+npm install --no-save react@18.3.1 react-dom@18.3.1 jsdom
+```
+
 **`esbuild` compiling is not the same as the module loading.** A `const` referenced above its
 declaration compiles cleanly and dies at load — that is how `ACT_GROUPS.push(EDU_GROUP)` took
 the whole file down in P6. Always run the harness import as part of a build check.
@@ -202,6 +212,62 @@ improvised reads as improvised.
 person and `comeOutReact` cannot produce a bad outcome — the game was breaking up gay couples over a
 disclosure the partner had lived inside for years. Being **trans** is still news to that same
 partner, and is still allowed to go badly.
+
+### Happiness is a mood, not a score
+
+**`stats.happiness` drifts toward `happinessTarget(s)` every tick, and that is the whole of it.**
+What was there before was a flat ±0.045/week nudge with *no target*: it pushed happiness up
+whenever `mind.mood` was above 67 and never stopped pushing. The content is net positive and
+nothing pulled back, so every life ratcheted into the nineties. Measured before the change:
+
+| | before | after |
+|---|---|---|
+| lives ending at 90+ | **83%** | 4% |
+| lives ever at or below 50 | **0%** | 17% |
+| worst `\|happiness − mood\|` | **88** (happiness 97, mood 9, stress 70) | 31 |
+
+That last row is the one that mattered: `hlt.mind.mood` was already a proper homeostatic model
+with a stress-derived setpoint, and **nothing read it**. Two authorities on the same fact, the
+exact desync this file warns about elsewhere.
+
+**Mood and happiness are not the same scale.** The first cut drifted happiness straight onto
+`mind.mood` and put a third of ordinary lives at or below 50 — a misery generator. Baseline
+stress for an unremarkable life measures ~47 (a quarter of it "no work" and "money", which fire
+for very nearly every life), so raw mood sits near 46 for someone with nothing much wrong. On the
+Health panel 46 is middling; in the header it reads as failing. Hence the mapping in
+`happinessTarget`, not a copy.
+
+Events still move happiness and still matter — displacement decays with a half-life of about four
+months rather than being banked forever. That is what makes a chronic burden worth more than any
+one afternoon, and it is why **a new positive event is no longer a free permanent point**.
+
+`moodSetpoint` gives each character their own trait affect, derived from the world seed —
+never drawn, because one extra `Math.random()` in `newCharacter()` reshuffles every fixture.
+
+### Dysphoria is a pressure, not an occasional bad day
+
+It used to reach happiness through exactly **one** POOL event on a 60-day cooldown competing with
+220 others. A character at dysphoria 74, not on hormones, out to one person, finished at
+happiness 96. It is now a term in `hltMindTarget` alongside debt, housing and addiction, which is
+where every other chronic burden already lived.
+
+Three things that were wrong and are asserted now:
+
+- **No step function at discovery.** `dysphoriaLevel` returned a hard 0 until `discovered.gender`
+  and then jumped to 55 — at precisely the age the distress is usually worst. Undiscovered
+  dysphoria is not absent, it is *unnamed*, and none of the relief below is reachable yet.
+- **The cheap relief the game already sold and then ignored.** A binder, a tuck, voice work and a
+  laser course all existed as purchasable actions paying a flat happiness bump and touching
+  dysphoria not at all. `dysRelief` counts them, capped as a group — coping is not a substitute
+  for the things it stands in for.
+- **`mascKitMenu` was gated `presTarget < 50`**, so a trans woman could buy a salon appointment
+  and a surgery and nothing in between. `femKitMenu` is its sibling. The asymmetry matters most
+  for **voice**: testosterone drops a voice and keeps it dropped, oestrogen does not raise one,
+  ever — so for one it happens and for the other it is work.
+
+**Grief is captured by DIFFING**, the same way `crOnTick` diffs the job. Deaths are written in a
+dozen places and none records a date; `hltLossCount` counts and the tick stamps `flags.griefAt`,
+so every current and future death site is covered for free. It decays over ~3 years.
 
 ### Adding to the Health subsystem (HLT)
 

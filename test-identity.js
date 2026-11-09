@@ -875,5 +875,183 @@ sec("asexuality is about attraction, not capability");
   })());
 }
 
+sec("dysphoria is a pressure, not an occasional bad day");
+{
+  /* It reached happiness through exactly ONE pool event on a 60-day cooldown,
+     competing with 220 others. Measured before this change: a character at
+     dysphoria 74, not on hormones, out to one person, finished at happiness
+     96, and the correlation between the two across 39 lives was -0.32. */
+  const mk = (mut) => {
+    H.seed(77);
+    const c = H.mkChar({ country: "United Kingdom", birthYear: 1990, sex: "Male",
+                         gid: "Trans woman", cls: "Middle" });
+    c.ageDays = Math.round(26 * 365.25);
+    c.hidden.gender = "Trans woman"; c.discovered.gender = true;
+    c.friends = { f1: { name: "A", role: "Friend", rel: 60 }, f2: { name: "B", role: "Friend", rel: 55 } };
+    c.money = 2000; c.career = { job: { title: "Clerk", industry: "admin", pay: 30000 } };
+    if (mut) mut(c);
+    return c;
+  };
+  const settle = (c) => { for (let i = 0; i < 400; i++) M.hltOnTick(c, 7); return c; };
+  const happinessOf = (mut) => Math.round(settle(mk(mut)).stats.happiness);
+
+  ok("dysphoria is a named stress term",
+    M.hltMindTarget(mk()).terms.some((t) => t[1] === "dysphoria"),
+    M.hltMindTarget(mk()).terms);
+  ok("...and a cisgender life carries none",
+    !M.hltMindTarget(mk((c) => { c.hidden.gender = "Cisgender"; c.profile.sex = "Female"; }))
+      .terms.some((t) => t[1] === "dysphoria"));
+
+  /* the ladder: every rung must be an improvement on the one below */
+  const closeted = happinessOf(() => {});
+  const living   = happinessOf((c) => { c.outTo = { mom: true, dad: true }; c.emergent.pres = M.presTarget(c); });
+  const onHrt    = happinessOf((c) => { c.outTo = { mom: true, dad: true }; c.emergent.pres = M.presTarget(c); c.flags.hrt = c.ageDays - 900; });
+  const done     = happinessOf((c) => { c.outTo = { mom: true, dad: true }; c.emergent.pres = M.presTarget(c); c.flags.hrt = c.ageDays - 900; c.flags.srg_top = 1; c.flags.srg_gcs = 1; c.flags.legalName = 1; });
+  ok("living as yourself beats being closeted", living > closeted, [closeted, living]);
+  ok("hormones beat that", onHrt > living, [living, onHrt]);
+  ok("and the far end beats all of it", done > onHrt, [onHrt, done]);
+  ok("the whole ladder is worth a real amount", done - closeted >= 12, [closeted, done]);
+  ok("...but being closeted is not a death sentence either", closeted > 35, closeted);
+
+  /* severe untreated dysphoria must cap the ceiling — this is the thing that
+     was simply untrue before */
+  const bad = mk((c) => { c.emergent.pres = M.presStart(c); c.outTo = {}; });
+  bad.stats.happiness = 100;
+  settle(bad);
+  ok("severe untreated dysphoria caps happiness", bad.stats.happiness < 70, bad.stats.happiness);
+  ok("...even starting from the top of the scale", M.dysphoriaLevel(bad) > 55, M.dysphoriaLevel(bad));
+}
+{
+  /* NO STEP FUNCTION AT DISCOVERY. It returned a hard 0 until the character
+     found the word, then jumped to 55 — at precisely the age the distress is
+     usually worst. */
+  const mk = (disc) => {
+    H.seed(31);
+    const c = H.mkChar({ country: "United Kingdom", birthYear: 2000, sex: "Male", gid: "Trans woman" });
+    c.ageDays = Math.round(14 * 365.25);
+    c.hidden.gender = "Trans woman"; c.discovered.gender = disc;
+    return c;
+  };
+  const before = M.dysphoriaLevel(mk(false)), after = M.dysphoriaLevel(mk(true));
+  ok("undiscovered dysphoria is not zero", before > 0, before);
+  ok("...and discovery is not a cliff", Math.abs(after - before) < 35, [before, after]);
+  ok("a cisgender child carries none either way",
+    M.dysphoriaLevel((() => { const c = mk(true); c.hidden.gender = "Cisgender"; return c; })()) === 0);
+  ok("and the opt-out still works",
+    M.dysphoriaLevel((() => { const c = mk(true); c.flags.noDysphoria = true; return c; })()) === 0);
+}
+{
+  /* THE CHEAP RELIEF THE GAME ALREADY SOLD AND THEN IGNORED. A binder, a
+     tuck, voice work and a laser course all existed as purchasable actions
+     that paid a flat happiness bump and touched dysphoria not at all. */
+  const mk = (fem, mut) => {
+    H.seed(52);
+    const c = H.mkChar({ country: "United Kingdom", birthYear: 1990, sex: fem ? "Male" : "Female",
+                         gid: fem ? "Trans woman" : "Trans man" });
+    c.ageDays = Math.round(24 * 365.25);
+    c.hidden.gender = fem ? "Trans woman" : "Trans man"; c.discovered.gender = true;
+    if (mut) mut(c);
+    return c;
+  };
+  ok("nothing owned is no relief", M.dysRelief(mk(true)) === 0);
+  ok("voice work relieves", M.dysRelief(mk(true, (c) => { c.emergent.voiceTraining = 80; })) > 0);
+  ok("a tuck relieves a trans woman",
+    M.dysRelief(mk(true, (c) => { M.tuckState(c).owned = true; M.tuckState(c).kind = "gaff"; M.tuckState(c).use = "out"; })) > 0);
+  ok("a binder relieves a trans man",
+    M.dysRelief(mk(false, (c) => { const b = M.binderState(c); b.owned = true; b.kind = "proper"; b.use = "out"; })) > 0);
+  ok("a properly sized binder beats a doubled sports bra", (() => {
+    const good = mk(false, (c) => { const b = M.binderState(c); b.owned = true; b.kind = "proper"; b.use = "out"; });
+    const bad = mk(false, (c) => { const b = M.binderState(c); b.owned = true; b.kind = "sportsbra"; b.use = "out"; });
+    return M.dysRelief(good) > M.dysRelief(bad);
+  })());
+  ok("an owned but unworn binder relieves nothing",
+    M.dysRelief(mk(false, (c) => { const b = M.binderState(c); b.owned = true; b.kind = "proper"; b.use = "none"; })) === 0);
+  ok("laser counts toward a feminising transition",
+    M.dysRelief(mk(true, (c) => { const b = M.bodyState(c); b.laserFace = 8; })) > 0);
+  /* capped as a group: coping is not a substitute for the things it stands in for */
+  const everything = mk(true, (c) => {
+    c.emergent.voiceTraining = 100;
+    M.tuckState(c).owned = true; M.tuckState(c).kind = "gaff"; M.tuckState(c).use = "all";
+    const b = M.bodyState(c); b.laserFace = 12; b.laserBody = 12;
+  });
+  ok("stacking everything is capped", M.dysRelief(everything) <= 16, M.dysRelief(everything));
+  ok("...and does not out-perform hormones", M.dysRelief(everything) < 22);
+}
+{
+  /* BOTH DIRECTIONS GET A PASSING MENU. mascKitMenu was gated presTarget < 50,
+     so a trans woman could buy a salon appointment and a surgery and nothing
+     in between — including voice, the one thing oestrogen does not do. */
+  const mk = (gid, sex) => {
+    H.seed(12);
+    const c = H.mkChar({ country: "United Kingdom", birthYear: 1990, sex: sex, gid: gid });
+    c.ageDays = Math.round(26 * 365.25);
+    c.hidden.gender = gid; c.discovered.gender = true; c.money = 500;
+    return c;
+  };
+  const names = (p) => p.options.map((o) => (o.card && o.card.name) || o.label).filter(Boolean);
+  const fem = names(M.femKitMenu(mk("Trans woman", "Male")).pending);
+  ok("a trans woman has a passing menu", fem.length > 3, fem);
+  ok("...with voice work in it", fem.some((n) => /Voice work/i.test(n)), fem);
+  ok("...and something to tuck with", fem.some((n) => /gaff|Tape|Shapewear/i.test(n)), fem);
+  ok("...and it points at where hair removal lives", fem.some((n) => /Hair removal/i.test(n)), fem);
+  const masc = names(M.mascKitMenu(mk("Trans man", "Female")).pending);
+  ok("a trans man still has his", masc.some((n) => /Voice|binder|Binding|Bind/i.test(n)) || masc.length > 3, masc);
+
+  /* the action rows are gated to opposite sides, so nobody sees both */
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  ok("the two menus are gated to opposite directions",
+    /id: "femkit"[^}]*presTarget\(s\) >= 50/.test(SRC) && /id: "masckit"[^}]*presTarget\(s\) < 50/.test(SRC));
+
+  /* Gotcha #2 */
+  for (const [label, fn, c] of [["femKitMenu", M.femKitMenu, mk("Trans woman", "Male")],
+                                ["peerMenu", M.peerMenu, mk("Trans woman", "Male")]]) {
+    const snap = JSON.stringify(c);
+    fn(c);
+    ok(label + " mutates nothing", JSON.stringify(c) === snap);
+  }
+}
+{
+  /* PEER SUPPORT — the strongest protective factor in the literature, and the
+     one slot hltMindTarget was missing. */
+  const mk = (year, since) => {
+    H.seed(19);
+    const c = H.mkChar({ country: "United Kingdom", birthYear: year - 26, sex: "Male", gid: "Trans woman" });
+    c.ageDays = Math.round(26 * 365.25);
+    c.hidden.gender = "Trans woman"; c.discovered.gender = true;
+    c.friends = { f1: { name: "A", role: "Friend", rel: 60 }, f2: { name: "B", role: "Friend", rel: 55 } };
+    if (since !== undefined) c.flags.peerGroup = { since: c.ageDays - since, where: "x" };
+    return c;
+  };
+  ok("no group, no support", M.peerSupport(mk(2015)) === 0);
+  ok("a new group counts", M.peerSupport(mk(2015, 30)) === 1);
+  ok("...and deepens over years", M.peerSupport(mk(2015, 1200)) > M.peerSupport(mk(2015, 30)));
+  ok("...to a ceiling", M.peerSupport(mk(2015, 20000)) === 3);
+  ok("it is a named protective term",
+    M.hltMindTarget(mk(2015, 1200)).terms.some((t) => t[1] === "people who get it" && t[0] < 0));
+  ok("...and it eases dysphoria too", M.dysphoriaLevel(mk(2015, 1200)) < M.dysphoriaLevel(mk(2015)));
+  /* but not more than the things it is not a substitute for */
+  const peerTerm = Math.abs(M.hltMindTarget(mk(2015, 20000)).terms.find((t) => t[1] === "people who get it")[0]);
+  ok("a peer group is not worth more than having friends at all", peerTerm <= 10, peerTerm);
+
+  /* era: before the internet this was a matter of not knowing where to look */
+  const foundRate = (year) => {
+    let n = 0;
+    for (let i = 0; i < 200; i++) {
+      H.seed(i);
+      const c = H.mkChar({ country: "United Kingdom", birthYear: year - 26, sex: "Male", gid: "Trans woman" });
+      c.ageDays = Math.round(26 * 365.25);
+      c.hidden.gender = "Trans woman"; c.discovered.gender = true;
+      const opt = M.peerMenu(c).pending.options.find((o) => o.card && /Go looking/.test(o.card.name));
+      H.seed(7000 + i); M.applyFx(c, opt.fx);
+      if (c.flags.peerGroup) n++;
+    }
+    return n / 200;
+  };
+  const r1958 = foundRate(1958), r2015 = foundRate(2015);
+  ok("finding people in 1958 is hard", r1958 < 0.35, r1958);
+  ok("...and routine now", r2015 > 0.85, r2015);
+  ok("...with the era doing the work", r2015 > r1958 * 2, [r1958, r2015]);
+}
+
 console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
 process.exit(fail === 0 ? 0 : 1);
