@@ -253,7 +253,10 @@ sec("3 · the validator trusts nothing");
   const legal = M.evtValidate(p, good({ stats: { happiness: 3 }, rel: { [key]: 8 }, emergent: { kindness: 4 }, feed: "a line" }));
   ok("a legal effect passes through", legal && legal.options[0].fx.stats.happiness === 3);
   ok("...including the cast relationship", legal.options[0].fx.rel[key] === 8);
-  ok("...and the feed line", legal.options[0].fx.feed === "a line");
+  /* P5: a model's feed line passes through, wearing the event's own emoji —
+     every line the game writes opens with one, and a generated line that did
+     not would read as the odd one out in a column of them */
+  ok("...and the feed line", legal.options[0].fx.feed === p.fallback.emoji + " a line", legal.options[0].fx.feed);
   /* and it must actually move the game */
   const e = JSON.parse(JSON.stringify(s));
   const relBefore = e.family[key].rel;
@@ -377,12 +380,32 @@ sec("P2 · the provider seam");
      nothing if a later helper quietly opens its own socket. */
   const fetches = (clean.match(/[^.\w]fetch\s*\(/g) || []).length;
   ok("there is exactly one fetch in the whole program", fetches === 1, fetches);
-  ok("...and it is inside llmComplete", (() => {
-    const i = clean.indexOf("async function llmComplete");
+  /* The connection test needs the network too, so the chokepoint moved one
+     level down: the single fetch now lives in llmFetch, and the invariant is
+     that exactly TWO callers may reach it — generation, and the test the
+     player starts by hand. Enumerated rather than counted, so a third caller
+     has to be argued for rather than slipped in. */
+  ok("...and it is inside llmFetch", (() => {
+    const i = clean.indexOf("function llmFetch(");
     const j = clean.indexOf("\nfunction ", i + 10);
-    const body = clean.slice(i, j > i ? j : undefined);
-    return /[^.\w]fetch\s*\(/.test(body);
+    return i > -1 && /[^.\w]fetch\s*\(/.test(clean.slice(i, j > i ? j : undefined));
   })());
+  /* every call site of llmFetch, attributed to the named function it sits in
+     — the nearest `function NAME(` before it, since the helpers inside these
+     functions are arrows, not declarations */
+  const fetchCallers = (() => {
+    const callers = new Set();
+    const re = /\bllmFetch\(/g;
+    let m;
+    while ((m = re.exec(clean))) {
+      if (/function\s+$/.test(clean.slice(Math.max(0, m.index - 12), m.index))) continue;   /* the declaration */
+      const decls = clean.slice(0, m.index).match(/function\s+(\w+)\s*\(/g) || [];
+      callers.add(decls.length ? decls[decls.length - 1].replace(/function\s+|\s*\(/g, "") : "<top level>");
+    }
+    return [...callers].sort();
+  })();
+  ok("...which only generation and the connection test call",
+    JSON.stringify(fetchCallers) === JSON.stringify(["llmComplete", "llmDiagnose"]), fetchCallers);
   /* The hot path itself. advance() and evtMaybeFire must be synchronous —
      the popup is on screen with its written text before a model is asked
      anything, which is the property the whole design rests on. */
@@ -810,13 +833,248 @@ sec("P3 · the model chooses effects");
   ok("evtEnhance still resolves with prose only", /onResolve\(prose\)/.test(body("evtEnhance")));
   ok("...and never validates a full realisation", !/evtValidate/.test(body("evtEnhance")));
   ok("...and never touches the effects cache", !/_evtFullCache|evtRememberRealisation/.test(body("evtEnhance")));
-  ok("the popup callback only ever assigns aiText",
-    /pending: \{ \.\.\.prev\.pending, aiText: text \}/.test(clean));
+  /* P5 moved the landing into evtWithAiText, a pure function, so this is now
+     asserted by BEHAVIOUR below rather than by matching an inline updater —
+     and here only structurally: both React paths route through it */
+  ok("every model reply reaches a popup through evtWithAiText",
+    (clean.match(/evtWithAiText\(prev, id, base, text\)/g) || []).length === 1 &&
+    /evtEnhance\(state, state\.pending, land\)/.test(clean) &&
+    /enhancePopupNarration\(state, state\.pending, land\)/.test(clean));
+  ok("...and nothing else assigns aiText",
+    (clean.match(/aiText:/g) || []).length === 1, (clean.match(/aiText:/g) || []).length);
   ok("evtRealiseAhead writes only to the cache",
     /evtRememberRealisation/.test(body("evtRealiseAhead")) && !/onResolve|pending/.test(body("evtRealiseAhead")));
   /* and the fire path is still synchronous */
   ok("evtMaybeFire reads the cache synchronously",
     /evtCachedFor/.test(body("evtMaybeFire")) && !/\bawait\b|\.then\(/.test(body("evtMaybeFire")));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EVT P5 · WHAT A LIFE HAS BEEN SHOWN STAYS SHOWN
+
+   Model output is not reproducible, so anything a player has SEEN has to be
+   saved rather than regenerated. Measured before this phase: choosing an
+   option of a model-realised event added ZERO lines to the feed; a reload
+   re-narrated an open popup with different words; and the same realisation
+   would recur word for word within one life.
+
+   And one bug P3 shipped that every P3 assertion was green on: the prompt
+   names effects as dotted keys ("stats.happiness"), the validator read only
+   the nested form, so a model following the prompt literally had EVERY
+   realisation rejected. Every fixture had been hand-written nested.
+   ═══════════════════════════════════════════════════════════════════════ */
+sec("P5 · persisted realisations");
+const friendProp = (age, fkey, fname) => {
+  const c = only(at(age || 34), "friendDrift");
+  c.friends = {}; c.friends[fkey || "f2"] = { name: fname || "Kim", role: "Friend", rel: 41, g: "F" };
+  return { s: c, p: proposeFor(c) };
+};
+const SCENE = "Kim surfaces in a thread about somebody else entirely, and you put the phone face down on the sofa.";
+{
+  /* 1 · the state blob — Gotcha #4: initializer and migrate in one patch */
+  ok("a new life starts with an empty record", (() => {
+    const c = at(20);
+    return c.evt && c.evt.v === M.evtStateInit().v && Array.isArray(c.evt.hist) && c.evt.hist.length === 0;
+  })());
+  /* the initializer is a literal, so it cannot have moved the RNG stream */
+  ok("...built from a pure literal", JSON.stringify(at(20).evt) === JSON.stringify(M.evtStateInit()));
+  ok("a pre-P5 save migrates", (() => { const c = at(20); delete c.evt; M.migrate(c); return c.evt && Array.isArray(c.evt.hist); })());
+  ok("a corrupt record is replaced, not trusted", (() => {
+    const c = at(20); c.evt = "nonsense"; M.evtStateMigrate(c);
+    const d = at(20); d.evt = [1, 2]; M.evtStateMigrate(d);
+    return Array.isArray(c.evt.hist) && Array.isArray(d.evt.hist) && !Array.isArray(d.evt);
+  })());
+  ok("junk entries are filtered, good ones kept", (() => {
+    const c = at(20); c.evt = { v: 0, hist: [null, "x", { h: "no" }, { id: "keep", h: 42 }] };
+    M.evtStateMigrate(c);
+    return c.evt.hist.length === 1 && c.evt.hist[0].id === "keep";
+  })());
+
+  /* 2 · the save-size budget is in BYTES, which is the thing that matters */
+  const big = at(20);
+  for (let i = 0; i < 2000; i++) M.evtRecord(big, { id: "evt:x:" + i, src: "full", h: i });
+  const bytes = JSON.stringify(big.evt.hist).length;
+  ok("the record stays inside its byte budget", bytes <= M.EVT_HIST_BYTES, bytes);
+  ok("...by dropping the OLDEST", big.evt.hist[big.evt.hist.length - 1].h === 1999 && big.evt.hist[0].h > 0);
+  ok("...while still remembering a useful number", big.evt.hist.length >= 50, big.evt.hist.length);
+  /* the claim that matters: generated events fire at most once every
+     EVT_GLOBAL_CD days, so a full hundred-year life's worth of real entries
+     must fit WITHOUT trimming — trimming is a safety net, not routine */
+  const entry = JSON.stringify({ id: "evt:olderRelative:36524", src: "prose", h: 4294967295 }).length + 1;
+  const lifetime = Math.ceil(100 * 365.25 / M.EVT_GLOBAL_CD);
+  ok("a whole life's worth of events fits untrimmed", lifetime * entry <= M.EVT_HIST_BYTES, [lifetime, entry, M.EVT_HIST_BYTES]);
+}
+{
+  /* 3 · THE P3 BUG: a model doing exactly what the prompt says */
+  const { s, p } = friendProp();
+  const literal = { text: SCENE, options: [
+    { label: "Call, finally", fx: { "stats.happiness": 2, "relF.$friend": 6 } },
+    { label: "Leave it",      fx: { "stats.happiness": -3, "relF.$friend": -40 } }] };
+  const ev = M.evtValidate(p, literal);
+  ok("dotted keys — the form the prompt lists — are accepted", !!ev);
+  ok("...bound to this life's key", ev && ev.options[0].fx.relF.f2 === 6, ev && ev.options[0].fx);
+  ok("...and still clamped to the band", ev && ev.options[1].fx.relF.f2 === p.bands["relF.f2"][0], ev && ev.options[1].fx);
+  ok("dotted and nested in one reply merge", (() => {
+    const v = M.evtValidate(p, { text: SCENE, options: [
+      { label: "a", fx: { "stats.happiness": 2, stats: { happiness: 1 }, relF: { $friend: 3 }, "emergent.loyalty": 2 } },
+      { label: "b", fx: { stats: { happiness: -1 } } }] });
+    return v && v.options[0].fx.relF.f2 === 3 && v.options[0].fx.emergent.loyalty === 2;
+  })());
+  ok("a dotted key outside the allowlist is still dropped", (() => {
+    const v = M.evtValidate(p, { text: SCENE, options: [
+      { label: "a", fx: { "addFriend.x": 1, "run.x": 1, "stats.happiness": 2 } }, { label: "b", fx: { "stats.happiness": -1 } }] });
+    return v && v.options[0].fx.addFriend === undefined && v.options[0].fx.run === undefined;
+  })());
+  /* model-controlled keys must never reach Object.prototype */
+  M.evtValidate(p, { text: SCENE, options: [
+    { label: "a", fx: { "__proto__.polluted": 1, "stats.__proto__": { polluted: 1 }, "stats.happiness": 2 } },
+    { label: "b", fx: { "constructor.prototype.polluted": 1, "prototype.polluted": 1, "stats.happiness": -1 } }] });
+  ok("no dotted key can pollute Object.prototype", ({}).polluted === undefined && Object.prototype.polluted === undefined);
+
+  /* the prompt now SHOWS the shape, built from the kind's own bands — and the
+     example it shows must itself be something the validator accepts */
+  const pr = M.evtEffectsPrompt(p);
+  ok("the prompt shows a worked example", /Shape, with example values/.test(pr));
+  const exLine = pr.split("\n").filter((l) => l.charAt(0) === "{").pop();
+  const ex = (() => { try { return JSON.parse(exLine); } catch (e) { return null; } })();
+  ok("...that is valid JSON", !!ex, exLine);
+  ok("...whose keys are this kind's own bands", ex && Object.keys(ex.options[0].fx).filter((k) => k !== "feed")
+    .every((k) => Object.prototype.hasOwnProperty.call(M.EVT_BY_ID.friendDrift.bands, k)), ex && ex.options[0].fx);
+  ok("...in the same dotted form the bands are listed in", ex && Object.keys(ex.options[0].fx).some((k) => k.indexOf(".") > 0));
+  ok("...and which the validator accepts as written", ex && !!M.evtValidate(p, { text: SCENE,
+    options: [Object.assign({}, ex.options[0], { label: "One" }), Object.assign({}, ex.options[0], { label: "Two" })] }));
+  ok("...with no zero in it, which would teach 'omit this'", ex && Object.keys(ex.options[0].fx)
+    .filter((k) => k !== "feed").every((k) => ex.options[0].fx[k] !== 0));
+  ok("the prompt asks for an aftermath line", /"feed": ONE sentence/.test(pr));
+  for (const k of M.EVT_KINDS) {
+    const b = M.evtExampleFx(k.bands);
+    ok(k.id + ": example values sit inside their bands",
+      Object.keys(b).every((key) => b[key] >= k.bands[key][0] && b[key] <= k.bands[key][1] && b[key] !== 0), b);
+    /* found by READING the six prompts: moneyPinch's example gained money */
+    ok(k.id + ": and lean the way their band leans", Object.keys(b).every((key) => {
+      const [lo, hi] = k.bands[key];
+      return Math.abs(lo) > Math.abs(hi) ? b[key] < 0 : b[key] > 0;
+    }), b);
+  }
+  ok("a money pinch's example does not show money arriving", M.evtExampleFx(M.EVT_BY_ID.moneyPinch.bands).money < 0,
+    M.evtExampleFx(M.EVT_BY_ID.moneyPinch.bands));
+}
+{
+  /* 4 · EVERY CHOICE LEAVES A LINE IN THE LIFE STORY */
+  const { s, p } = friendProp();
+  const bare = { text: SCENE, options: [
+    { label: "Call, finally", fx: { relF: { $friend: 6 } } },
+    { label: "Leave it?",     fx: { stats: { happiness: -3 } } }] };
+  const ev = M.evtValidate(p, bare);
+  ok("an option the model gave no line still gets one", ev.options.every((o) => typeof o.fx.feed === "string" && o.fx.feed.length > 0));
+  ok("...built from what is certain, not invented", ev.options[0].fx.feed === p.fallback.emoji + " " + p.fallback.title + " — Call, finally.");
+  ok("...without doubling punctuation", ev.options[1].fx.feed.slice(-2) === "t?", ev.options[1].fx.feed);
+  ok("choosing it now writes exactly one line", (() => {
+    const before = s.feed.length;
+    const after = M.chooseOption(Object.assign({}, s, { pending: ev }), ev.options[0]);
+    return after.feed.length === before + 1;
+  })());
+  /* a feed line is narration, not an effect */
+  ok("an event whose options only narrate is still not an event", M.evtValidate(p, { text: SCENE, options: [
+    { label: "a", fx: { feed: "You thought about it for a long while and did nothing." } },
+    { label: "b", fx: { feed: "You did something else with the afternoon instead." } }] }) === null);
+
+  /* the model's own line is held to the prose standard */
+  const names = { cast: new Set(["Kim"]), others: new Set(["Marguerite"]) };
+  ok("a good aftermath line survives", M.evtSanitiseFeed("You called. It went to voicemail, and you left one.", names) !== null);
+  ok("...one naming somebody not in the scene does not",
+    M.evtSanitiseFeed("Marguerite would have told you to call, so you did.", names) === null);
+  ok("...nor a refusal", M.evtSanitiseFeed("As an AI language model I cannot do that.", names) === null);
+  ok("...nor JSON", M.evtSanitiseFeed('{"feed":"x"}', names) === null);
+  ok("...nor a fragment", M.evtSanitiseFeed("Ok.", names) === null);
+  ok("...nor a paragraph", M.evtSanitiseFeed("x".repeat(M.EVT_FEED_MAX + 1), names) === null);
+}
+{
+  /* 5 · A LIFE IS NEVER SHOWN THE SAME REALISATION TWICE */
+  M.evtCacheReset();
+  const { s, p } = friendProp();
+  const real = { text: SCENE, options: [
+    { label: "Call, finally", fx: { relF: { $friend: 6 } } }, { label: "Leave it", fx: { stats: { happiness: -3 } } }] };
+  M.evtRememberRealisation(p, real);
+  ok("an unseen realisation is offered", !!M.evtCachedFor(p, s));
+  M.evtRecord(s, { id: p.id, src: "full", h: M.evtHash(SCENE) });
+  ok("...and once seen, is not offered to this life again", M.evtCachedFor(p, s) === null);
+  ok("...but still is to a different life", (() => {
+    const other = friendProp(37, "f9", "Ros");
+    return !!M.evtCachedFor(other.p, other.s);
+  })());
+  ok("calling without a life keeps the P3 behaviour", !!M.evtCachedFor(p));
+
+  /* and it reaches the save through evtMaybeFire, marked as realised */
+  M.evtCacheReset();
+  M.evtRememberRealisation(p, real);
+  let fired = null, firedOn = null;
+  for (let d = 0; d < 400 && !fired; d++) {
+    const c = only(at(34), "friendDrift");
+    c.friends = { f2: { name: "Kim", role: "Friend", rel: 41, g: "F" } };
+    c.ageDays += d;
+    const e = M.evtMaybeFire(c);
+    if (e) { fired = e; firedOn = c; }
+  }
+  ok("a realised event fires", !!fired && fired.text === SCENE);
+  ok("...and is recorded in that life's save", firedOn && firedOn.evt.hist.some((e) => e.src === "full" && e.h === M.evtHash(SCENE)));
+  ok("...marked as realised, so it is not re-narrated over its own options", fired && fired.realised === "full");
+  ok("evtEnhance leaves a realised popup alone", (() => {
+    let called = false;
+    M.llmSetFixture(async () => { called = true; return "x".repeat(80); });
+    M.evtEnhance(firedOn, fired, () => {});
+    M.llmSetFixture(null);
+    return called === false;
+  })());
+  M.evtCacheReset();
+}
+{
+  /* 6 · LANDING A REPLY — the React side, as the pure function it now is */
+  const base = (o) => Object.assign({ id: "evt:friendDrift:12400", generated: 1, text: "the written text",
+    options: [{ label: "a", fx: {} }] }, o || {});
+  const life = () => { const c = at(34); c.pending = base(); return c; };
+  const reply = "The model's version of the scene, long enough to be a scene at all, more or less.";
+
+  const prev = life();
+  const snap = JSON.stringify(prev);
+  const next = M.evtWithAiText(prev, prev.pending.id, prev.pending.text, reply);
+  ok("a reply lands on the popup that asked for it", next.pending.aiText === reply);
+  ok("...without mutating the previous state", JSON.stringify(prev) === snap);
+  ok("...and the life records that it has seen it", next.evt.hist.some((e) => e.src === "prose" && e.h === M.evtHash(reply)));
+  ok("...under the popup's own id, which encodes the kind and the day", next.evt.hist.some((e) => e.id === prev.pending.id));
+  ok("...and nothing redundant", next.evt.hist.every((e) => Object.keys(e).sort().join() === "h,id,src"), next.evt.hist);
+  ok("...without touching the options", JSON.stringify(next.pending.options) === JSON.stringify(prev.pending.options));
+
+  ok("a reply for a different popup is refused", M.evtWithAiText(life(), "evt:other:1", "the written text", reply).pending.aiText === undefined);
+  /* hand-written popups often have NO id, so id alone cannot be the match */
+  ok("...including an id-less popup that has moved on", (() => {
+    const c = at(30); c.pending = { title: "Next thing", text: "a different event entirely", options: [] };
+    return M.evtWithAiText(c, undefined, "the event that asked", reply).pending.aiText === undefined;
+  })());
+  ok("a second reply never overwrites words already read", (() => {
+    const once = M.evtWithAiText(life(), base().id, base().text, reply);
+    const twice = M.evtWithAiText(once, base().id, base().text, "A different version that arrived late, also long enough.");
+    return twice.pending.aiText === reply && twice === once;
+  })());
+  ok("a hand-written popup's narration is landed but not recorded", (() => {
+    const c = at(30); c.pending = { title: "t", text: "hand written", options: [] };
+    const n = M.evtWithAiText(c, undefined, "hand written", reply);
+    return n.pending.aiText === reply && n.evt.hist.length === 0;
+  })());
+  ok("an empty reply changes nothing", (() => { const c = life(); return M.evtWithAiText(c, c.pending.id, c.pending.text, "") === c; })());
+
+  /* the reload: what was shown is in the save, and is not re-asked */
+  const saved = JSON.parse(JSON.stringify(next));
+  ok("model text survives a save round-trip", saved.pending.aiText === reply);
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const clean = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  /* the guard sits in the narration effect, ahead of both narration calls */
+  ok("a restored popup that already shows model text is not re-narrated", (() => {
+    const g = clean.indexOf("if (state.pending.aiText) return;");
+    return g > -1 && g < clean.indexOf("evtEnhance(state, state.pending, land)") && g < clean.indexOf("enhancePopupNarration(state, state.pending, land)");
+  })());
+  ok("model text is saved the moment it lands",
+    /if \(state\.pending && state\.pending\.aiText\) saveGame\(state\);/.test(clean));
 }
 
 /* 7 · END TO END, AGAINST A FIXTURE. No socket is opened at any point: the
@@ -873,7 +1131,192 @@ async function p2EndToEnd() {
   ok("with no model configured, the realiser does nothing", fired === false);
 }
 
-p2EndToEnd().then(() => {
+/* ══════════════════════════════════════════════════════════════════════════
+   THE CONNECTION TEST
+
+   Every step mirrors a behaviour MEASURED in Chromium 153, with the page
+   served as https://logostona.github.io and a real server on loopback:
+   mixed content blocks any other machine; a Local Network Access permission
+   gates loopback, and without it nothing leaves the browser; stock Ollama
+   refuses the origin (envconfig/config.go, AllowedOrigins); and no
+   private-network response header is required. Here each is driven through
+   the fetch override — no socket, ever.
+   ═══════════════════════════════════════════════════════════════════════ */
+async function diagAsync() {
+  sec("the connection test");
+  const ORIGIN = "https://logostona.github.io";
+  const life = (mut) => {
+    const c = at(30);
+    c.ai = Object.assign(M.aiInit(), { enabled: true, provider: "openai" });
+    if (mut) mut(c);
+    return c;
+  };
+  const env = (o) => Object.assign({ origin: ORIGIN, https: true, permission: async () => "granted" }, o || {});
+  const json = (o, status) => ({ ok: (status || 200) < 400, status: status || 200, json: async () => o });
+  /* a fake network: each request is answered by `server(url, init)`; a thrown
+     error is what the browser hands script for refusals AND for silence */
+  const run = async (s, e, server) => {
+    const seen = [];
+    M.llmSetFetchForTest(async (url, init) => { seen.push([url, (init && init.mode) || "cors", (init && init.method) || "GET"]); return server(url, init || {}); });
+    try { return Object.assign(await M.llmDiagnose(s, e), { seen }); }
+    finally { M.llmSetFetchForTest(null); }
+  };
+  const healthy = (models) => async (url, init) => {
+    if (init.mode === "no-cors") return { ok: false, status: 0, type: "opaque" };
+    if (/\/v1\/models$/.test(url)) return json({ data: (models || ["llama3.2:latest"]).map((id) => ({ id })) });
+    return json({ choices: [{ message: { content: "ready" } }] });
+  };
+  const refused = () => { throw new TypeError("Failed to fetch"); };
+
+  /* the working case, and what it checked on the way */
+  let r = await run(life(), env(), healthy());
+  ok("a healthy server reports connected", r.ok && r.verdict === "ok", r.verdict + " — " + r.fix);
+  ok("...after probing reachability without CORS", r.seen.some(([u, mode]) => /\/v1\/models$/.test(u) && mode === "no-cors"));
+  ok("...then with it", r.seen.some(([u, mode]) => /\/v1\/models$/.test(u) && mode === "cors"));
+  ok("...then a real generation, the request play actually makes", r.seen.some(([u, , m]) => /chat\/completions$/.test(u) && m === "POST"));
+  ok("...and timed it", typeof r.ms === "number");
+  ok("every step it took is reported", r.steps.length >= 5 && r.steps.every((x) => x.ok), r.steps);
+
+  /* 1 · mixed content: another machine cannot be reached from an HTTPS page */
+  r = await run(life((c) => { c.ai.endpoint = "http://192.168.1.20:11434/v1/chat/completions"; }), env(), healthy());
+  ok("a model on another machine is caught before any request", r.verdict === "mixed-content" && r.seen.length === 0, r.verdict);
+  ok("...and says a phone cannot use a desktop's model", /phone/.test(r.fix));
+  r = await run(life((c) => { c.ai.endpoint = "http://192.168.1.20:11434/v1/chat/completions"; }), env({ https: false }), healthy());
+  ok("...but only from an HTTPS page", r.verdict !== "mixed-content", r.verdict);
+  r = await run(life((c) => { c.ai.endpoint = "http://127.0.0.1:11434/v1/chat/completions"; }), env(), healthy());
+  ok("127.0.0.1 is loopback too", r.verdict === "ok", r.verdict);
+
+  /* 2 · the permission */
+  r = await run(life(), env({ permission: async () => "denied" }), healthy());
+  ok("a blocked permission is named, not guessed at", r.verdict === "denied" && r.seen.length === 0, r.verdict);
+  ok("...with where to undo it", /site settings/i.test(r.fix) && /Local network access/.test(r.fix));
+  r = await run(life(), env({ permission: async () => "prompt" }), refused);
+  ok("an unanswered prompt is offered as one possibility", r.verdict === "unreachable-or-prompt", r.verdict);
+  ok("...alongside the server simply not running", /not running/.test(r.fix) && /allow/.test(r.fix));
+  r = await run(life(), env({ permission: async () => { throw new Error("unknown permission"); } }), healthy());
+  ok("a browser without the permission API is not penalised", r.verdict === "ok", r.verdict);
+
+  /* 3 · nothing listening */
+  r = await run(life(), env(), refused);
+  ok("silence is reported as silence", r.verdict === "unreachable", r.verdict);
+  ok("...with how to start it", /ollama serve/.test(r.fix));
+
+  /* 4 · stock Ollama: reachable, but it refuses this origin */
+  r = await run(life(), env(), async (url, init) => { if (init.mode === "no-cors") return { ok: false, status: 0 }; throw new TypeError("Failed to fetch"); });
+  ok("a refused origin is told apart from silence", r.verdict === "cors", r.verdict);
+  ok("...and the fix names this site's exact origin", r.fix.indexOf("OLLAMA_ORIGINS=" + ORIGIN) > -1, r.fix);
+  r = await run(life(), env(), async (url, init) => (init.mode === "no-cors" ? { ok: false, status: 0 } : { ok: false, status: 403, json: async () => ({}) }));
+  ok("an explicit 403 reads the same way", r.verdict === "cors", r.verdict);
+
+  /* 5 · the configured model is not installed */
+  r = await run(life(), env(), healthy(["qwen2.5:3b", "mistral:latest"]));
+  ok("a missing model is caught before generating", r.verdict === "no-model" && !r.seen.some(([u]) => /chat\/completions/.test(u)), r.verdict);
+  ok("...listing what IS installed", /qwen2\.5:3b/.test(r.fix) && Array.isArray(r.models));
+  ok("a bare name matches only its :latest tag, as Ollama resolves it",
+    M.llmModelMatches("llama3.2", "llama3.2:latest") && !M.llmModelMatches("llama3.2", "llama3.2:1b") && M.llmModelMatches("llama3.2:1b", "llama3.2:1b"));
+  r = await run(life(), env(), healthy(["llama3.2:1b"]));
+  ok("...so a different tag is not a false tick", r.verdict === "no-model", r.verdict);
+
+  /* 6 · the generation itself */
+  r = await run(life(), env(), async (url, init) => {
+    if (init.mode === "no-cors") return { ok: false, status: 0 };
+    if (/\/v1\/models$/.test(url)) return json({ data: [{ id: "llama3.2:latest" }] });
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  ok("a failed generation is reported with its status", r.verdict === "gen-failed" && /404/.test(r.fix), r.fix);
+  r = await run(life(), env(), async (url, init) => {
+    if (init.mode === "no-cors") return { ok: false, status: 0 };
+    if (/\/v1\/models$/.test(url)) return json({ data: [{ id: "llama3.2:latest" }] });
+    throw new TypeError("Failed to fetch");
+  });
+  ok("models listing but generation refused points at the origin again", r.verdict === "cors", r.verdict);
+
+  /* the preconditions */
+  ok("off is off", (await run(life((c) => { c.ai.enabled = false; }), env(), healthy())).verdict === "off");
+  ok("no provider is no provider", (await run(life((c) => { c.ai.provider = "off"; }), env(), healthy())).verdict === "no-provider");
+  ok("a nonsense endpoint is caught", (await run(life((c) => { c.ai.endpoint = "not a url"; }), env(), healthy())).verdict === "bad-endpoint");
+
+  /* the popup a player reads */
+  const okPop = M.llmDiagPopup((await run(life(), env(), healthy())));
+  ok("success reads as connected", okPop.title === "Connected" && okPop.emoji === "✅");
+  ok("...with the checklist in it", /✓ Local network access/.test(okPop.text) && /✓ It answered in/.test(okPop.text), okPop.text);
+  ok("the result is never narrated over", okPop.noNarrate === 1);
+  const missing = M.llmDiagPopup(await run(life(), env(), healthy(["qwen2.5:3b", "mistral:latest"])));
+  const use = missing.options.find((o) => /Use qwen2\.5:3b/.test(o.label));
+  ok("a missing model offers a one-tap fix", !!use, missing.options.map((o) => o.label));
+  ok("...that sets the model and tests again", (() => {
+    const c = life(); M.applyFx(c, use.fx);
+    return c.ai.model === "qwen2.5:3b" && c.pending && c.pending.diag === "run";
+  })());
+  ok("every result can be re-run and closed", ["Test again", "Close"].every((l) => okPop.options.some((o) => o.label === l)));
+  ok("a crashed test still renders", (() => { const p = M.llmDiagPopup(null); return p.title === "Not connected yet" && p.options.length >= 2; })());
+
+  /* the settings menu offers it only when there is something to test */
+  const labels = (c) => M.aiSettingsMenu(c).options.filter((o) => !o.cond || o.cond(c)).map((o) => o.label);
+  ok("offered once a provider is chosen", labels(life()).some((l) => /Test the connection/.test(l)));
+  ok("not before", !labels(life((c) => { c.ai.provider = "off"; })).some((l) => /Test the connection/.test(l)));
+  ok("the settings screen is not narrated either", M.aiSettingsMenu(life()).noNarrate === 1);
+  const SRC = fs.readFileSync(H.SRC, "utf8");
+  const clean = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok("the game loop never narrates a noNarrate popup", /if \(state\.pending\.noNarrate\) return;/.test(clean));
+  ok("...and only lands a result on the test popup that asked", /prev\.pending\.id === "aiDiag" && prev\.pending\.diag === "run"/.test(clean));
+}
+
+/* P5, the async half — still against a fixture, still no socket */
+async function p5Async() {
+  const wait = () => new Promise((r) => setTimeout(r, 20));
+  const reply = (opts) => JSON.stringify({ text: SCENE, options: opts });
+
+  /* a full realisation's feed lines are sanitised on the way into the cache */
+  M.evtCacheReset();
+  let { s, p } = friendProp();
+  s.family = Object.assign({}, s.family, { mom: Object.assign({}, s.family.mom, { name: "Marguerite" }) });
+  M.llmSetFixture(async () => reply([
+    { label: "Call", fx: { "relF.$friend": 6, feed: "You called. It went to voicemail and you left a real message." } },
+    { label: "Leave it", fx: { "stats.happiness": -3, feed: "Marguerite would have called. You did not." } }]));
+  M.evtRealiseAhead(s, p);
+  await wait();
+  M.llmSetFixture(null);
+  const ev = M.evtCachedFor(p, s);
+  ok("a literal-form reply from a model is realised end to end", !!ev);
+  ok("...keeping a good aftermath line", ev && /voicemail/.test(ev.options[0].fx.feed), ev && ev.options[0].fx.feed);
+  ok("...replacing one that named a stranger with a plain line",
+    ev && ev.options[1].fx.feed.indexOf("Marguerite") === -1 && ev.options[1].fx.feed.indexOf("Leave it") > -1,
+    ev && ev.options[1].fx.feed);
+
+  /* a shape this life has already seen is re-baked, not kept forever */
+  M.evtRecord(s, { id: p.id, src: "full", h: M.evtHash(SCENE) });
+  const FRESH = "A different scene entirely: Kim's birthday reminder, which you had forgotten you set.";
+  M.llmSetFixture(async () => JSON.stringify({ text: FRESH, options: [
+    { label: "Send something", fx: { "relF.$friend": 4 } }, { label: "Let it pass", fx: { "stats.happiness": -2 } }] }));
+  M.evtRealiseAhead(s, p);
+  await wait();
+  M.llmSetFixture(null);
+  const again = M.evtCachedFor(p, s);
+  ok("a seen shape is re-baked for next time", again && again.text === FRESH, again && again.text);
+
+  /* prose: reused across lives, never twice within one */
+  M.evtCacheReset();
+  ({ s, p } = friendProp());
+  M.evtRemember(p);
+  const popup = { id: p.id, generated: 1, text: p.fallback.text };
+  const PROSE1 = "Kim's name comes up in passing, and you notice the length of the silence before you say anything.";
+  const PROSE2 = "A photo of Kim from years ago turns up in a drawer, and you sit on the floor with it for a while.";
+  const land = (fixture) => new Promise((resolve) => {
+    M.llmSetFixture(async () => fixture);
+    let got = null;
+    M.evtEnhance(s, popup, (t) => { got = t; });
+    setTimeout(() => { M.llmSetFixture(null); resolve(got); }, 20);
+  });
+  const first = await land(PROSE1);
+  ok("a first prose request lands", first === PROSE1, first);
+  M.evtRecord(s, { id: p.id, src: "prose", h: M.evtHash(first) });
+  const second = await land(PROSE2);
+  ok("...and once this life has seen it, it is asked for afresh", second === PROSE2, second);
+  M.evtCacheReset();
+}
+
+p2EndToEnd().then(p5Async).then(diagAsync).then(() => {
   console.log("\n" + (fail === 0 ? "ALL PASS" : "FAILURES") + ": " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
 });

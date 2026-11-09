@@ -105,7 +105,13 @@ the whole file down in P6. Always run the harness import as part of a build chec
 
 Before deploying, bump `CACHE_NAME` in `sw.js`. It is cache-first and its `activate` handler
 deletes only caches whose name *differs*, so shipping without renaming leaves every installed
-PWA on the old bundle for an extra launch. Currently `a-life-cache-v11`.
+PWA on the old bundle for an extra launch. Currently `a-life-cache-v17`.
+
+**The service worker caches this app's own files and nothing else.** Its fetch handler sees
+cross-origin requests too, and it used to cache any GET that answered 200 — measured: it cached a
+local model server's `/v1/models` and kept serving it *after the server was shut down*. A bump
+that follows a fix like that is load-bearing, not routine: `activate` deleting the old cache is
+the only thing that clears the stale entry off devices that already have it.
 
 ### Subtab bars, Career and keybindings
 
@@ -440,6 +446,40 @@ That works only because a realisation is **slot-addressed** (`relF.$friend`, nev
 which is what makes it life-agnostic enough to cache. The validator resolves `$slot` against the
 proposal's own cast on every use, so a realisation cached from one life can never carry that
 life's relationship keys into another.
+
+**Test the shape the PROMPT asks for, not the shape you assumed.** P3's prompt listed effects
+as dotted keys (`"stats.happiness"`) and the validator read only nested objects, so a model doing
+exactly what it was told had **every** realisation rejected — silently, as a fallback — while every
+P3 test passed, because every fixture had been hand-written nested. The prompt's worked example is
+now asserted to validate as written. If a prompt shows a shape, a test must feed that shape back.
+
+**Every choice leaves a line in the life story.** Fallback options carry `feed`; a realised one
+only did if the model volunteered it, so choosing it wrote nothing and the event vanished from the
+feed. `evtValidate` now writes a plain line from the title and the label when the model's is
+missing or fails `evtSanitiseFeed` — never an invented outcome.
+
+**What a player has been shown is saved, not regenerated** (EVT P5). `aiText` is saved the moment
+it lands and never re-requested; `evtWithAiText` lands a reply only on the popup whose id AND base
+text asked for it (the hand-written path used to put a slow reply on whatever popup was open);
+`s.evt.hist` holds hashes so one life never sees the same realisation twice.
+
+### Testing what a browser allows
+
+`logostona.github.io` is unreachable from here, but the browser's *rules* can still be measured —
+Chromium is installed. Three ways to get a wrong answer, all hit once:
+
+- **Never use Playwright request interception (`route`) for this.** It suppresses CORS preflights:
+  a `POST` with `Content-Type: application/json` reached the server with no `OPTIONS` first, and
+  every private-network result came out meaningless. Serve the real files over HTTPS instead and
+  point the hostname at this container: `--host-resolver-rules=MAP logostona.github.io 192.0.2.2:8443`
+  plus `--ip-address-space-overrides=192.0.2.2:8443=public`, with `ignoreHTTPSErrors`.
+- **Strip the proxy from that browser's environment.** Chromium reads the `*_proxy` variables and
+  `--no-proxy-server` did not override them; launch with `env` filtered of every `/proxy/i` key.
+- **A service worker will not register on an origin with a certificate error**, so SW behaviour is
+  tested on `http://localhost` instead — a secure context with no certificate at all.
+
+And put the cleanup of spawned servers in `finally`: a crashed run left two orphans holding the
+port, and the next run's results came from the wrong server while its own logged nothing.
 
 **A prompt is content, and goes through the prose gate.** Reading the six generated prompts
 caught two things every assertion was green on: `smallKindness` — every band pinned at or above

@@ -863,6 +863,10 @@ function newCharacter(form) {
        no test can reach the network. Its migrate() backfill is aiMigrate(),
        landing in the same patch as this initializer — Gotcha #4. */
     ai: aiInit(),
+    /* EVT P5 — the record of model-written content this life has been shown.
+       Pure literal, no draw: an extra Math.random() here reshuffles every
+       seeded fixture. Its migrate() backfill is evtStateMigrate, same patch. */
+    evt: evtStateInit(),
     hre: hreInit(hreSeedFrom(form.first + ":" + form.last + ":" + form.country + ":" + form.birthYear + ":" + Math.random()),
                  form.country, form.city, form.cls, +form.birthYear),
     /* EDU S09. Its migrate() backfill lands in the same patch as this
@@ -906,6 +910,7 @@ function newCharacter(form) {
 
 function migrate(s) {
   aiMigrate(s);
+  evtStateMigrate(s);
   hreMigrate(s);
   /* EDU S09 — runs after hreMigrate because its seed derivation falls back to
      s.hre.seed, and backfills the canonical stage from the still-authoritative
@@ -13737,6 +13742,49 @@ function evtClamp(v, band) {
   if (typeof v !== "number" || !isFinite(v)) return null;
   return Math.max(band[0], Math.min(band[1], v));
 }
+/* DOTTED OR NESTED — accept both.
+
+   The prompt names effects as dotted paths ("stats.happiness") because that
+   is how bands are authored, and a model that follows the prompt literally
+   writes them that way. P3 shipped reading ONLY the nested form, so a model
+   doing exactly what it was told had every realisation rejected — silently,
+   as a fallback — while every test stayed green, because every fixture had
+   been written by hand in the nested form. The tests checked the shape I
+   thought to check.
+
+   Expansion happens BEFORE the allowlist, so the allowlist is still the only
+   gate. Two things here are about hostile input rather than convenience:
+   only groups the allowlist could ever accept are expanded, and the three
+   property names that reach an object's prototype are refused outright — a
+   model writing "__proto__.x" must not get a bracket assignment through to
+   Object.prototype. Null-prototype objects mean `in` cannot see inherited
+   keys either. */
+const EVT_FX_GROUPS = ["stats", "rel", "relF", "relR", "subj", "emergent", "flags"];
+const EVT_FX_BAD_KEYS = ["__proto__", "prototype", "constructor"];
+function evtExpandFx(src) {
+  const out = Object.create(null);
+  const group = (g) => {
+    if (!out[g] || typeof out[g] !== "object") out[g] = Object.create(null);
+    return out[g];
+  };
+  for (const k of Object.keys(src)) {
+    if (EVT_FX_BAD_KEYS.indexOf(k) !== -1) continue;
+    const v = src[k];
+    const i = k.indexOf(".");
+    if (i > 0) {
+      const g = k.slice(0, i), leaf = k.slice(i + 1);
+      if (EVT_FX_GROUPS.indexOf(g) === -1 || !leaf || EVT_FX_BAD_KEYS.indexOf(leaf) !== -1) continue;
+      group(g)[leaf] = v;
+    } else if (EVT_FX_GROUPS.indexOf(k) !== -1 && v && typeof v === "object" && !Array.isArray(v)) {
+      const dst = group(k);
+      for (const leaf of Object.keys(v)) if (EVT_FX_BAD_KEYS.indexOf(leaf) === -1) dst[leaf] = v[leaf];
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 function evtValidate(proposal, realisation) {
   if (!proposal || !realisation || typeof realisation !== "object") return null;
 
@@ -13764,7 +13812,7 @@ function evtValidate(proposal, realisation) {
     if (seenLabel[label]) return null;                       // duplicate choices read as a bug
     seenLabel[label] = 1;
 
-    const src = raw.fx && typeof raw.fx === "object" ? raw.fx : {};
+    const src = evtExpandFx(raw.fx && typeof raw.fx === "object" ? raw.fx : {});
     const fx = {};
     /* 2 · allowlist. Copying only known keys is what drops `run` — it is never
        inspected, never logged, never reasoned about. */
@@ -13825,15 +13873,38 @@ function evtValidate(proposal, realisation) {
     options.push({ label: label, fx: fx });
   }
 
-  /* 5 · an event whose every option does nothing is not an event */
-  if (!options.some((o) => Object.keys(o.fx).length > 0)) return null;
+  /* 5 · an event whose every option does nothing is not an event. A feed line
+     is narration, not an effect, so it does not count towards "something". */
+  if (!options.some((o) => Object.keys(o.fx).some((k) => k !== "feed"))) return null;
 
-  /* 6 · assemble. `emoji`/`title` come from the proposal's own fallback rather
+  const emoji = proposal.fallback.emoji || "✨";
+  const title = proposal.fallback.title || "Something happens";
+
+  /* 6 · P5 — EVERY CHOICE LEAVES A LINE IN THE LIFE STORY.
+     Every hand-written fallback option carries a feed line; a realised one
+     carried one only if the model happened to volunteer it, and it was never
+     asked. So choosing a model-realised option added nothing to the feed and
+     the event vanished from the life's history entirely. The prompt now asks
+     for one; when it is missing or failed sanitising, this writes a plain one
+     from what is certain — the scene's title and the choice made — rather
+     than inventing an outcome the effects do not describe. */
+  for (const o of options) {
+    if (o.fx.feed) {
+      /* every line the game writes opens with an emoji; a model's line that
+         does not would read as the odd one out in a column of them */
+      if (/^[\p{L}\p{N}"'“‘(]/u.test(o.fx.feed)) o.fx.feed = `${emoji} ${o.fx.feed}`;
+      continue;
+    }
+    const end = /[.!?…]$/.test(o.label) ? "" : ".";
+    o.fx.feed = `${emoji} ${title} — ${o.label}${end}`;
+  }
+
+  /* 7 · assemble. `emoji`/`title` come from the proposal's own fallback rather
      than from the realisation, so generated content cannot restyle the game. */
   return {
     id: proposal.id,
-    emoji: proposal.fallback.emoji || "✨",
-    title: proposal.fallback.title || "Something happens",
+    emoji: emoji,
+    title: title,
     text: text,
     options: options,
     generated: 1,
@@ -13883,8 +13954,14 @@ function evtMaybeFire(s) {
      event: effects can only ever arrive before the player sees the options,
      never underneath them. A miss is the ordinary case and plays the
      hand-written fallback. */
-  const realised = evtCachedFor(proposal);
-  if (realised) return realised;
+  const realised = evtCachedFor(proposal, s);
+  if (realised) {
+    /* P5: recorded the moment it is chosen to be shown — on the draft
+       advance() returns, so it is in the very save that carries the popup */
+    evtRecord(s, { id: proposal.id, src: "full", h: evtHash(realised.text) });
+    realised.realised = "full";        /* so evtEnhance knows not to re-narrate it */
+    return realised;
+  }
   const ev = proposal.fallback;
   return { id: proposal.id, emoji: ev.emoji, title: ev.title, text: ev.text, options: ev.options, generated: 1 };
 }
@@ -18996,8 +19073,21 @@ function llmUnavailableReason(s) {
 }
 function llmAvailable(s) { return _llmFixture ? true : llmUnavailableReason(s) === null; }
 
-/* THE ONLY fetch IN THE PROGRAM. Always resolves; null is an ordinary answer
-   and means the caller keeps whatever hand-written text it already had. */
+/* THE ONLY fetch IN THE PROGRAM, and exactly two things may call it:
+   llmComplete, and the player-initiated connection test. test-eventgen
+   asserts both halves of that against the source, because "the model is
+   never on the hot path" is worth nothing if a later helper opens its own
+   socket. The override is the suite's way in — every network-facing step of
+   the diagnostic is tested against it, and none against a real socket. */
+let _llmFetchOverride = null;
+function llmSetFetchForTest(fn) { _llmFetchOverride = typeof fn === "function" ? fn : null; }
+function llmFetch(url, init) {
+  if (_llmFetchOverride) return _llmFetchOverride(url, init);
+  return fetch(url, init);
+}
+
+/* Always resolves; null is an ordinary answer and means the caller keeps
+   whatever hand-written text it already had. */
 async function llmComplete(req) {
   const r = req || {};
   const maxTokens = r.maxTokens || AI_NARRATION_CONFIG.maxTokens;
@@ -19017,7 +19107,7 @@ async function llmComplete(req) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AI_NARRATION_CONFIG.timeoutMs);
     const init = Object.assign({}, plan.init, { signal: r.signal || controller.signal });
-    const res = await fetch(plan.url, init);
+    const res = await llmFetch(plan.url, init);
     clearTimeout(timer);
     if (!res || !res.ok) return null;
     const data = await res.json();
@@ -19026,6 +19116,174 @@ async function llmComplete(req) {
   } catch (e) {
     return null;                 /* offline, blocked, aborted, malformed */
   }
+}
+
+/* ── THE CONNECTION TEST ─────────────────────────────────────────────────
+   Every failure of the real path returns null and keeps the hand-written
+   text, which is right for play and useless for setting the thing up: the
+   player sees nothing happen and cannot tell why. This walks the path one
+   step at a time and stops at the first that fails, saying what to do.
+
+   Each step is a finding, measured in Chromium 153 against a page served as
+   https://logostona.github.io and a server on this machine's loopback:
+
+     1. MIXED CONTENT is not the obstacle for localhost — Chromium treats
+        http://localhost as trustworthy. It IS for any other machine: an HTTPS
+        page cannot reach http://192.168.x.x at all, so a phone cannot use a
+        desktop's model from the hosted site.
+     2. LOCAL NETWORK ACCESS is a per-site PERMISSION. Without it the request
+        never leaves the browser — even a no-cors probe fails and the server
+        logs nothing. navigator.permissions reports it, which is the only way
+        to tell "you blocked this" from "nothing is listening": both reach
+        script as the same TypeError.
+     3. CORS. Stock Ollama allows only localhost / 127.0.0.1 / 0.0.0.0 origins
+        and a few app schemes (envconfig/config.go, AllowedOrigins) — so it
+        refuses this site until OLLAMA_ORIGINS includes it. A no-cors probe
+        succeeding while a cors one fails is what isolates this step.
+     4. No private-network RESPONSE header is needed: Ollama never sends
+        Access-Control-Allow-Private-Network, and with the permission granted
+        it does not matter.
+
+   `env` exists for the suite; in the browser it is read from the page. */
+const LLM_LOOPBACK = ["localhost", "127.0.0.1", "[::1]", "::1"];
+const LLM_DIAG_TIMEOUT_MS = 6000;
+function llmModelsUrl(endpoint) {
+  return String(endpoint || "").replace(/\/chat\/completions\/?$/, "/models");
+}
+/* Ollama's own rule: a bare name means ":latest" and nothing else. Matching
+   on the base name alone would tick "llama3.2" as installed when only
+   "llama3.2:1b" is — and then the generation 404s after a false ✓. */
+function llmModelMatches(want, have) {
+  const w = String(want || "").trim();
+  if (!w) return false;
+  return have === w || (w.indexOf(":") === -1 && have === w + ":latest");
+}
+async function llmDiagnose(s, env) {
+  const e = env || {};
+  const loc = typeof location !== "undefined" ? location : null;
+  const origin = e.origin !== undefined ? e.origin : (loc ? loc.origin : "");
+  const https = e.https !== undefined ? e.https : !!(loc && loc.protocol === "https:");
+  const queryPerm = e.permission || (async () => {
+    try { return (await navigator.permissions.query({ name: "local-network-access" })).state; }
+    catch (x) { return null; }                       /* not Chromium, or not yet */
+  });
+  const steps = [];
+  const step = (ok, label) => steps.push({ ok: ok, label: label });
+  const out = (verdict, fix, extra) => Object.assign({ ok: verdict === "ok", verdict: verdict, fix: fix, steps: steps }, extra || {});
+  const timed = (url, init) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), LLM_DIAG_TIMEOUT_MS);
+    return llmFetch(url, Object.assign({}, init || {}, { signal: c.signal })).finally(() => clearTimeout(t));
+  };
+
+  if (!s || !s.ai || !s.ai.enabled) return out("off", "Turn AI narration on first.");
+  const cfg = llmConfigFor(s);
+  if (cfg.prov.id === "off") return out("no-provider", "Choose a provider first.");
+  let ep = null;
+  try { ep = new URL(cfg.endpoint); } catch (x) { return out("bad-endpoint", `“${cfg.endpoint}” is not a web address.`); }
+  step(true, `${cfg.prov.label} at ${cfg.endpoint}`);
+
+  /* 1 · mixed content */
+  const loopback = LLM_LOOPBACK.indexOf(ep.hostname) !== -1;
+  if (https && ep.protocol === "http:" && !loopback) {
+    step(false, "Plain-http server on another machine");
+    return out("mixed-content", `This page is served over HTTPS, so the browser will not let it reach a plain-http server on another machine (${ep.host}). Run the model on this same computer and use localhost — a phone cannot use a desktop's model from the hosted site.`);
+  }
+
+  if (cfg.prov.needsKey && !cfg.key) return out("no-key", "This provider needs an API key, which is kept in memory only and is not set.");
+
+  /* 2 · the permission — Chromium only; elsewhere the query just fails */
+  /* guarded at the CALL, not inside the default — a permission query that
+     throws, from whichever implementation, means "unknown", never a crash */
+  const perm = loopback && https ? await Promise.resolve().then(queryPerm).catch(() => null) : null;
+  if (perm === "denied") {
+    step(false, "Local network access: blocked for this site");
+    return out("denied", "This site has been blocked from reaching apps on this computer. Open the site settings (the icon left of the address bar), set Local network access to Allow, then test again.");
+  }
+  if (perm) step(true, `Local network access: ${perm === "granted" ? "allowed" : "not decided yet"}`);
+
+  /* 3 · is anything there at all? (no-cors: needs no CORS from the server) */
+  const modelsUrl = llmModelsUrl(cfg.endpoint);
+  try { await timed(modelsUrl, { mode: "no-cors" }); step(true, "Something is listening"); }
+  catch (x) {
+    step(false, "Nothing answered");
+    return out(perm === "prompt" ? "unreachable-or-prompt" : "unreachable", perm === "prompt"
+      ? `Nothing answered at ${ep.host}. Either the server is not running, or the browser is waiting for you to allow local network access — look for a prompt by the address bar, allow it, and test again.`
+      : `Nothing answered at ${ep.host}. Is it running? For Ollama: open the Ollama app, or run \`ollama serve\`.`);
+  }
+
+  /* 4 · CORS — and the model list, if the server offers one */
+  let models = null;
+  try {
+    const r = await timed(modelsUrl);
+    if (r.ok) {
+      try { const j = await r.json(); models = Array.isArray(j && j.data) ? j.data.map((m) => m && m.id).filter(Boolean) : null; }
+      catch (x) { models = null; }
+      step(true, "The server accepts this page");
+    } else if (r.status === 403) {
+      step(false, "The server refused this page (403)");
+      return out("cors", `The server is running but refuses this page's origin. For Ollama, quit it and start it again with OLLAMA_ORIGINS=${origin || "<this site's address>"} set.`, { origin: origin });
+    } else step(true, `Model list unavailable (${r.status}); carrying on`);
+  } catch (x) {
+    step(false, "The server refused this page");
+    return out("cors", `The server is running but refuses this page's origin. For Ollama, quit it and start it again with OLLAMA_ORIGINS=${origin || "<this site's address>"} set.`, { origin: origin });
+  }
+
+  /* 5 · is the configured model actually installed? */
+  if (models && models.length && !models.some((m) => llmModelMatches(cfg.model, m))) {
+    step(false, `Model “${cfg.model}” is not installed`);
+    return out("no-model", `The server is fine, but “${cfg.model}” is not one of its models. Installed: ${models.slice(0, 6).join(", ")}${models.length > 6 ? "…" : ""}.`, { models: models });
+  }
+  if (models) step(true, `Model “${cfg.model}” is installed`);
+
+  /* 6 · the real request, preflight and all, timed */
+  let plan = null;
+  try { plan = cfg.prov.build(cfg, { prompt: "Reply with the single word: ready", maxTokens: 8 }); } catch (x) { plan = null; }
+  if (!plan || !plan.url) return out("gen-failed", "Could not build a request for this provider.");
+  const t0 = Date.now();
+  try {
+    const r = await timed(plan.url, plan.init);
+    if (!r.ok) {
+      step(false, `A test generation failed (${r.status})`);
+      return out("gen-failed", r.status === 404
+        ? `The server answered 404 to a generation — usually a model name it does not recognise (“${cfg.model}”).`
+        : `The server answered ${r.status} to a test generation.`);
+    }
+    const said = cfg.prov.extract(await r.json());
+    if (!said) { step(false, "The reply had no text in it"); return out("gen-failed", "The server answered, but not in the shape this provider expects."); }
+    const ms = Date.now() - t0;
+    step(true, `It answered in ${(ms / 1000).toFixed(1)} s`);
+    return out("ok", ms > 8000
+      ? `Working — but slowly (${(ms / 1000).toFixed(1)} s for eight words). A smaller model will keep up better.`
+      : "Working. Generated events will be rewritten as you play.", { ms: ms });
+  } catch (x) {
+    step(false, "The test generation was refused");
+    return out("cors", `Listing models worked but generating did not — the browser refused the request itself. For Ollama, make sure OLLAMA_ORIGINS=${origin || "<this site's address>"} is set.`, { origin: origin });
+  }
+}
+
+/* The result, as a popup. Pure, so the suite can read exactly what a player
+   would. A missing model gets a one-tap fix, because the settings menu has
+   no text entry and this is the failure people most commonly hit. */
+function llmDiagPopup(rep) {
+  const r = rep || { ok: false, verdict: "error", fix: "The test itself failed.", steps: [] };
+  const lines = (r.steps || []).map((x) => `${x.ok ? "✓" : "✗"} ${x.label}`).join("\n");
+  const opts = [];
+  if (r.verdict === "no-model" && Array.isArray(r.models)) {
+    for (const m of r.models.slice(0, 3)) {
+      opts.push({ label: `Use ${m}`, fx: { run: (st) => {
+        if (!st.ai || typeof st.ai !== "object") st.ai = aiInit(); else aiMigrate(st);
+        st.ai.model = m;
+        st.pending = { id: "aiDiag", diag: "run", noNarrate: 1, emoji: "🔌", title: "Testing the connection", text: "Checking again with " + m + "…", options: [CANCEL] };
+      } } });
+    }
+  }
+  opts.push({ label: "Test again", fx: { run: (st) => {
+    st.pending = { id: "aiDiag", diag: "run", noNarrate: 1, emoji: "🔌", title: "Testing the connection", text: "Checking…", options: [CANCEL] };
+  } } });
+  opts.push({ label: "Close", fx: {} });
+  return { id: "aiDiag", noNarrate: 1, emoji: r.ok ? "✅" : "🔌", title: r.ok ? "Connected" : "Not connected yet",
+    text: (lines ? lines + "\n\n" : "") + r.fix, options: opts };
 }
 
 /* ── EVT P2 · PROSE REALISATION ───────────────────────────────────────────
@@ -19121,12 +19379,31 @@ function evtSanitiseProse(raw, names) {
   if (t[0] === "{" || t[0] === "[") return null;          /* answered with JSON */
   if (EVT_REFUSALS.test(t)) return null;
   if (t.length < EVT_PROSE_MIN || t.length > EVT_PROSE_MAX) return null;
-  if (names && names.others) {
-    for (const n of names.others) {
-      if (n.length < 3) continue;
-      if (new RegExp("\\b" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) return null;
-    }
+  if (evtNamesStranger(t, names)) return null;
+  return t;
+}
+/* Does this text name somebody this save knows who is NOT in the scene? */
+function evtNamesStranger(t, names) {
+  if (!names || !names.others) return false;
+  for (const n of names.others) {
+    if (n.length < 3) continue;
+    if (new RegExp("\\b" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) return true;
   }
+  return false;
+}
+
+/* P5 · the one-sentence aftermath that goes into the life story. Shorter
+   bounds than a scene, the same refusals and the same stranger check. */
+const EVT_FEED_MIN = 12;
+const EVT_FEED_MAX = 280;
+function evtSanitiseFeed(raw, names) {
+  if (typeof raw !== "string") return null;
+  let t = raw.trim().replace(/\s+/g, " ");
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("“") && t.endsWith("”"))) t = t.slice(1, -1).trim();
+  if (!t || t[0] === "{" || t[0] === "[") return null;
+  if (EVT_REFUSALS.test(t)) return null;
+  if (t.length < EVT_FEED_MIN || t.length > EVT_FEED_MAX) return null;
+  if (evtNamesStranger(t, names)) return null;
   return t;
 }
 
@@ -19197,9 +19474,41 @@ function evtEffectsPrompt(proposal) {
       ? "Different choices should cost different things — that is the whole of the decision."
       : "Nothing here goes badly. The choices differ in what they are, not in what they cost.",
     "",
-    'Respond with ONLY this JSON, no prose, no markdown fence:',
-    '{"text":"...","options":[{"label":"...","fx":{...}}]}',
+    /* P5: the aftermath line. Without it a realised choice left nothing in
+       the life story — the validator now writes a plain one when this is
+       missing, but the model's own will usually be better. */
+    'Each choice also gets "feed": ONE sentence, second person, past tense, saying what',
+    "happened afterwards. It becomes that moment's line in the character's life story.",
+    "",
+    /* A WORKED EXAMPLE, in the same dotted form the bands are listed in.
+       The template used to be `"fx":{...}`, which left the model to guess the
+       shape — and the shape it guessed (dotted, matching the list above) was
+       the one the validator then rejected. Built from this kind's own first
+       bands with in-range values, so it can never show a key this kind does
+       not have. */
+    'Respond with ONLY this JSON, no prose, no markdown fence. Shape, with example values:',
+    JSON.stringify({ text: "...", options: [{ label: "...", fx: Object.assign(evtExampleFx(bands), { feed: "..." }) }] }),
   ].join("\n");
+}
+/* One or two of a kind's real band keys, each at a value inside its range
+   that is not zero — a zero would teach "omit this" by example.
+
+   Each value follows its band's own LEAN, halfway to whichever end is
+   further from zero. The first cut always took the positive half, which
+   showed moneyPinch — a scene about running short — an example that GAINED
+   thirty. An example anchors a model more than the prose around it does. */
+function evtExampleFx(bands) {
+  const out = {};
+  for (const k of Object.keys(bands || {}).slice(0, 2)) {
+    const [lo, hi] = bands[k];
+    const end = Math.abs(lo) > Math.abs(hi) ? lo : hi;
+    let v = Math.round(end / 2);
+    if (v === 0) v = end > 0 ? 1 : -1;
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
+    out[k] = v;
+  }
+  return out;
 }
 
 /* Models wrap JSON in fences, in apologies, in both. Pull the first balanced
@@ -19253,11 +19562,69 @@ function evtRememberRealisation(proposal, realisation) {
    shape of bug this repo has already paid for elsewhere. */
 function evtCacheReset() { _evtFullCache.clear(); _evtProseCache.clear(); _evtProposals.clear(); }
 
+/* ── EVT P5 · WHAT THIS LIFE HAS BEEN SHOWN ──────────────────────────────
+   Model output is not reproducible, so anything a player has SEEN has to be
+   part of the save rather than regenerated. Three ways it was not:
+
+     1. aiText — the model's prose on the popup that is up — lived only in
+        React state. Reload before choosing and a hand-written popup was
+        re-narrated with different words; a generated one silently reverted to
+        the fallback, because its proposal had gone with the page.
+     2. Choosing an option of a model-REALISED event added nothing to the feed.
+        Fallback options all carry a feed line; the model was never asked for
+        one and the validator never insisted. The event left no trace in the
+        life story at all.
+     3. The situation cache is deliberately coarse, so the same realisation
+        would come back every time that shape recurred in one life.
+
+   s.evt holds the record that fixes the third. It stores HASHES, not prose:
+   the feed now carries the narrative and the open popup carries its own text.
+   An entry is just {id, src, h} — the id already encodes the kind and the
+   day — so a whole life's worth of generated events (one per EVT_GLOBAL_CD
+   days at most) fits inside the budget, and trimming is a safety net rather
+   than routine. A lived save at forty measures ~87 KB; this is a few. */
+const EVT_STATE_V = 1;
+const EVT_HIST_BYTES = 8000;          /* s.hlt is ~2 KB; this must stay in that league */
+function evtStateInit() { return { v: EVT_STATE_V, hist: [] }; }
+function evtStateMigrate(s) {
+  if (!s.evt || typeof s.evt !== "object" || Array.isArray(s.evt)) { s.evt = evtStateInit(); return; }
+  if (!Array.isArray(s.evt.hist)) s.evt.hist = [];
+  s.evt.hist = s.evt.hist.filter((e) => e && typeof e === "object" && typeof e.h === "number");
+  s.evt.v = EVT_STATE_V;
+  evtTrimHist(s);
+}
+function evtHash(text) { return hreHash("evt:" + String(text || "")); }
+function evtSeen(s, h) {
+  const hist = s && s.evt && Array.isArray(s.evt.hist) ? s.evt.hist : null;
+  if (!hist) return false;
+  for (const e of hist) if (e.h === h) return true;
+  return false;
+}
+/* Budgeted by BYTES rather than count, because that is the thing that
+   actually has to stay bounded — a count cap is a guess about entry size. */
+function evtTrimHist(s) {
+  const h = s.evt.hist;
+  while (h.length > 1 && JSON.stringify(h).length > EVT_HIST_BYTES) h.shift();
+}
+function evtRecord(s, entry) {
+  if (!s) return;
+  if (!s.evt || !Array.isArray(s.evt.hist)) evtStateMigrate(s);
+  s.evt.hist.push(entry);
+  evtTrimHist(s);
+}
+
 /* Synchronous, and therefore safe to call from evtMaybeFire. Returns a fully
-   validated event, or null — and null is the ordinary case. */
-function evtCachedFor(proposal) {
+   validated event, or null — and null is the ordinary case.
+
+   P5: a life is never shown the same realisation twice. The situation key is
+   coarse on purpose (reuse across lives is the point), which also means a
+   friend drifting in your thirties would otherwise read word for word the
+   same the second time it happened. A repeat plays the hand-written fallback
+   instead, and evtRealiseAhead re-bakes the shape for next time. */
+function evtCachedFor(proposal, s) {
   const hit = _evtFullCache.get(evtSituationKey(proposal));
   if (!hit) return null;
+  if (s && evtSeen(s, evtHash(hit.text))) return null;
   try { return evtValidate(proposal, hit); } catch (e) { return null; }
 }
 
@@ -19267,7 +19634,11 @@ const _evtFullInFlight = new Set();
 function evtRealiseAhead(s, proposal) {
   if (!proposal || !llmAvailable(s)) return;
   const key = evtSituationKey(proposal);
-  if (_evtFullCache.has(key) || _evtFullInFlight.has(key)) return;
+  /* P5: a cached realisation this life has ALREADY seen is stale for this
+     life, so it is re-baked rather than kept — otherwise the next occurrence
+     of the shape would play the fallback forever. */
+  const cur = _evtFullCache.get(key);
+  if ((cur && !evtSeen(s, evtHash(cur.text))) || _evtFullInFlight.has(key)) return;
   if (Date.now() - _llmState.lastCallAt < AI_NARRATION_CONFIG.minIntervalMs) return;
   const prompt = evtEffectsPrompt(proposal);
   if (!prompt) return;
@@ -19282,6 +19653,16 @@ function evtRealiseAhead(s, proposal) {
     const prose = evtSanitiseProse(parsed.text, names);
     if (!prose) return;
     parsed.text = prose;
+    /* P5: the aftermath lines go into the life story, so they are held to
+       the prose standard too. One that fails is DROPPED rather than the whole
+       realisation — the validator writes a plain line in its place. */
+    if (Array.isArray(parsed.options)) {
+      for (const o of parsed.options) {
+        if (!o || !o.fx || typeof o.fx !== "object" || !("feed" in o.fx)) continue;
+        const f = evtSanitiseFeed(o.fx.feed, names);
+        if (f) o.fx.feed = f; else delete o.fx.feed;
+      }
+    }
     /* validate once now, against this proposal, purely to find out whether it
        is usable at all. The stored copy stays unbound. */
     if (!evtValidate(proposal, parsed)) return;
@@ -19319,6 +19700,11 @@ const _evtInFlight = new Set();
    only ever allowed to replace a display string. */
 function evtEnhance(s, popup, onResolve) {
   if (!popup || !popup.generated || !popup.id) return;
+  /* A P3-realised popup is ALREADY model-written, and its options are the
+     model's. A prose rewrite here would be built from the FALLBACK's text and
+     option labels and then displayed above the realised ones — prose written
+     for choices the player is not being offered. */
+  if (popup.realised) return;
   if (!llmAvailable(s)) return;
   const prop = _evtProposals.get(popup.id);
   if (!prop) return;
@@ -19326,7 +19712,10 @@ function evtEnhance(s, popup, onResolve) {
      across lives and across saves (architecture §6.3) */
   const key = prop.kind + "|" + Math.floor((prop.situation.age || 0) / 10) +
               "|" + evtCastList(prop).map((c) => c.slot).sort().join(",");
-  if (_evtProseCache.has(key)) { onResolve(_evtProseCache.get(key)); return; }
+  /* P5: reuse across LIVES, never twice within one — a seen prose is asked
+     for afresh, and the new answer replaces it in the cache */
+  const cached = _evtProseCache.get(key);
+  if (cached && !evtSeen(s, evtHash(cached))) { onResolve(cached); return; }
   if (_evtInFlight.has(key)) return;
   if (Date.now() - _llmState.lastCallAt < AI_NARRATION_CONFIG.minIntervalMs) return;
   const prompt = evtProsePrompt(prop);
@@ -19340,6 +19729,32 @@ function evtEnhance(s, popup, onResolve) {
     _evtProseCache.set(key, prose);
     onResolve(prose);
   }).catch(() => { _evtInFlight.delete(key); });
+}
+
+/* P5 · LANDING A REPLY ON THE POPUP THAT ASKED FOR IT — and on no other.
+
+   A pure function rather than an inline updater so the suite can drive the
+   React side without a DOM. Three rules, each a bug it replaces:
+
+     - MATCH the popup by id AND by the base text the request was built from.
+       The hand-written path used to land aiText on whatever popup happened to
+       be open when the reply arrived, so a slow reply could put one event's
+       prose on top of the next event. Many hand-written popups have no id, so
+       id alone would not have been enough.
+     - NEVER OVERWRITE. A popup that already shows model text keeps it: a
+       late second reply must not change words the player has already read.
+     - RECORD a generated popup's prose as seen, so this life is not handed
+       the same words the next time that shape comes round. */
+function evtWithAiText(prev, id, baseText, text) {
+  if (!prev || !prev.pending || typeof text !== "string" || !text) return prev;
+  const p = prev.pending;
+  if (p.id !== id || p.text !== baseText || p.aiText) return prev;
+  const n = Object.assign({}, prev, { pending: Object.assign({}, p, { aiText: text }) });
+  if (p.generated) {
+    n.evt = Object.assign({}, prev.evt || evtStateInit(), { hist: ((prev.evt && prev.evt.hist) || []).slice() });
+    evtRecord(n, { id: id, src: "prose", h: evtHash(text) });
+  }
+  return n;
 }
 
 const AI_NARRATION_CONFIG = {
@@ -19492,11 +19907,17 @@ function aiSettingsMenu(s) {
       } },
     });
   }
+  /* Every failure on the real path is silent by design — null, keep the
+     written text — which is right during play and leaves a player setting
+     this up with no idea why nothing is happening. The test says why. */
+  opts.push({ label: "🔌 Test the connection", cond: (st) => !!(st.ai && st.ai.enabled) && llmConfigFor(st).prov.id !== "off",
+    fx: { run: (st) => { st.pending = { id: "aiDiag", diag: "run", noNarrate: 1, emoji: "🔌", title: "Testing the connection", text: "Checking…", options: [CANCEL] }; } } });
   opts.push({ label: "Flavour: subtle", cond: (st) => !!(st.ai && st.ai.enabled), fx: { run: (st) => { ensure(st).level = "flavor"; } } });
   opts.push({ label: "Flavour: rich", cond: (st) => !!(st.ai && st.ai.enabled), fx: { run: (st) => { ensure(st).level = "rich"; } } });
   opts.push({ label: "Close", fx: {} });
   return {
     id: "aiSettingsMenu",
+    noNarrate: 1,          /* the settings screen is not a scene to be rewritten */
     emoji: "\u2728",
     title: "AI Narration",
     text: (on
@@ -21250,28 +21671,45 @@ function Game({ state, setState, onReset }) {
   // field). No-op when disabled/offline — the written text is already rendered.
   useEffect(() => {
     if (!state.pending) return;
+    /* The connection test runs here because the popup system is synchronous
+       and a network test is not. Its result replaces the "Checking…" popup
+       only if that popup is still the one on screen. */
+    if (state.pending.diag === "run") {
+      llmDiagnose(state).then((rep) => setState((prev) =>
+        (prev.pending && prev.pending.id === "aiDiag" && prev.pending.diag === "run" ? Object.assign({}, prev, { pending: llmDiagPopup(rep) }) : prev)))
+        .catch(() => setState((prev) => (prev.pending && prev.pending.id === "aiDiag" ? Object.assign({}, prev, { pending: llmDiagPopup(null) }) : prev)));
+      return;
+    }
+    /* settings screens and test results are not scenes to be narrated */
+    if (state.pending.noNarrate) return;
+    /* EVT P5: already narrated — typically restored from a save — so it stays
+       exactly as it was shown. Re-asking here is what used to make a reload
+       re-narrate a popup with different words. */
+    if (state.pending.aiText) return;
+    const id = state.pending.id, base = state.pending.text;
+    const land = (text) => setState((prev) => evtWithAiText(prev, id, base, text));
     /* EVT P2: a GENERATED event gets its own realiser, because the prompt can
        be built from the proposal — the cast, the bands, the option labels the
        prose has to stay compatible with — rather than from the finished string
-       alone. Both paths land in the same place: aiText, a display field, set
-       after the hand-written text is already on screen. */
+       alone. Both paths land in the same place, through evtWithAiText: a
+       display field, set after the hand-written text is already on screen. */
     if (state.pending.generated) {
-      /* P2: upgrade the WORDS of the popup that is up. Safe, because aiText is
-         a display field and the options do not move. */
-      evtEnhance(state, state.pending, (text) => {
-        setState((prev) => (prev.pending && prev.pending.id === state.pending.id
-          ? { ...prev, pending: { ...prev.pending, aiText: text } } : prev));
-      });
+      evtEnhance(state, state.pending, land);
       /* P3: and, separately, bake a full realisation of this SHAPE for the
          next event like it. Nothing it produces touches the popup on screen —
          evtMaybeFire picks it up synchronously, before the next one is shown. */
       evtRealiseAhead(state, _evtProposals.get(state.pending.id));
       return;
     }
-    enhancePopupNarration(state, state.pending, (text) => {
-      setState((prev) => (prev.pending ? { ...prev, pending: { ...prev.pending, aiText: text } } : prev));
-    });
+    enhancePopupNarration(state, state.pending, land);
   }, [state.pending && state.pending.id, state.pending && state.pending.text]);
+
+  /* EVT P5: model text the player has SEEN is part of the life, so it is saved
+     the moment it lands — not at the next click, which is too late if the
+     next thing the player does is close the tab. */
+  useEffect(() => {
+    if (state.pending && state.pending.aiText) saveGame(state);
+  }, [state.pending && state.pending.aiText]);
 
   useEffect(() => {
     if (tab === "life" && feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
@@ -21414,7 +21852,7 @@ function Game({ state, setState, onReset }) {
           {/* Popup body is the game's primary narrative surface, so it takes
               the story face. Module 15's aiText fallback is untouched — the
               redesign restyles the container, never this expression. */}
-          <div style={{ fontFamily: FONT_STORY, fontSize: 15, lineHeight: 1.6, marginBottom: 16, color: TH.text, opacity: 0.92 }}>{state.pending.aiText || state.pending.text}</div>
+          <div style={{ fontFamily: FONT_STORY, fontSize: 15, lineHeight: 1.6, marginBottom: 16, color: TH.text, opacity: 0.92, whiteSpace: "pre-line" }}>{state.pending.aiText || state.pending.text}</div>
           {state.pending.layout === "grid" ? (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
